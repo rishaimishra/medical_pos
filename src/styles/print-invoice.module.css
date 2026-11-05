@@ -1,0 +1,83 @@
+/* Legal Standard A4 Tax Invoice Print Stylesheet */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 15mm 12mm 15mm 12mm;
+  }
+
+  body {
+    font-family: var(--font-sans, "Inter", "Plus Jakarta Sans", sans-serif);
+    font-size: 11pt;
+    color: #111;
+    background: #fff;
+  }
+
+  .noPrint {
+    display: none !important;
+  }
+
+  .taxInvoiceContainer {
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .invoiceHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2px solid #222;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+  }
+
+  .title {
+    font-size: 18pt;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+  }
+
+  .gridDetails {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 14px;
+    font-size: 9.5pt;
+  }
+
+  .invoiceTable {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+  }
+
+  .invoiceTable th,
+  .invoiceTable td {
+    border: 1px solid #ccc;
+    padding: 6px 8px;
+    font-size: 9pt;
+  }
+
+  .invoiceTable th {
+    background-color: #f3f4f6;
+    font-weight: 700;
+  }
+
+  .tabularNumerics {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .amountInWords {
+    font-style: italic;
+    font-size: 9pt;
+    margin-top: 10px;
+  }
+
+  .signatures {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 40px;
+    padding-top: 10px;
+  }
+}
+

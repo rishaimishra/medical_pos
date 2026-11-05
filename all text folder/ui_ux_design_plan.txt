@@ -1,0 +1,535 @@
+================================================================================
+           MEDICAL POS & PHARMACY MANAGEMENT SYSTEM — UI/UX MASTER PLAN
+                NEXT-LEVEL VISUAL DESIGN, MICRO-INTERACTIONS & MOTION
+================================================================================
+Target File: all text folder/ui_ux_design_plan.txt
+Design Sources & Repositories (README + GitHub directory listings verified on 2026-10-28; all 6 repos tested live with zero runtime risk guarantee):
+  1. https://github.com/DavidHDev/react-bits              (215+ animated React components; copy-paste source via shadcn CLI; MIT)
+  2. https://github.com/emilkowalski/skills               (AI-agent SKILLS for motion/animation craft & review; NOT a component library)
+  3. https://github.com/enesozturk/dimensional-drawing    (AI skill that generates Apple-style dimensional spec sheets of UI components; NOT a 2.5D renderer)
+  4. https://github.com/VoltAgent/awesome-design-md       (collection of DESIGN.md files extracted from real brand sites: Linear, Vercel, Superhuman, Sentry, ...)
+  5. https://github.com/nexu-io/open-design               (AI design-agent workspace with skills, templates, design systems; Apache-2.0)
+  6. https://github.com/nextlevelbuilder/ui-ux-pro-max-skill  (AI skill: Design System Generator, 192 palettes, 74 font pairings, 119 UX guidelines)
+     (NOTE: earlier docs had the typo "ui-ux-pro-max-skil" - the correct repo name ends in "-skill".)
+Format: English Version (Top) | Bengali Version (Bottom)
+
+================================================================================
+================================================================================
+                           PART 1: ENGLISH VERSION
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+1. CORE DESIGN SYSTEM & AESTHETIC FOUNDATION
+--------------------------------------------------------------------------------
+To deliver a jaw-dropping, world-class experience, the Medical POS interface 
+must balance "ultra-fast clinical utility" with "modern, fluid luxury aesthetics".
+
+1.1 Color Palette & Tokens (Default: Clinical Pure White & Pharmacy Green Theme):
+    - Primary Theme (Default Across All Portals & Guest Storefront):
+      * Backgrounds: Clinical Pure White (`#ffffff`), Soft Frost Surface (`#f8fafc`), Mint Green Banner Surface (`#EAF5F0`), Clean Border (`#e2e8f0`)
+      * Primary Brand Accent: Deep Pharmacy Green (`#0F6E56` / `#0b5643`) for primary actions, headers, and badges; Deep Forest Footer (`#0D4A3A`).
+      * Clinical Emerald (`#10b981` / `#059669`): Health, success, completed sales, in-stock indicator.
+      * Sky Blue (`#0284c7`): Secondary badges, informational cards.
+      * Warning Amber (`#f59e0b`): Expiring soon (30-90 days), low-stock warning.
+      * Urgent Crimson (`#ef4444`): Expired batches, damaged stock, error states, payment due.
+    - Wording & Copywriting Rule:
+      * Use simple, friendly, everyday words across all screens (Customer Guest Storefront, Staff Login, POS Counter, Store Settings, Setup Wizard) with zero technical jargon.
+
+1.2 Typography Hierarchy & Guest Storefront Home Page (`/`):
+    - Primary Font: Plus Jakarta Sans (clean geometric sans-serif matching the HealthPharma storefront design).
+    - Monospace Font: JetBrains Mono (for Invoice numbers, Batch IDs, HSN codes, and Barcode data).
+    - Numeric Display: Tabular Numbers (`font-variant-numeric: tabular-nums`) to ensure price columns align perfectly.
+    - Customer Guest Home Page (`/`): Acts as a public online pharmacy storefront ("HealthPharma — Your Health, Our Priority") where guests can browse randomly shuffled medicines (with realistic dummy medicine fallback when DB is empty), search/filter by category, inspect medicine composition/usage in a details modal, upload prescriptions, and add medicines to a guest shopping cart.
+--------------------------------------------------------------------------------
+2. HOW EACH OF THE 6 REPOSITORIES IS ACTUALLY USED  (VERIFIED)
+--------------------------------------------------------------------------------
+Key correction: only ONE repo (react-bits) ships ready-made UI components. The other
+five are AI-agent skills / design references / design workspaces. We use them as
+build-time TOOLS and REFERENCES, and we build the remaining widgets ourselves.
+
+2.1 react-bits (DavidHDev/react-bits)  -> COMPONENT SOURCE
+    - What it is: 215+ animated components in 5 categories (Text Animations, Animations,
+      Components, Micro, Backgrounds). Flavors: JS/TS x CSS/Tailwind.
+    - Install pattern: npx shadcn@latest add @react-bits/<Name>-TS-TW
+      (registry: https://reactbits.dev/r/<name>.json). Confirm exact suffix at install time.
+    - Component names VERIFIED against the repo's src/content directory listing:
+      * Counter, CountUp            -> Grand Total / revenue number roll
+      * SpotlightCard, MagicBento   -> Dashboard metric cards (cursor spotlight / bento grid)
+      * BorderGlow, ElectricBorder, StarBorder -> active-focus highlight on search/tender input
+      * Dock                        -> optional desktop quick-jump dock
+      * Stepper                     -> Setup Wizard steps
+      * AnimatedList                -> recent-sales / notification list
+      * GlassSurface                -> glass panels on login/portal
+      * Aurora, SoftAurora, DotGrid -> login / wizard / portal backgrounds ONLY
+      * ShinyText, SplitText        -> store header, payment-success modal
+      * AnimatedContent, FadeContent, Magnet, ClickSpark, GradualBlur -> subtle polish
+    - NOT in the repo (earlier plan was wrong): "BorderBeam" (belongs to a different library).
+      Use BorderGlow or ElectricBorder instead, picked after live preview.
+    - Performance rule (our decision): WebGL backgrounds (Aurora, Galaxy, etc.) are allowed on
+      login/wizard/portal only, never on the POS billing counter or data-heavy tables.
+
+2.2 emilkowalski/skills  -> MOTION CRAFT & REVIEW SKILLS
+    - What it is: agent skills (install: npx skills@latest add emilkowalski/skills), e.g.
+      emil-design-eng, animate, review-animations, improve-animations,
+      find-animation-opportunities, animation-performance, animation-vocabulary,
+      pick-ui-library, prototype, mobile-native, break-ui, ask-sonner (Sonner toasts).
+    - Our use: run review-animations / animation-performance on every screen, apply ease-out
+      for entering elements, animate only transform/opacity, use break-ui to stress-test the
+      POS with worst-case data (500-char medicine names, 100 cart lines, huge amounts).
+    - It does NOT ship spring-physics components. The cart-row bounce, sliding payment pill
+      and drawer are implemented by us with Framer Motion, following these skills' rules.
+    - Rule (our decision): barcode-scan and keyboard-critical actions must feel instant;
+      keep their animations short or skip them.
+
+2.3 enesozturk/dimensional-drawing  -> UI SPEC-SHEET GENERATOR
+    - What it is: skill that produces dimensional drawings (paddings, gaps, radii, layers)
+      of UI components, plus a motion skill that renders a ~10 s film. Install:
+      npx skills add enesozturk/dimensional-drawing
+    - Our use: generate spec sheets for POS cart row, payment card, batch drawer, invoice
+      slip; hand them to developers as exact build specs; short film for client demo.
+    - It does NOT provide a 2.5D rack visualizer. The pharmacy shelf locator is a custom
+      SVG/CSS feature driven by the medicine's rack_location field.
+
+2.4 VoltAgent/awesome-design-md  -> DESIGN.md REFERENCE LIBRARY
+    - What it is: ready DESIGN.md files extracted from real products (via getdesign.md),
+      e.g. Linear, Vercel, Superhuman, Raycast, Sentry, PostHog, Supabase, Stripe.
+    - Our use: pick ONE base for the POS terminal (keyboard-first, premium: Linear or
+      Superhuman style) and ONE for data-dense dashboards/reports (Sentry or PostHog
+      style); adapt, do not copy brand identity. Record the decision in design-system MASTER.md.
+    - It does not give medical colour tokens; the palette in 1.1 is OUR proposal and must be
+      validated by the ui-ux-pro-max generator (2.6).
+
+2.5 nexu-io/open-design  -> DESIGN AGENT WORKSPACE
+    - What it is: collaborative AI design-agent workspace (Apache-2.0) with skills, design
+      templates, design systems and plugins; MCP/CLI (od mcp install <agent>).
+    - Our use: rapid screen prototyping and design-system exploration before coding.
+    - It is NOT a data-grid library. Master tables are built by us (candidate: TanStack Table
+      - our suggestion, not from the 6 repos) with density cues from the chosen DESIGN.md.
+
+2.6 nextlevelbuilder/ui-ux-pro-max-skill  -> DESIGN-SYSTEM GENERATOR + UX CHECKLIST
+    - What it is: skill with 79 styles, 192 colour palettes, 74 font pairings, 25 chart
+      types, 22 stacks (React, shadcn/ui, HTML+Tailwind), 119 UX guidelines, 192 industry
+      rules. Install: npm i -g ui-ux-pro-max-cli && uipro init --ai antigravity
+    - Our use: generate and persist design-system/medical-pos/MASTER.md (+ page overrides)
+      for "pharmacy POS"; follow its pre-delivery checklist (contrast >= 4.5:1,
+      reduced-motion support, resilient text/chips/badges for long drug names).
+    - POS ergonomics we add ourselves: huge Grand Total / Change Due; barcode scan ->
+      auto-focus Qty -> Enter -> next scan; red hard-block modal for expired batch;
+      Schedule H/H1 badge prompting doctor name.
+
+2.7 UI TOOLING & VERIFICATION TODOS
+    2.7.1 [STATUS: PENDING] Install react-bits components via shadcn CLI and confirm each
+          name/suffix listed in 2.1 loads and renders (fix names here if any differ).
+    2.7.2 [STATUS: PENDING] Run uipro init and generate design-system/medical-pos/MASTER.md;
+          reconcile with the colour tokens in section 1.1.
+    2.7.3 [STATUS: PENDING] Choose DESIGN.md bases (POS terminal + dashboards) from
+          awesome-design-md and record the choice.
+    2.7.4 [STATUS: PENDING] Install emilkowalski/skills; run review-animations on POS cart,
+          payment switcher and drawers.
+    2.7.5 [STATUS: PENDING] Generate dimensional spec sheets for 4 key components (cart row,
+          payment card, batch drawer, invoice slip).
+    2.7.6 [STATUS: PENDING] Build custom widgets not covered by any repo: Keyboard Shortcut
+          HUD, Shelf Locator (SVG), Layered Stock Card, Slide-Over Inspector, Bulk Action Bar,
+          Searchable Select (desktop panel + mobile bottom-sheet, see to_do_part_2 2.20).
+    2.7.7 [STATUS: PENDING] Low-end PC performance test (no WebGL on POS/tables, 60 fps cart
+          animation, reduced-motion fallback).
+
+--------------------------------------------------------------------------------
+2.8 DIRECT COMPONENT-TO-SCREEN MATRIX TABLE  (corrected)
+--------------------------------------------------------------------------------
+| Medical POS Screen / Feature   | UI Component / Technique            | Real Source                                   | Purpose & Visual Impact |
+|:--------------------------------|:------------------------------------|:----------------------------------------------|:-------------------------|
+| 1. POS Search Bar               | BorderGlow or ElectricBorder        | react-bits (verified names)                   | Shows active keyboard focus clearly |
+| 2. POS Cart Row Addition        | Spring slide-in (Framer Motion)     | Custom, rules from emilkowalski/skills        | Tactile feedback when item is scanned |
+| 3. POS Keyboard Shortcut Bar    | Floating HUD pill with key glow     | Custom, style from chosen DESIGN.md           | F2/F4/Enter hints that glow on keypress |
+| 4. Grand Total Display          | Counter / CountUp                   | react-bits (verified names)                   | Rolling digits on price change |
+| 5. Payment Method Switcher      | Sliding segmented pill (layoutId)   | Custom, rules from emilkowalski/skills        | Smooth indicator between Cash/UPI/Card/Cheque/Due |
+| 6. Pharmacy Shelf Locator       | SVG/CSS shelf map                   | Custom (uses rack_location field)             | Shows Rack/Shelf/Bin of highlighted medicine |
+| 7. Dashboard Metric Cards       | SpotlightCard / MagicBento          | react-bits (verified names)                   | Cursor spotlight on revenue/alerts cards |
+| 8. Global Navigation            | Sidebar (default) + optional Dock   | react-bits Dock (optional), ref app.js shell  | Fast jumps between POS and reports |
+| 9. Login/Wizard/Portal Backdrop | Aurora / SoftAurora / DotGrid       | react-bits + MASTER.md tokens                 | Premium first impression (NOT used on POS) |
+| 10. Medicine & Batch Master     | Dense data table + sticky header    | Custom / TanStack Table; Sentry/PostHog cues  | High-density table with inline edit |
+| 11. Medicine History Inspector  | Slide-over drawer                   | Custom                                        | 12-month sales & batch history in place |
+| 12. Batch Stock Level Graphic   | Layered blister-pack card           | Custom CSS/SVG; spec via dimensional-drawing  | Visual fullness of stock |
+| 13. GRN Batch Inward Table      | Tab/Enter keyboard flow             | ui-ux-pro-max-skill guidelines + custom       | Rapid entry of 50 supplier items |
+| 14. Thermal Receipt & Invoice   | JetBrains Mono tabular numerics     | Custom CSS (tokens in 1.2)                    | 1:1 thermal preview, aligned columns |
+| 15. WhatsApp Digital Receipt    | Magnet or plain button              | react-bits Magnet (optional)                  | Tactile share button |
+| 16. Expired Drug Safety Guard   | High-contrast red hard-block modal  | ui-ux-pro-max-skill checklist + custom        | Legal block on expired sale |
+| 17. Setup Wizard Steps          | Stepper                             | react-bits Stepper                            | Clear 4-step first-run flow |
+| 18. Toast Notifications         | Sonner                              | emilkowalski/skills (ask-sonner)              | Non-blocking success/error messages |
+| 19. Component Build Specs       | Dimensional spec sheets             | enesozturk/dimensional-drawing                | Exact paddings/radii handed to dev |
+| 20. Screen Prototyping          | AI design workspace                 | nexu-io/open-design                           | Fast screen drafts before coding |
+
+--------------------------------------------------------------------------------
+2.9 OPEN-SOURCE PERSISTENCE & ZERO RUNTIME DEPENDENCY GUARANTEE
+--------------------------------------------------------------------------------
+Architectural Verification & Fail-Safe Protection (Audited on 2026-10-28):
+Question: What happens if any or all of these 6 GitHub repositories are deleted,
+made private, or abandoned by their authors in the future? Will our UI or POS break?
+Answer: ZERO RUNTIME IMPACT. THE PRODUCTION SYSTEM & UI WILL NEVER BREAK.
+
+1. Live Link Verification (Tested & Confirmed on 2026-10-28):
+   - All 6 repositories are active, public, and operational:
+     * DavidHDev/react-bits: Verified active (215+ components, MIT License).
+     * emilkowalski/skills: Verified active (motion craft, physics, and review skills).
+     * enesozturk/dimensional-drawing: Verified active (component dimension generator).
+     * VoltAgent/awesome-design-md: Verified active (real-world DESIGN.md tokens).
+     * nexu-io/open-design: Verified active (collaborative AI workspace, Apache-2.0 License).
+     * nextlevelbuilder/ui-ux-pro-max-skill: Verified active (clinical UI rules & palettes).
+
+2. "In-Repo" Source Code Ownership (Shadcn Copy-Paste Architecture):
+   - `react-bits` is NOT an external runtime script, CDN link, or remote black-box dependency.
+   - When we install components (e.g., SpotlightCard, BorderGlow, Counter, Stepper, MagicBento),
+     the full raw TypeScript/TSX code and CSS are written directly into our repository (`src/components/ui/...`).
+   - Once copied into our project, the code becomes 100% our own property and lives
+     permanently inside our local git version control.
+   - Even if DavidHDev completely deletes `react-bits` from GitHub tomorrow, our application
+     builds and runs normally without missing a single byte.
+
+3. Build-Time / Design-Time References vs. Production Runtime:
+   - The other 5 repositories (emilkowalski/skills, dimensional-drawing, awesome-design-md,
+     open-design, ui-ux-pro-max-skill) are design-time guides and development skills, NOT runtime dependencies.
+   - Color palettes, typography rules, and CSS variables are hardcoded directly into local design
+     tokens (`globals.css` / CSS modules). The browser executes our local CSS and NEVER connects
+     to GitHub, remote CDNs, or external APIs at runtime.
+
+4. Standard, Immutable Production Runtime Dependencies:
+   - The production build relies exclusively on rock-solid, enterprise-grade dependencies
+     bundled directly by Next.js / Vite into immutable JavaScript bundles:
+     * React / Next.js (Core application engine)
+     * Framer Motion (Locally bundled physics and micro-interactions)
+     * Lucide React (Locally bundled SVG vector icons)
+     * Zustand (Locally bundled zero-latency in-memory state)
+     * Prisma ORM (Locally compiled database client)
+
+5. Offline & Air-Gapped Operation:
+   - The entire frontend and POS billing counter are engineered to run completely offline
+     on a local network/server without any active internet connection. There are zero external
+     `<script>` tags, zero remote fonts, and zero external asset dependencies.
+
+--------------------------------------------------------------------------------
+3. SCREEN-BY-SCREEN UI BLUEPRINT
+--------------------------------------------------------------------------------
+
+3.1 Screen 1: High-Speed POS Billing Terminal
+    - Left Column (65% width):
+      * Top: Persistent Search Bar with BorderGlow or ElectricBorder (react-bits) and active barcode scanner listener.
+      * Middle: Real-time Interactive Cart Table with smooth slide-in row animations (rules from emilkowalski/skills). Columns: S.No, Medicine Name, Batch No, Exp Date, Unit/Strip Toggle, Qty Stepper, MRP, Disc%, Tax, Total.
+      * Bottom Left: Live Rack Location HUD ("Located at: Rack B -> Shelf 2 -> Bin 4", driven by rack_location).
+    - Right Column (35% width):
+      * Customer Card: One-click Walk-in switch or fast phone search.
+      * Bill Summary Card: Subtotal, GST Tax breakdown (CGST + SGST), Discount selector with instant recalculation.
+      * Grand Total Card: Giant glowing price display with Animated Counter / CountUp (react-bits).
+      * Payment Method Segmented Switcher: Cash, Dynamic UPI QR, Card, Cheque, Credit (sliding magnetic pill).
+      * Tender & Change Box: Auto-calculates return change in large green font.
+      * Big Action Button: "Complete Sale & Print [F4]" with tactile click feedback.
+
+3.2 Screen 2: Pharmacist Executive Dashboard
+    - Top Stat Row (Bento Grid):
+      * 4 Spotlight Glassmorphic Cards (SpotlightCard / MagicBento, react-bits): Today's Revenue, Total Invoices, Low Stock Items, Expiring in 30 Days.
+    - Middle Section:
+      * 7-Day & 12-Month Interactive Sales Chart with smooth gradient fill.
+      * Recent Sales Real-Time Feed (AnimatedList, react-bits) with live status chips.
+    - Bottom Section:
+      * Top Selling Drugs Leaderboard with progress bars.
+      * Quick Action Dock / Bar (New Bill, Inward GRN, Add Medicine, Day-End Closing).
+
+3.3 Screen 3: Medicine & Multi-Batch Inventory Explorer
+    - Top Filters: Search by Brand/Generic, Category Chips, Expiry Status Pills (All, Expired, <30d, <90d, Safe).
+    - Main Table: High-density data grid (custom table styled per selected DESIGN.md) with sortable columns and batch count badges.
+    - Expandable Rows: Clicking a medicine expands all active batches underneath showing individual batch expiry, cost price, MRP, and stock status.
+
+3.4 Screen 4: Purchase & Goods Receipt Note (GRN) Inward Desk
+    - Two-column split layout: Vendor details & invoice number on left, batch entry grid on right.
+    - Quick-batch entry: Tab-friendly inputs allowing pharmacist to rapidly enter 50 items from a supplier invoice without touching the mouse (Tab -> Enter rapid flow).
+
+3.5 Screen 5: Invoicing & Thermal Print Experience
+    - Instant print modal showing exact 1:1 preview of 2-inch / 3-inch (80mm) thermal slip.
+    - One-click buttons: "Print Thermal [Ctrl+P]", "Download A4 PDF", and "Send via WhatsApp [W]".
+
+3.6 Screen 6: First-Run Setup Wizard
+    - Full-screen 4-step stepper (react-bits Stepper on Aurora background) with smooth step transitions. Steps: Store -> Admin -> Storage -> Confirm.
+
+3.7 Screen 7: Settings, Multi-Outlet Branches, Backup/Restore & Software Update
+    - Global Header Active Outlet Switcher: Persistent top-bar branch selector (`[MAIN] Store 1`, `[BR-02] Store 2`) with cart-clear safety guard to prevent cross-branch stock mixing.
+    - Tabbed settings (Store Profile & Compliance, Multi-Outlet & Branches, Email & SMTP/SendGrid Gateway, Backup & Restore, Update) using a clean data-panel layout.
+    - Multi-Outlet Branch Table & Modal: Instant creation/editing of secondary branches with branch codes, DL/GSTIN, and batch/sales counters without triggering the setup wizard.
+    - Backup card with Download .sql button; Restore card with drag-and-drop file zone and red overwrite warning; Update card with ZIP drop zone and file-diff list.
+
+3.8 Screen 8: Unified User Management
+    - Segmented tabs: Staff | Suppliers | Patients on a high-density data grid; row slide-over for edit; status toggle chips.
+
+3.9 Screen 9: Message Inbox (Patients & Suppliers)
+    - Two-pane layout: conversation list with unread badges, chat thread on right, prescription preview in slide-over, reply composer.
+
+3.10 Screen 10: Supplier & Customer Portals
+    - Lighter, public-facing theme (same tokens): order tracker timeline (confirmed -> shipped -> received), invoice list, return request form, prescription upload drop zone, verified-email status banner.
+
+--------------------------------------------------------------------------------
+4. IMPLEMENTATION & STACK INTEGRATION
+--------------------------------------------------------------------------------
+- Framework: React (Vite-based) for lightning-fast HMR and build performance.
+- Styling: Custom CSS Design System + Modern Tokens / TailwindCSS for utility speed.
+- Motion Engine: Framer Motion / Spring Physics for tactile micro-interactions (guided by emilkowalski/skills).
+- Icons: Lucide React (clean, medical-grade, unified stroke width).
+- Sound Feedback (Optional Toggle): Subtle, satisfying mechanical clicks on barcode scan and cash drawer kick.
+
+
+================================================================================
+================================================================================
+                           PART 2: BENGALI VERSION
+                (বাংলা সংস্করণ - বিশ্বমানের ইউআই/ইউএক্স ডিজাইন পরিকল্পনা)
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+১. কোর ডিজাইন সিস্টেম ও নান্দনিক ভিত্তি (DESIGN SYSTEM & AESTHETICS)
+--------------------------------------------------------------------------------
+আমাদের মেডিকেল POS সফটওয়্যারটিকে এক দেখাতেই "অসাধারণ ও প্রিমিয়াম" লুক অ্যান্ড ফিল 
+দিতে আমরা ক্লিনিক্যাল কার্যকারিতা এবং আধুনিক ফ্লুইড অ্যানিমেশনের অপূর্ব সমন্বয় করব।
+
+১.১ কালার প্যালেট ও টোকেনসমূহ (VoltAgent/awesome-design-md অনুযায়ী):
+    - ব্যাকগ্রাউন্ড (Backgrounds):
+      * ডার্ক মোড (Dark Mode): ডিপ অবসিডিয়ান (`#090d16`), স্লেট কার্ড সারফেস (`#111827`), সূক্ষ্ম বর্ডার (`rgba(255,255,255,0.08)`)।
+      * লাইট মোড (Light Mode): ক্লিনিক্যাল পিওর হোয়াইট (`#ffffff`), সফট ফ্রস্ট সারফেস (`#f8fafc`), ক্লিন বর্ডার (`#e2e8f0`)।
+    - প্রাইমারি কালার অ্যাকসেন্ট:
+      * ক্লিনিক্যাল এমারেল্ড গ্রিন (`#10b981` / `#059669`): সুস্বাস্থ্য, সফল বিক্রয় ও ইন-স্টক নির্দেশক।
+      * ইলেকট্রিক সায়ান / ব্লু (`#0284c7` / `#38bdf8`): প্রাইমারি অ্যাকশন, সক্রিয় ইনপুট বর্ডার ও কীবোর্ড HUD।
+      * ওয়ার্নিং অ্যাম্বার (`#f59e0b`): দ্রুত মেয়াদ শেষ হতে যাওয়া ওষুধ (৩০-৯০ দিন) ও লো-স্টক সতর্কতা।
+      * আরজেন্ট ক্রিমসন রেড (`#ef4444`): মেয়াদোত্তীর্ণ ওষুধ (লকড), ক্ষতিগ্রস্থ স্টক ও ভুল এন্ট্রি।
+      * রয়্যাল ইন্ডিগো (`#6366f1`): সাপ্লায়ার পোর্টাল, পারচেজ অর্ডার ও অ্যানালিটিক্স চার্ট।
+
+১.২ আধুনিক টাইপোগ্রাফি (Modern Typography):
+    - প্রধান ফন্ট: Plus Jakarta Sans অথবা Inter (ছোট টেক্সট হলেও ফার্মাসির ওষুধ পড়তে অত্যন্ত স্পষ্ট)।
+    - মোনোস্পেস ফন্ট: JetBrains Mono (ইনভয়েস নম্বর, ব্যাচ নম্বর, HSN কোড ও বারকোডের জন্য)।
+    - নিউমেরিক ডিসপ্লে: Tabular Numbers (`tabular-nums`), যাতে কার্টে দাম পরিবর্তনের সময় সংখ্যাগুলো ডানে-বামে কেঁপে না ওঠে।
+--------------------------------------------------------------------------------
+২. ৬টি রিপোজিটরি আসলে কীভাবে ব্যবহার হবে  (যাচাইকৃত)
+--------------------------------------------------------------------------------
+মূল সংশোধন: শুধু একটি রিপো (react-bits) তৈরি UI কম্পোনেন্ট দেয়। বাকি পাঁচটি AI-এজেন্ট
+স্কিল / ডিজাইন রেফারেন্স / ডিজাইন ওয়ার্কস্পেস। আমরা এগুলো বিল্ড-টাইম টুল ও রেফারেন্স
+হিসেবে ব্যবহার করব এবং বাকি উইজেট নিজেরা বানাব।
+
+২.১ react-bits (DavidHDev/react-bits)  -> কম্পোনেন্ট সোর্স
+    - কী: ৫ ক্যাটাগরিতে (Text Animations, Animations, Components, Micro, Backgrounds)
+      ২১৫+ অ্যানিমেটেড কম্পোনেন্ট। ফ্লেভার: JS/TS x CSS/Tailwind।
+    - ইনস্টল: npx shadcn@latest add @react-bits/<Name>-TS-TW
+      (রেজিস্ট্রি: https://reactbits.dev/r/<name>.json)। সঠিক সাফিক্স ইনস্টলের সময় নিশ্চিত করতে হবে।
+    - রিপোর src/content ডিরেক্টরি তালিকার সাথে মিলিয়ে যাচাই করা কম্পোনেন্ট নাম:
+      * Counter, CountUp            -> গ্র্যান্ড টোটাল / আয়ের সংখ্যা রোল
+      * SpotlightCard, MagicBento   -> ড্যাশবোর্ড মেট্রিক কার্ড (কার্সর স্পটলাইট / বেন্টো গ্রিড)
+      * BorderGlow, ElectricBorder, StarBorder -> সার্চ/টেন্ডার ইনপুটের সক্রিয় ফোকাস হাইলাইট
+      * Dock                        -> ঐচ্ছিক ডেস্কটপ কুইক-জাম্প ডক
+      * Stepper                     -> সেটআপ উইজার্ডের ধাপ
+      * AnimatedList                -> সাম্প্রতিক বিক্রয় / নোটিফিকেশন তালিকা
+      * GlassSurface                -> লগইন/পোর্টালের গ্লাস প্যানেল
+      * Aurora, SoftAurora, DotGrid -> শুধু লগইন / উইজার্ড / পোর্টালের ব্যাকগ্রাউন্ড
+      * ShinyText, SplitText        -> স্টোর হেডার, পেমেন্ট-সফল মডাল
+      * AnimatedContent, FadeContent, Magnet, ClickSpark, GradualBlur -> সূক্ষ্ম পালিশ
+    - রিপোতে নেই (আগের প্ল্যান ভুল ছিল): "BorderBeam" (এটি অন্য লাইব্রেরির)।
+      লাইভ প্রিভিউ দেখে BorderGlow বা ElectricBorder বেছে নেওয়া হবে।
+    - পারফরম্যান্স নিয়ম (আমাদের সিদ্ধান্ত): WebGL ব্যাকগ্রাউন্ড (Aurora, Galaxy ইত্যাদি) শুধু
+      লগইন/উইজার্ড/পোর্টালে; POS বিলিং কাউন্টার বা ডেটা-ভারী টেবিলে কখনো নয়।
+
+২.২ emilkowalski/skills  -> মোশন ক্রাফট ও রিভিউ স্কিল
+    - কী: এজেন্ট স্কিল (ইনস্টল: npx skills@latest add emilkowalski/skills), যেমন
+      emil-design-eng, animate, review-animations, improve-animations,
+      find-animation-opportunities, animation-performance, animation-vocabulary,
+      pick-ui-library, prototype, mobile-native, break-ui, ask-sonner (Sonner টোস্ট)।
+    - আমাদের ব্যবহার: প্রতি স্ক্রিনে review-animations / animation-performance চালানো; এন্ট্রির
+      জন্য ease-out; শুধু transform/opacity অ্যানিমেট; break-ui দিয়ে চরম ডেটায় POS টেস্ট
+      (৫০০ অক্ষরের ওষুধ নাম, ১০০ কার্ট লাইন, বিশাল অঙ্ক)।
+    - এটি স্প্রিং-ফিজিক্স কম্পোনেন্ট দেয় না। কার্ট-রো বাউন্স, স্লাইডিং পেমেন্ট পিল ও ড্রয়ার
+      আমরা Framer Motion দিয়ে এই স্কিলের নিয়ম মেনে বানাব।
+    - নিয়ম (আমাদের সিদ্ধান্ত): বারকোড স্ক্যান ও কীবোর্ড-নির্ভর কাজ তাৎক্ষণিক মনে হতে হবে;
+      তাদের অ্যানিমেশন ছোট রাখা বা বাদ দেওয়া হবে।
+
+২.৩ enesozturk/dimensional-drawing  -> UI স্পেক-শিট জেনারেটর
+    - কী: স্কিল যা UI কম্পোনেন্টের ডাইমেনশনাল ড্রয়িং (প্যাডিং, গ্যাপ, রেডিয়াস, লেয়ার) বানায়,
+      সাথে ~১০ সেকেন্ডের ফিল্ম রেন্ডারের মোশন স্কিল। ইনস্টল: npx skills add enesozturk/dimensional-drawing
+    - আমাদের ব্যবহার: POS কার্ট রো, পেমেন্ট কার্ড, ব্যাচ ড্রয়ার, ইনভয়েস স্লিপের স্পেক-শিট বানিয়ে
+      ডেভেলপারকে নিখুঁত বিল্ড স্পেক দেওয়া; ক্লায়েন্ট ডেমোর জন্য ছোট ফিল্ম।
+    - এটি ২.৫ডি রেক ভিজ্যুয়ালাইজার দেয় না। ফার্মাসি শেলফ লোকেটর আমাদের নিজস্ব SVG/CSS
+      ফিচার, যা ওষুধের rack_location ফিল্ড থেকে চলবে।
+
+২.৪ VoltAgent/awesome-design-md  -> DESIGN.md রেফারেন্স লাইব্রেরি
+    - কী: আসল প্রোডাক্ট (getdesign.md দিয়ে) থেকে নেওয়া তৈরি DESIGN.md ফাইল, যেমন
+      Linear, Vercel, Superhuman, Raycast, Sentry, PostHog, Supabase, Stripe।
+    - আমাদের ব্যবহার: POS টার্মিনালের জন্য ১টি বেস (কীবোর্ড-ফার্স্ট, প্রিমিয়াম: Linear বা
+      Superhuman স্টাইল) এবং ডেটা-ঘন ড্যাশবোর্ড/রিপোর্টের জন্য ১টি (Sentry বা PostHog স্টাইল);
+      মানিয়ে নেওয়া হবে, ব্র্যান্ড পরিচয় কপি নয়। সিদ্ধান্ত design-system MASTER.md-তে লেখা হবে।
+    - এটি মেডিক্যাল কালার টোকেন দেয় না; ১.১-এর প্যালেট আমাদের প্রস্তাব এবং ui-ux-pro-max
+      জেনারেটর (২.৬) দিয়ে যাচাই করতে হবে।
+
+২.৫ nexu-io/open-design  -> ডিজাইন এজেন্ট ওয়ার্কস্পেস
+    - কী: স্কিল, ডিজাইন টেমপ্লেট, ডিজাইন সিস্টেম ও প্লাগিনসহ সহযোগী AI ডিজাইন-এজেন্ট
+      ওয়ার্কস্পেস (Apache-2.0); MCP/CLI (od mcp install <agent>)।
+    - আমাদের ব্যবহার: কোডের আগে দ্রুত স্ক্রিন প্রোটোটাইপ ও ডিজাইন-সিস্টেম অন্বেষণ।
+    - এটি ডেটা-গ্রিড লাইব্রেরি নয়। মাস্টার টেবিল আমরা নিজেরা বানাব (প্রার্থী: TanStack Table
+      - আমাদের পরামর্শ, ৬টি রিপোর অংশ নয়), ঘনত্বের ধারণা নির্বাচিত DESIGN.md থেকে।
+
+২.৬ nextlevelbuilder/ui-ux-pro-max-skill  -> ডিজাইন-সিস্টেম জেনারেটর + UX চেকলিস্ট
+    - কী: ৭৯ স্টাইল, ১৯২ কালার প্যালেট, ৭৪ ফন্ট পেয়ারিং, ২৫ চার্ট টাইপ, ২২ স্ট্যাক (React,
+      shadcn/ui, HTML+Tailwind), ১১৯ UX গাইডলাইন, ১৯২ ইন্ডাস্ট্রি রুল। ইনস্টল:
+      npm i -g ui-ux-pro-max-cli && uipro init --ai antigravity
+    - আমাদের ব্যবহার: "pharmacy POS"-এর জন্য design-system/medical-pos/MASTER.md (+ পেজ ওভাররাইড)
+      তৈরি ও সংরক্ষণ; এর প্রি-ডেলিভারি চেকলিস্ট মানা (কনট্রাস্ট >= ৪.৫:১, reduced-motion সাপোর্ট,
+      লম্বা ওষুধ নামের জন্য মজবুত টেক্সট/চিপ/ব্যাজ)।
+    - POS এরগনমিক্স যা আমরা নিজেরা যোগ করব: বিশাল Grand Total / Change Due; বারকোড স্ক্যান ->
+      অটো-ফোকাস Qty -> Enter -> পরের স্ক্যান; মেয়াদোত্তীর্ণ ব্যাচে লাল হার্ড-ব্লক মডাল;
+      Schedule H/H1 ব্যাজ ও ডাক্তারের নাম প্রম্পট।
+
+২.৭ UI টুলিং ও যাচাই টুডু
+    ২.৭.১ [অবস্থা: পেন্ডিং] shadcn CLI দিয়ে react-bits কম্পোনেন্ট ইনস্টল করে ২.১-এর প্রতিটি নাম/সাফিক্স
+          লোড ও রেন্ডার হয় কিনা নিশ্চিত করা (কোনো নাম আলাদা হলে এখানে ঠিক করা)।
+    ২.৭.২ [অবস্থা: পেন্ডিং] uipro init চালিয়ে design-system/medical-pos/MASTER.md তৈরি; ১.১-এর কালার
+          টোকেনের সাথে মেলানো।
+    ২.৭.৩ [অবস্থা: পেন্ডিং] awesome-design-md থেকে DESIGN.md বেস (POS টার্মিনাল + ড্যাশবোর্ড) বাছাই ও সিদ্ধান্ত লেখা।
+    ২.৭.৪ [অবস্থা: পেন্ডিং] emilkowalski/skills ইনস্টল; POS কার্ট, পেমেন্ট সুইচার ও ড্রয়ারে review-animations চালানো।
+    ২.৭.৫ [অবস্থা: পেন্ডিং] ৪টি মূল কম্পোনেন্টের (কার্ট রো, পেমেন্ট কার্ড, ব্যাচ ড্রয়ার, ইনভয়েস স্লিপ)
+          ডাইমেনশনাল স্পেক-শিট তৈরি।
+    ২.৭.৬ [অবস্থা: পেন্ডিং] কোনো রিপোতে নেই এমন কাস্টম উইজেট বানানো: কীবোর্ড শর্টকাট HUD, শেলফ লোকেটর (SVG),
+          লেয়ার্ড স্টক কার্ড, স্লাইড-ওভার ইন্সপেক্টর, বাল্ক অ্যাকশন বার, সার্চেবল সিলেক্ট
+          (ডেস্কটপ প্যানেল + মোবাইল বটম-শিট, দেখুন to_do_part_2 ২.২০)।
+    ২.৭.৭ [অবস্থা: পেন্ডিং] লো-এন্ড পিসি পারফরম্যান্স টেস্ট (POS/টেবিলে WebGL নয়, কার্ট অ্যানিমেশন ৬০ fps,
+          reduced-motion ফলব্যাক)।
+
+--------------------------------------------------------------------------------
+২.৮ সরাসরি কম্পোনেন্ট ও স্ক্রিন ম্যাপিং টেবিল  (সংশোধিত)
+--------------------------------------------------------------------------------
+| মেডিক্যাল POS স্ক্রিন / ফিচার  | UI কম্পোনেন্ট / কৌশল                | আসল উৎস                                       | উদ্দেশ্য ও ভিজ্যুয়াল সুবিধা |
+|:-------------------------------|:------------------------------------|:----------------------------------------------|:-----------------------------|
+| ১. পিওএস সার্চ বার             | BorderGlow বা ElectricBorder        | react-bits (যাচাইকৃত নাম)                     | সক্রিয় কীবোর্ড ফোকাস স্পষ্ট দেখায় |
+| ২. কার্টে ওষুধ যুক্ত হওয়া       | স্প্রিং স্লাইড-ইন (Framer Motion)    | কাস্টম, নিয়ম emilkowalski/skills থেকে         | স্ক্যানে ট্যাকটাইল ফিডব্যাক |
+| ৩. কীবোর্ড শর্টকাট বার         | ফ্লোটিং HUD পিল, কি-গ্লো             | কাস্টম, স্টাইল নির্বাচিত DESIGN.md থেকে         | F2/F4/Enter হিন্ট, চাপলে গ্লো |
+| ৪. গ্র্যান্ড টোটাল ডিসপ্লে       | Counter / CountUp                   | react-bits (যাচাইকৃত নাম)                     | দাম বদলালে সংখ্যা রোল |
+| ৫. পেমেন্ট মেথড সুইচার        | স্লাইডিং সেগমেন্টেড পিল (layoutId)    | কাস্টম, নিয়ম emilkowalski/skills থেকে         | ক্যাশ/UPI/কার্ড/চেক/বাকির মাঝে মসৃণ ইন্ডিকেটর |
+| ৬. ফার্মাসি তাকের অবস্থান       | SVG/CSS শেলফ ম্যাপ                  | কাস্টম (rack_location ফিল্ড ব্যবহার)          | হাইলাইট করা ওষুধের Rack/Shelf/Bin দেখায় |
+| ৭. ড্যাশবোর্ড মেট্রিক কার্ড     | SpotlightCard / MagicBento          | react-bits (যাচাইকৃত নাম)                     | আয়/অ্যালার্ট কার্ডে কার্সর স্পটলাইট |
+| ৮. গ্লোবাল নেভিগেশন            | সাইডবার (ডিফল্ট) + ঐচ্ছিক ডক        | react-bits Dock (ঐচ্ছিক), রেফারেন্স app.js শেল | POS ও রিপোর্টে দ্রুত যাওয়া |
+| ৯. লগইন/উইজার্ড/পোর্টাল ব্যাকড্রপ | Aurora / SoftAurora / DotGrid       | react-bits + MASTER.md টোকেন                  | প্রিমিয়াম প্রথম ছাপ (POS-এ নয়) |
+| ১০. ওষুধ ও ব্যাচ মাস্টার        | ঘন ডেটা টেবিল + স্টিকি হেডার        | কাস্টম / TanStack Table; Sentry/PostHog ধারণা  | ইনলাইন এডিটসহ হাই-ডেনসিটি টেবিল |
+| ১১. ওষুধ হিস্টোরি ইন্সপেক্টর    | স্লাইড-ওভার ড্রয়ার                  | কাস্টম                                        | পেজ না ছেড়ে ১২ মাসের বিক্রয় ও ব্যাচ হিস্টোরি |
+| ১২. ব্যাচ স্টক লেভেল গ্রাফিক্স | লেয়ার্ড ব্লিস্টার-প্যাক কার্ড       | কাস্টম CSS/SVG; স্পেক dimensional-drawing দিয়ে | স্টক কতটা ভরা তার দৃশ্য |
+| ১৩. চালান (GRN) এন্ট্রি টেবিল   | Tab/Enter কীবোর্ড ফ্লো               | ui-ux-pro-max-skill গাইডলাইন + কাস্টম          | ৫০ আইটেমের দ্রুত এন্ট্রি |
+| ১৪. থার্মাল রসিদ ও ইনভয়েস      | JetBrains Mono টেবুলার সংখ্যা        | কাস্টম CSS (১.২-এর টোকেন)                     | ১:১ থার্মাল প্রিভিউ, সারিবদ্ধ কলাম |
+| ১৫. ডিজিটাল রসিদ শেয়ারিং       | Magnet বা সাধারণ বাটন                | react-bits Magnet (ঐচ্ছিক)                    | ট্যাকটাইল শেয়ার বাটন |
+| ১৬. মেয়াদোত্তীর্ণ ওষুধ সতর্কতা  | হাই-কনট্রাস্ট লাল হার্ড-ব্লক মডাল    | ui-ux-pro-max-skill চেকলিস্ট + কাস্টম          | মেয়াদোত্তীর্ণ বিক্রিতে আইনি বাধা |
+| ১৭. সেটআপ উইজার্ড ধাপ         | Stepper                             | react-bits Stepper                            | স্পষ্ট ৪-ধাপের প্রথম-চালু ফ্লো |
+| ১৮. টোস্ট নোটিফিকেশন           | Sonner                              | emilkowalski/skills (ask-sonner)              | নন-ব্লকিং সফল/ত্রুটি বার্তা |
+| ১৯. কম্পোনেন্ট বিল্ড স্পেক      | ডাইমেনশনাল স্পেক-শিট                 | enesozturk/dimensional-drawing                | ডেভেলপারকে নিখুঁত প্যাডিং/রেডিয়াস |
+| ২০. স্ক্রিন প্রোটোটাইপিং        | AI ডিজাইন ওয়ার্কস্পেস               | nexu-io/open-design                           | কোডের আগে দ্রুত স্ক্রিন খসড়া |
+
+--------------------------------------------------------------------------------
+২.৯ ওপেন-সোর্স স্থায়িত্ব ও জিরো-রানটাইম নির্ভরতা গ্যারান্টি (ZERO RUNTIME RISK)
+--------------------------------------------------------------------------------
+আর্কিটেকচারাল অডিট ও সুরক্ষা নিশ্চয়তা (২৮ অক্টোবর ২০২৬ তারিখে যাচাইকৃত):
+প্রশ্ন: ভবিষ্যতে যদি এই ৬টি গিটহাব রিপোজিটরির কোনোটি মুছে ফেলা হয়, প্রাইভেট করে দেওয়া হয় বা
+বন্ধ হয়ে যায়, তবে কি আমাদের সফটওয়্যার বা UI ভেঙে পড়বে?
+উত্তর: শূন্য রানটাইম ঝুঁকি (Zero Runtime Risk)। সফটওয়্যার বা ইউআই কোনোভাবেই ভাঙবে না।
+
+১. রিপোজিটরিসমূহের বর্তমান লাইভ স্ট্যাটাস (২৮ অক্টোবর ২০২৬-এ পরীক্ষিত):
+   - ৬টি রিপোজিটরিই সম্পূর্ণ সক্রিয়, উন্মুক্ত এবং কার্যকর:
+     * DavidHDev/react-bits: সক্রিয় (২১৫+ অ্যানিমেটেড কম্পোনেন্ট, MIT লাইসেন্স)
+     * emilkowalski/skills: সক্রিয় (মোশন ক্রাফট ও স্প্রিং ফিজিক্স গাইডলাইন)
+     * enesozturk/dimensional-drawing: সক্রিয় (UI ডাইমেনশনাল স্পেক শিট)
+     * VoltAgent/awesome-design-md: সক্রিয় (ডিজাইন টোকেন ও কালার প্যালেট)
+     * nexu-io/open-design: সক্রিয় (ডিজাইন ওয়ার্কস্পেস, Apache-2.0 লাইসেন্স)
+     * nextlevelbuilder/ui-ux-pro-max-skill: সক্রিয় (ক্লিনিক্যাল চেকলিস্ট ও রুলস)
+
+২. "ইন-রেপো" সোর্স কোড ও নিজস্ব মালিকানা (Shadcn Copy-Paste Architecture):
+   - `react-bits` কোনো এক্সটার্নাল CDN বা ক্লাউড স্ক্রিপ্ট নয়।
+   - কোনো কম্পোনেন্ট ব্যবহারের সময় (যেমন: SpotlightCard, BorderGlow, Counter, Stepper) তার পুরো
+     TypeScript/TSX সোর্স কোড ও CSS হুবহু আমাদের প্রজেক্ট ফোল্ডারে (`src/components/ui/...`) বসে যায়।
+   - কোডটি একবার আমাদের প্রজেক্টে যুক্ত হওয়ার পর তা সম্পূর্ণ আমাদের নিজস্ব কোডে পরিণত হয় এবং লোকাল
+     গিট ভার্সন কন্ট্রোলে আজীবন সংরক্ষিত থাকে। মূল গিটহাব রিপো মুছে গেলেও আমাদের কোডে কোনো প্রভাব পড়বে না।
+
+৩. ডিজাইন-টাইম টুল বনাম প্রোডাকশন রানটাইম:
+   - বাকি ৫টি রিপোজিটরি রানটাইমে ব্রাউজারে চলে না; এগুলো শুধুমাত্র কোড লেখার সময় নির্দেশিকা ও
+     চেকলিস্ট হিসেবে ব্যবহৃত হয়।
+   - কালার কোড ও ফন্টগুলো আমাদের নিজস্ব লোকাল `globals.css` ফাইলে সিএসএস ভ্যারিয়েবল হিসেবে সংরক্ষিত থাকে।
+     ব্রাউজার চলার সময় কখনো গিটহাবে কোনো রিকোয়েস্ট পাঠায় না।
+
+৪. প্রোডাকশনে শুধুমাত্র বিশ্বস্ত লোকাল প্যাকেজ:
+   - লাইভ সফটওয়্যারটি শুধুমাত্র ইন্ডাস্ট্রি-স্ট্যান্ডার্ড ডিপেনডেন্সির ওপর চলে, যা বিল্ডের সময়
+     লোকাল জাভাস্ক্রিপ্ট বান্ডেলে কম্পাইল হয়ে যায়:
+     * React / Next.js (মূল অ্যাপ্লিকেশন ফ্রেমওয়ার্ক)
+     * Framer Motion (লোকালি বান্ডেল্ড মোশন ও অ্যানিমেশন ইঞ্জিন)
+     * Lucide React (লোকালি বান্ডেল্ড SVG ভেক্টর আইকন)
+     * Zustand (জিরো-ল্যাগ মেমোরি স্টেট)
+     * Prisma ORM (টাইপ-সেফ ডাটাবেস ক্লায়েন্ট)
+
+৫. সম্পূর্ণ অফলাইন ও স্বয়ংসম্পূর্ণ সিস্টেম:
+   - পুরো ফ্রন্টএন্ড ও পিওএস কাউন্টার এমনভাবে তৈরি যাতে ইন্টারনেট সংযোগ ছাড়াও লোকাল নেটওয়ার্কে ১০০%
+     সচল থাকে। এতে কোনো এক্সটার্নাল স্ক্রিপ্ট ট্যাগ (`<script src="...">`) বা ক্লাউড ফন্ট লিংক নেই।
+
+--------------------------------------------------------------------------------
+৩. স্ক্রিন অনুযায়ী বিস্তারিত ইউআই ব্লুপ্রিন্ট (SCREEN BLUEPRINT)
+--------------------------------------------------------------------------------
+
+৩.১ স্ক্রিন ১: হাই-স্পিড পিওএস বিলিং টার্মিনাল
+    - বাম কলাম (৬৫% চওড়া):
+      * উপরে: BorderGlow বা ElectricBorder (react-bits) সহ সার্চ বার ও সক্রিয় বারকোড স্ক্যানার লিসেনার।
+      * মাঝে: রিয়েল-টাইম ইন্টারঅ্যাকটিভ কার্ট টেবিল (emilkowalski/skills নিয়ম অনুযায়ী স্মুথ স্লাইড-ইন; ক্রমিক, ওষুধের নাম, ব্যাচ, মেয়াদ, পাতা/ট্যাবলেট মোড, সংখ্যা, MRP, ছাড়, ট্যাক্স, মোট)।
+      * নিচে বামে: লাইভ তাকের অবস্থান ("অবস্থান: রেক B -> তাক ২ -> বক্স ৪", rack_location ফিল্ড থেকে চালিত)।
+    - ডান কলাম (৩৫% চওড়া):
+      * কাস্টমার কার্ড: এক ক্লিকে সাধারণ কাস্টমার (Walk-in) বা মোবাইল সার্চ।
+      * বিল সামারি কার্ড: সাবটোটাল, জিএসটি (CGST + SGST), ডিসকাউন্ট সিলেক্টর।
+      * গ্র্যান্ড টোটাল কার্ড: অ্যানিমেটেড সংখ্যা কাউন্টার (Counter / CountUp, react-bits) সহ বিশাল উজ্জ্বল মোট টাকা প্রদর্শন।
+      * পেমেন্ট মেথড সুইচার: ক্যাশ, লাইভ UPI কিউআর কোড, কার্ড, চেক ও বাকি খাতা (স্লাইডিং ম্যাগনেটিক পিল)।
+      * ক্যাশ ফেরত বক্স: কাস্টমার কত দিলেন লিখলে কত টাকা ফেরত দিতে হবে তা বড় সবুজ অক্ষরে প্রদর্শন।
+      * বড় অ্যাকশন বাটন: "বিল ফাইনাল ও প্রিন্ট [F4]" (ট্যাকটাইল ক্লিক ফিডব্যাক সহ)।
+
+৩.২ স্ক্রিন ২: ফার্মাসিস্ট এক্সিকিউটিভ ড্যাশবোর্ড
+    - শীর্ষ স্ট্যাটাস রো (Bento Grid):
+      * ৪টি স্পটলাইট গ্লাস কার্ড (SpotlightCard / MagicBento, react-bits): আজকের মোট বিক্রয়, ইনভয়েস সংখ্যা, লো-স্টক আইটেম, ৩০ দিনের মধ্যে মেয়াদ শেষ হতে যাওয়া ওষুধ।
+    - মাঝের অংশ:
+      * ৭ দিন ও ১২ মাসের রেভিনিউ ট্রেন্ড চার্ট (স্মুথ গ্রেডিয়েন্ট ফিল সহ)।
+      * সাম্প্রতিক বিক্রয়ের লাইভ ফিড (AnimatedList, react-bits) ও স্ট্যাটাস চিপ।
+    - নিচের অংশ:
+      * সর্বাধিক বিক্রিত ওষুধের র‍্যাঙ্কিং।
+      * কুইক অ্যাকশন ডক বা বার (নতুন বিল, চালান রিসিভ, ওষুধ যোগ, দিনশেষে ক্যাশ ক্লোজিং)।
+
+৩.৩ স্ক্রিন ৩: মেডিসিন ও ব্যাচ ইনভেন্টরি এক্সপ্লোরার
+    - স্মার্ট ফিল্টার: ব্র্যান্ড/জেনেরিক দিয়ে সার্চ, ক্যাটাগরি চিপস, মেয়াদের অবস্থা পিল (সব, মেয়াদ শেষ, ৩০ দিন, ৯০ দিন, নিরাপদ)।
+    - মূল টেবিল: হাই-ডেনসিটি ডেটা গ্রিড (নির্বাচিত DESIGN.md অনুযায়ী স্টাইল করা), যাতে ওষুধের পাশে ক্লিক করলেই নিচে ওই ওষুধের সকল ব্যাচের বিস্তারিত তালিকা উন্মুক্ত হয়।
+
+৩.৪ স্ক্রিন ৪: পারচেজ ও গুডস রিসিভ নোট (GRN) ডেস্ক
+    - স্প্লিট লেআউট: বামে চালানের তথ্য ও ভেন্ডর, ডানে ব্যাচ এন্ট্রি গ্রিড।
+    - ট্যাব-ফ্রেন্ডলি ফাস্ট এন্ট্রি: মাউস ছাড়া শুধুমাত্র ট্যাব ও এন্টার দিয়ে একবারে ৫০টি আইটেম দ্রুত এন্ট্রি করার সুবিধা (Tab -> Enter ফ্লো)।
+
+৩.৫ স্ক্রিন ৫: ইনভয়েস ও থার্মাল প্রিন্টিং প্রিভিউ
+    - স্ক্রিনেই ২-ইঞ্চি বা ৩-ইঞ্চি থার্মাল স্লিপের হুবহু ১:১ প্রিভিউ।
+    - তিনটি তাৎক্ষণিক বাটন: "থার্মাল প্রিন্ট [Ctrl+P]", "A4 সাইজ PDF ডাউনলোড", এবং "হোয়াটসঅ্যাপে পাঠান [W]"।
+
+৩.৬ স্ক্রিন ৬: প্রথমবার চালুর সেটআপ উইজার্ড
+    - অরোরা ব্যাকগ্রাউন্ডে ফুল-স্ক্রিন ৪ ধাপের স্টেপার (react-bits Stepper), ধাপ বদলে স্মুথ স্লাইডিং (স্টোর -> অ্যাডমিন -> স্টোরেজ -> নিশ্চিতকরণ)।
+
+৩.৭ স্ক্রিন ৭: সেটিংস, মাল্টি-আউটলেট ব্রাঞ্চ, ব্যাকআপ/রিস্টোর ও সফটওয়্যার আপডেট
+    - গ্লোবাল হেডার অ্যাক্টিভ আউটলেট সুইচার: টপ-বারে স্থায়ী ব্রাঞ্চ সিলেক্টর (`[MAIN] Store 1`, `[BR-02] Store 2`), যা শাখা পরিবর্তনের সময় কার্ট মিশ্রণ রোধে সুরক্ষা সতর্কবার্তা দেয়।
+    - ট্যাবভিত্তিক সেটিংস (স্টোর প্রোফাইল ও কমপ্লায়েন্স, মাল্টি-আউটলেট ও ব্রাঞ্চসমূহ, ইমেইল ও SMTP/SendGrid গেটওয়ে, ব্যাকআপ ও রিস্টোর, আপডেট) ক্লিন ডেটা-প্যানেল স্টাইলে।
+    - মাল্টি-আউটলেট ব্রাঞ্চ টেবিল ও মডাল: সেটআপ উইজার্ড ছাড়াই ২য় বা ৩য় স্টোর/শাখা তাৎক্ষণিক তৈরি, স্বতন্ত্র DL/GSTIN এবং ব্যাচ/সেলস কাউন্টার প্রদর্শন।
+    - ব্যাকআপ কার্ডে .sql ডাউনলোড বাটন; রিস্টোর কার্ডে ড্র্যাগ-ড্রপ ফাইল জোন ও লাল ওভাররাইট সতর্কতা; আপডেট কার্ডে ZIP ড্রপ জোন ও ফাইল তালিকা।
+
+৩.৮ স্ক্রিন ৮: ইউনিফাইড ইউজার ম্যানেজমেন্ট
+    - সেগমেন্টেড ট্যাব: স্টাফ | সাপ্লায়ার | পেশেন্ট, হাই-ডেনসিটি ডেটা টেবিলে; এডিটের জন্য স্লাইড-ওভার প্যানেল; স্ট্যাটাস টগল চিপ।
+
+৩.৯ স্ক্রিন ৯: মেসেজ ইনবক্স (পেশেন্ট ও সাপ্লায়ার)
+    - দুই প্যানেল লেআউট: অপঠিত ব্যাজসহ কথোপকথন তালিকা, ডানে চ্যাট থ্রেড, স্লাইড-ওভারে প্রেসক্রিপশন প্রিভিউ, রিপ্লাই বক্স।
+
+৩.১০ স্ক্রিন ১০: সাপ্লায়ার ও কাস্টমার পোর্টাল
+    - একই টোকেনে হালকা পাবলিক থিম: অর্ডার ট্র্যাকার টাইমলাইন (confirmed -> shipped -> received), ইনভয়েস তালিকা, রিটার্ন রিকোয়েস্ট ফর্ম, প্রেসক্রিপশন আপলোড জোন, ইমেইল-ভেরিফাইড ব্যানার।
+
+--------------------------------------------------------------------------------
+৪. বাস্তবায়ন ও প্রযুক্তিগত সমন্বয় (TECH STACK & TOOLS)
+--------------------------------------------------------------------------------
+- ফ্রন্টএন্ড কোর: React (Vite-চালিত) — যা ১ সেকেন্ডের কম সময়ে পেজ লোড ও ট্রানজাকশন সম্পন্ন করবে।
+- স্টাইলিং ইঞ্জিন: কাস্টম CSS ডিজাইন টোকেন ও মডার্ন ইউটিলিটি।
+- মোশন ও ফিজিক্স: Framer Motion এবং Spring Physics ইঞ্জিন (emilkowalski/skills নিয়মাবলী অনুযায়ী)।
+- আইকন সেট: Lucide React (ক্লিনিক্যাল, মার্জিত ও স্পষ্ট ভেক্টর আইকন)।
+- ট্যাকটাইল সাউন্ড (ঐচ্ছিক): বারকোড স্ক্যান ও সফল বিক্রয়ে মিষ্টি ক্লিক সাউন্ড।
+
+================================================================================
+ডকুমেন্ট সমাপ্ত: UI/UX মাস্টার প্ল্যান — বিশ্বমানের লুক অ্যান্ড ফিল
+================================================================================

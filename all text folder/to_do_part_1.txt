@@ -1,0 +1,987 @@
+================================================================================
+           MEDICAL POS & PHARMACY MANAGEMENT SYSTEM — MASTER PLAN
+                      PART 1: CORE ENGINE, INVENTORY & PURCHASING
+================================================================================
+Target File: all text folder/to_do_part_1.txt
+Reference: DRxStore v2.0.0 ("referense project")
+Format: English Version (Top) | Bengali Version (Bottom)
+Ordering: Strict Dependency-Driven Step-by-Step Build Sequence (Modules 1.1 -> 1.15)
+Status Tracking: Each actionable task is initialized with [STATUS: PENDING]
+
+================================================================================
+================================================================================
+                           PART 1: ENGLISH VERSION
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+MODULE 1.1: SYSTEM ARCHITECTURE, DATABASE FOUNDATION & ENVIRONMENT
+--------------------------------------------------------------------------------
+1.1.1 [STATUS: COMPLETED] Database Schema Setup (Relational/MySQL/PostgreSQL)
+      - Create normalized tables: settings, branches, users, roles, medicines, categories, 
+        batches, suppliers, purchase_orders, po_items, stock_adjustments, 
+        customers, audit_logs.
+      - Implement foreign keys with cascading constraints and high-performance indexes.
+      [DEV IMPLEMENTATION NOTES]:
+      * Built all 22 normalized relational models in `prisma/schema.prisma` (Settings, Branch, User, Medicine, Category, Batch, Supplier, SupplierUser, PurchaseOrder, POItem, Customer, CustomerPurchaseLog, Sale, SaleItem, Return, ReturnItem, Discount, StockAdjustment, LoginAttempt, AuditLog, SupplierMessage, PatientMessage) and synced with live Neon PostgreSQL (`neondb`).
+      * Configured 49 high-performance single & composite indexes across 18 tables, plus strict `DECIMAL(12,2)`, `DECIMAL(10,2)`, and `DECIMAL(5,2)` financial types.
+      * Enforced `onDelete: Restrict` on `medicines` and `batches` to prevent deleting master items that have stock or sales history, and `onDelete: SetNull` on `branch_id` foreign keys across `users`, `batches`, `purchase_orders`, `sales`, `returns`, `stock_adjustments`, and `audit_logs`.
+      * Fixed multi-store batch edge case by configuring composite unique constraint `uk_medicine_batch_branch` on `[medicineId, batchNo, branchId]` so Store 1 (`MAIN`) and Store 2 (`BR-02`) can independently hold stock of identical manufacturer batch numbers.
+      * Implemented Multi-Tenant SaaS Store Isolation (`storeId` foreign key referencing `Settings.id` with `onDelete: Cascade`) across `Branch`, `User`, and `AuditLog`, plus composite unique constraint `uk_store_branch_code` on `[storeId, code]` so 100+ independent pharmacy owners can each have their own `MAIN`, `BR-02`, `BR-03` branches and isolated data on the same deployment.
+
+1.1.2 [STATUS: COMPLETED] Environment & Application Configuration Engine
+      - Configure centralized store variables (Currency symbol, Timezone, App Mode).
+      - Setup low-stock threshold default (default: 10 units) and expiry warning 
+        threshold (default: 90 days).
+      [DEV IMPLEMENTATION NOTES]:
+      * Created `src/lib/config.ts` with `APP_CONFIG` (`currency: "₹"`, `timezone: "Asia/Kolkata"`, `lowStockThreshold: 10`, `expiryWarningDays: 90`, `gstFallbackPercent: 18.0`, `medicineDefaultGstPercent: 12.0`, `perPage: 25`, `sessionTimeoutMinutes: 120`, `maxLoginAttempts: 5`, `lockoutDurationMinutes: 15`).
+      * Implemented Indian numbering format helper `formatCurrency()` (`en-IN`, `₹1,250.50`) and 4-tier expiry evaluator `getExpiryTier()` (`expired`, `critical_30d`, `warning_90d`, `safe`).
+      * Defined the 20 standard dosage forms (`DEFAULT_DOSAGE_FORMS`) for master seeding.
+
+1.1.3 [STATUS: COMPLETED] Storage Engine Abstraction & Multi-DB Adapter
+      - Provide reliable persistence layer with transaction rollbacks (ACID) to 
+        prevent corrupt records during concurrent checkout or purchase entries.
+      [DEV IMPLEMENTATION NOTES]:
+      * Created `src/lib/prisma.ts` (singleton PrismaClient connection pool) and `src/lib/db-transaction.ts` with `runInTransaction()` ACID transaction wrapper (`ReadCommitted` isolation, 5s maxWait, 15s timeout, full automatic rollback on any error).
+      * Built `getDatabaseHealth()` diagnostic utility and `/api/health` route returning live connection status, latency in ms, and table counts, verified via `scripts/test-module-1-1.ts` (100% pass).
+
+--------------------------------------------------------------------------------
+MODULE 1.2: FIRST-RUN SETUP WIZARD & DEFAULT DATA SEEDING  (from ref: public/setup/wizard.php)
+--------------------------------------------------------------------------------
+1.2.1 [STATUS: COMPLETED] 4-Step First-Launch Setup Wizard & Session Persistence Engine
+      - Step 1 Store Info -> Step 2 Admin Account -> Step 3 Storage/Database -> Step 4 Confirm.
+      - Wizard launches automatically when setup is not completed; permanently blocked afterwards.
+      - Browser Closure & State Recovery: If user closes tab/browser midway (at ANY step 1 to 4),
+        state is preserved via dual persistence (client-side draft + server-side `setup_step`).
+        Re-opening the browser immediately resumes from the exact incomplete step.
+      - Security Challenge & OTP Recovery: If resuming from cleared cache or a different device/IP,
+        require Step 2 Admin Password or 6-digit email OTP (sent via SendGrid) to unlock and resume setup.
+      - Clean Reset Action: Provide explicit "Restart Setup" confirmation to wipe draft and start fresh.
+      - UI/UX Plan Compliance: Follow ui_ux_design_plan.txt (react-bits 4-step Stepper with active glow ring,
+        dark slate backdrop #0F172A, medical teal accents, and Sonner toast feedback).
+      [DEV IMPLEMENTATION NOTES]:
+      * Built `/setup/wizard` UI (`src/app/(setup)/setup/wizard/page.tsx`) and `/api/setup` backend (`src/app/api/setup/route.ts`) with 8 actions: `save_step_1`, `save_step_2`, `verify_resume`, `send_otp`, `test_db`, `advance_to_step_4`, `confirm_finalize`, and `restart_setup`.
+      * Implemented dual persistence: keystroke-level `localStorage` draft (`med_pos_setup_wizard_draft_v1`) + server-side `setup_step` (1–4) & `setup_token` in Neon DB so closing the browser at ANY step (1, 2, 3, or 4) resumes from that exact step on reopen.
+      * Implemented Cross-Device / Cleared-Cache Security Challenge Modal with BCrypt Step 2 Admin Password verification AND 6-digit SendGrid Email OTP (`setup_otp`, 15-min expiry) via `src/lib/email.ts`.
+      * Added permanent setup lock (`setup_done = true`) for finalized store drafts and automatic `med_pos_admin_session` cookie issuance upon `confirm_finalize` so the newly registered store owner lands directly in `/admin/dashboard`.
+      * Multi-Tenant 100-Owner Onboarding Support: Scoped unfinished wizard drafts by browser `setup_session_token` cookie (`where: { setupToken: clientToken, setupDone: false }`) so any new customer/friend opening the URL on another laptop sees a clean, neutral launchpad and can register their own isolated Pharmacy Store (`Settings`, `User`, `Branch`, `AuditLog` linked by `storeId`) without seeing or overwriting any existing owner's store.
+
+1.2.2 [STATUS: COMPLETED] Default Master Data Seeding
+      - Seed 20 dosage forms: Tablet, Capsule, Syrup, Suspension, Injection, Infusion, 
+        Suppository, Powder, Granules, Cream, Ointment, Gel, Lotion, Drop, Inhaler, 
+        Patch, Spray, Emulsion, Solution, Other.
+      - Default GST 18% fallback, per-medicine GST override (default 12%), PER_PAGE = 25.
+      [DEV IMPLEMENTATION NOTES]:
+      * Implemented atomic idempotent seeding inside `confirm_finalize` in `/api/setup/route.ts` using `runInTransaction()`: seeds all 20 dosage forms into `categories` (`type = 'dosage'`), creates/updates the primary `MAIN` store branch in `branches` (`isMain = true`), creates the Super Admin account in `users`, and records an initial `SETUP_COMPLETED` entry in `audit_logs`.
+
+1.2.3 [STATUS: COMPLETED] Friendly Fatal-Error & DB Connection Failure Screens
+      - Clear actionable messages for DB connection failed, missing database, 
+        or non-writable data directory (with recovery hints), never raw errors.
+      [DEV IMPLEMENTATION NOTES]:
+      * Built error classification & recovery hint engine in `getDatabaseHealth()` (`src/lib/db-transaction.ts`) covering `P1001` (server unreachable), `P1003` (missing database), authentication failures, and SSL/TLS issues, rendered in an interactive diagnostic card with 1-click retry on Step 3 of the Setup Wizard and `/api/health`. Verified via `scripts/test-module-1-2.ts` and `scripts/test-sendgrid-and-all-steps.ts`.
+
+--------------------------------------------------------------------------------
+MODULE 1.3: PHARMACY STORE SETUP & COMPLIANCE CONFIGURATION
+--------------------------------------------------------------------------------
+1.3.1 [STATUS: COMPLETED] Pharmacy Profile & Multi-Outlet / Store Management
+      - Configure Store Name, Tagline, Address, Phone, Email, Official GSTIN, 
+        and Drug License Numbers (DL 20B / DL 21B).
+      - Multi-Branch / Multi-Store Outlets: Manage multiple branches (Store 1, Store 2, Store 3)
+        from a single installation with branch codes (e.g. MAIN, BR-02), individual DL/GSTIN,
+        and POS branch switcher — completely bypassing the setup wizard for all secondary outlets.
+      [DEV IMPLEMENTATION NOTES]:
+      * Built `/api/admin/settings` (`src/app/api/admin/settings/route.ts`) and `/api/admin/branches` (`src/app/api/admin/branches/route.ts`) with bidirectional sync between `settings` and the primary `MAIN` branch, plus self-healing `MAIN` branch auto-provisioning if 0 branches exist.
+      * Built 3-tab Admin Settings UI (`src/app/(admin)/admin/settings/page.tsx`) for Store Profile & Compliance (DL 20B/21B, 15-char GSTIN, Currency, Low-Stock & Expiry thresholds) and Multi-Outlet Branch Management (create/edit branches like `BR-02`, view live counts of batches/sales/users/POs/returns per branch, toggle active status).
+      * Enforced safety guards: `MAIN` branch cannot be deactivated or deleted; secondary branches with linked batches, sales, POs, or returns cannot be hard-deleted (must be deactivated to preserve audit logs).
+      * Built Global Header Active Outlet Switcher in `src/app/(admin)/admin/layout.tsx` powered by `src/stores/useBranchStore.ts` with POS cart-clear confirmation guard (`useCartStore`) to prevent cross-branch batch mixing.
+      * Enforced strict Multi-Tenant `storeId` scoping in `/api/admin/settings`, `/api/admin/branches`, and `/api/admin/audit-logs` so unauthenticated requests return `401 Unauthorized` (never leaking store names or branches publicly) and authenticated store owners only ever see and manage their own store profile, branches, users, and audit logs.
+
+1.3.2 [STATUS: COMPLETED] Centralized System-Wide Email & SendGrid Gateway Integration
+      - Centralized system-wide SendGrid gateway powered by .env (SENDGRID_API_KEY, EMAIL_SERVICE, SENDGRID_FROM_EMAIL) used globally across all stores for OTPs, staff credentials, and alerts.
+      - Removed per-store email configuration card from Admin Settings UI for unified, zero-leak operations.
+      - Built-in SMTP/SendGrid connection tester and diagnostic metrics.
+      [DEV IMPLEMENTATION NOTES]:
+      * Upgraded `src/lib/email.ts` to support global SendGrid v3 REST API and Nodemailer SMTP via environment variables.
+      * Fixed SendGrid RFC 1341 content ordering (text/plain before text/html).
+      * Verified live email delivery via SendGrid API for First-run Setup Wizard OTP and User Creation credentials.
+
+--------------------------------------------------------------------------------
+MODULE 1.4: AUTHENTICATION, SECURITY & ROLE-BASED ACCESS CONTROL (RBAC)
+--------------------------------------------------------------------------------
+1.4.1 [STATUS: COMPLETED] Secure User Authentication Engine
+      - Implement secure login using BCrypt password hashing.
+      - Session timeout after 2 hours of inactivity with auto-lock screen.
+      [DEV IMPLEMENTATION NOTES]:
+      * Built `src/lib/auth.ts` with BCrypt Cost-12 hashing (`hashPassword`, `verifyPassword`), HMAC-SHA256 signed session tokens (`createSessionToken`, `verifySessionToken` using `crypto.timingSafeEqual`), and 2-hour (120-minute) inactivity expiration tracking (`lastActive`).
+      * Built `/api/auth/admin` (`src/app/api/auth/admin/route.ts`) supporting `POST` (`login` and `unlock`), `GET` (live DB user/role/branch sync + inactivity check), `PUT` (`lock` and `heartbeat`), and `DELETE` (`logout` clearing `med_pos_admin_session` HttpOnly cookie).
+      * Deep Edge Cases Handled:
+        - Locked Screen API Guard (`verifyAdminRequest` in `src/lib/auth.ts`): When `isLocked === true` (via 2h inactivity or `Alt+L`), `verifySessionToken` returns `valid: false, locked: true` and blocks API mutations with `HTTP 423 Locked` until unlocked with BCrypt password.
+        - Deactivated Branch Session Revocation: If a secondary store branch is deactivated by Super Admin, any staff assigned to that branch is immediately blocked from logging in or continuing an active session (`HTTP 403`).
+      * Built client session store `src/stores/useAuthStore.ts`, Admin Login UI (`src/app/(admin)/admin/login/page.tsx`), and 2-Hour Inactivity Auto-Lock Overlay Modal + `Alt+L` quick-lock shortcut in `src/app/(admin)/admin/layout.tsx` that locks the screen while safely preserving active POS cart items (`useCartStore`).
+
+1.4.2 [STATUS: COMPLETED] Brute-Force Attack Protection System
+      - Rate limiting tracking IP and context: Lock account/IP for 15 minutes after 
+        5 consecutive failed attempts.
+      [DEV IMPLEMENTATION NOTES]:
+      * Implemented `checkBruteForceLockout()`, `recordFailedLoginAttempt()`, and `clearFailedLoginAttempts()` in `src/lib/auth.ts` backed by the `login_attempts` table (`ip`, `context`, `ts` composite index).
+      * Deep Edge Case — Split Username + Email & IP Rotation Defense: Tracks IP (`admin`), primary username (`admin:<username>`), and secondary email (`admin:<email>`) simultaneously so an attacker cannot bypass the 5-attempt limit by trying 3 times with username and 2 times with email across rotated IPs.
+      * Integrated live 15-minute `MM:SS` lockout countdown timer and remaining attempts warning badge (`X / 5 attempts remaining`) in `src/app/(admin)/admin/login/page.tsx`.
+
+1.4.3 [STATUS: COMPLETED] Granular Role & Permission Management
+      - Pre-defined roles: Super Admin, Store Manager, Pharmacist/Cashier, Accountant.
+      - Permission matrix: Controlling access to cost prices, stock adjustments, 
+        discounts, invoice cancellation, and profit reports.
+      - Multi-Branch Access Control: Super Admin has global access across all store branches (`branch_id = null`); staff/cashiers can be assigned to a specific store branch (`branch_id`) or allowed across outlets.
+      [DEV IMPLEMENTATION NOTES]:
+      * Built `src/lib/rbac.ts` defining `ROLE_MATRIX` across all 6 system roles (`admin`, `manager`, `pharmacist`, `cashier`, `staff`, `accountant`), 11 granular `PermissionKey` flags (`view_cost_price`, `manage_stock_adjustments`, `apply_high_discount`, `cancel_invoice`, `view_profit_reports`, `manage_medicines`, `manage_purchases`, `manage_customers`, `manage_users`, `manage_settings`, `switch_branches`), per-role max discount caps (`getEffectiveMaxDiscount`), and `STAFF_ALLOWED_PAGES` / `ADMIN_ONLY_PAGES`.
+      * Deep Edge Cases Handled:
+        - Safe polymorphism in `parseUserPermissions()`, `canAccessPage()`, and `hasPermission()` accepting raw DB JSON strings, legacy comma-separated strings, or resolved `SessionPayload` arrays without runtime `TypeError`.
+        - Strict Multi-Branch Isolation in `canAccessBranch()`: Branch-bound staff (`branchId !== null`) are blocked both from other branch IDs AND from passing `targetBranchId = null` ("All Branches").
+        - Privilege Escalation & Last-Admin Demotion Protection in `/api/admin/audit-logs` (`update_user_rbac`): Unauthenticated (`401`) and non-admin (`403`) requests are rejected, and demoting the last active Super Admin is blocked (`400`).
+
+1.4.4 [STATUS: COMPLETED] Tamper-Proof System Audit Trails
+      - Log every critical action (price change, batch edit, stock write-off, login/logout) 
+        with timestamp, user ID, active `branch_id`, and IP address.
+      [DEV IMPLEMENTATION NOTES]:
+      * Built `src/lib/audit.ts` with `logAudit()` (compatible with both standalone calls and Prisma ACID transactions `tx`), `getClientIp()`, and recursive `sanitizeAuditDetails()` that automatically redacts sensitive keys (`password`, `sendgridKey`, `smtpPass`, `token`, `otp`) to `[REDACTED]`.
+      * Built `/api/admin/audit-logs` (`src/app/api/admin/audit-logs/route.ts`) with paginated filtering (`action`, `entity`, `branchId`, `userId`, `search`) and explicit `405 Method Not Allowed` blocks on `PUT` and `DELETE` to guarantee append-only immutability.
+      * Wired automatic audit trail logging into `/api/auth/admin`, `/api/admin/settings`, and `/api/admin/branches`, plus added Tab 4 (`RBAC & Audit Trails`) to `src/app/(admin)/admin/settings/page.tsx`. Verified via 28-point E2E test suite `scripts/test-module-1-4.ts` (28/28 passed).
+
+--------------------------------------------------------------------------------
+MODULE 1.5: UNIFIED USER & PORTAL ACCOUNT MANAGEMENT  (from ref: users.php)
+--------------------------------------------------------------------------------
+1.5.1 [STATUS: COMPLETED] Single Admin Screen With 3 Tabs
+      - Tabs: Staff/Admin users (with assigned Store Branch selector), Supplier portal users, Patient/Customer accounts; 
+        add, edit, activate/deactivate.
+      [DEV IMPLEMENTATION NOTES]:
+      * Built `src/app/(admin)/admin/users/page.tsx` (Screen 8) with high-density segmented 3-tab layout:
+        1. Staff & Admin accounts (with store branch selector, role badges, custom permission inspector, status toggle).
+        2. Supplier portal users (with vendor company affiliation, portal usernames, and verification badges).
+        3. Patients & customers (with phone number primary ID, medical profile notes, order history counters).
+      * Built full CRUD REST API `/api/admin/users` (`src/app/api/admin/users/route.ts`) supporting `GET`, `POST`, `PUT`, `DELETE` with search, branch filter, and role filter.
+
+1.5.2 [STATUS: COMPLETED] Last-Admin Protection & Duplicate Email Check
+      - Prevent demoting/disabling the only active admin; enforce unique email, 
+        minimum password length 6.
+      [DEV IMPLEMENTATION NOTES]:
+      * Implemented multi-tier Last-Admin Protection in `/api/admin/users`:
+        - Role Demotion Block: Changing the role of the last active admin is rejected (`HTTP 400`).
+        - Deactivation Block: Toggling active status to `false` on the only active admin is rejected (`HTTP 400`).
+        - Self-Delete & Last-Admin Deletion Block: Logged-in admin cannot delete their own account (`HTTP 400`), and deleting the system's last admin is rejected (`HTTP 400`).
+        - Historical Record Safety: Users with linked sales or stock adjustments are safely soft-deactivated instead of hard-deleted to preserve foreign key integrity.
+      * Enforced strict unique email and username validation across `User`, `SupplierUser`, and `Customer` tables.
+      * Minimum password length (6 characters) with BCrypt Cost-12 hashing.
+
+1.5.3 [STATUS: COMPLETED] Staff Page Access Allow-List
+      - Staff role limited to an allowed page list (dashboard, medicines, batches, sales, 
+        customers, returns, expiry, purchase, messages); admin-only: users, settings, 
+        updates, suppliers management.
+      [DEV IMPLEMENTATION NOTES]:
+      * Built `src/lib/menu-registry.ts` featuring `SYSTEM_MENU_REGISTRY` and `getVisibleMenuItems()`:
+        - Automatically filters sidebar navigation based on role and granular permissions.
+        - Staff/Cashiers only see their allowed operational pages; admin-only pages (`/admin/users`, `/admin/branches`, `/admin/settings`) are hidden from non-admin sidebars.
+        - Synchronized with `src/app/(admin)/admin/layout.tsx` to provide dynamic menu rendering and strict route guarding (`ShieldAlert` restriction block).
+
+1.5.4 [STATUS: COMPLETED] Credential Email On Account Creation
+      - Branded HTML email with login URL and username when a staff or supplier 
+        account is created.
+      [DEV IMPLEMENTATION NOTES]:
+      * Implemented `sendAccountCredentialsEmail()` in `src/lib/email.ts` dispatching branded HTML emails containing portal login URL, username, temporary password, and assigned store branch.
+      * Fully integrated into `POST /api/admin/users` for staff and supplier onboarding.
+      * Verified via comprehensive 15-point automated verification suite `scripts/test-module-1-5.ts` (15/15 passed cleanly).
+
+--------------------------------------------------------------------------------
+MODULE 1.6: MEDICINE MASTER CATALOG & COMPOSITION MANAGEMENT
+--------------------------------------------------------------------------------
+1.6.1 [STATUS: COMPLETED] Medicine Information Architecture
+      - Master fields: Brand Trade Name, Generic Chemical Composition, Manufacturer 
+        Company, Primary Category (Tablet, Capsule, Syrup, Injection, Ointment, etc.).
+      - Custom tags and therapeutic classifications (e.g., Antibiotic, Analgesic, Antacid).
+      [DEV IMPLEMENTATION NOTES]:
+      * Built `src/app/api/admin/medicines/route.ts` with comprehensive CRUD endpoints (`GET`, `POST`, `PUT`, `DELETE`).
+      * Supports full clinical composition architecture (Brand Trade Name, Generic Chemical Formula, Manufacturer Company, HSN Code, GST %).
+      * Built Screen 9 UI (`src/app/(admin)/admin/medicines/page.tsx`) with high-density data grid, 300ms debounced multi-field search, and dosage form indicators.
+
+1.6.2 [STATUS: COMPLETED] Physical Rack & Shelf Location Locator
+      - Assign Rack No, Shelf No, and Box/Bin identifier to each medicine for instant 
+        physical retrieval during busy store hours.
+      [DEV IMPLEMENTATION NOTES]:
+      * Added structured physical locator inputs (Rack/Almirah No, Shelf No, Box/Bin ID) in medicine create/edit modal.
+      * Automatically compiles and renders high-visibility rack locator badge (`Rack: A-1 • Shelf: 2 • Box: B-4`) on catalog table for instant counter dispatch.
+
+1.6.3 [STATUS: COMPLETED] Packaging & Loose Unit Conversion Engine
+      - Define Box to Strip to Loose Tablet ratios (e.g., 1 Box = 10 Strips = 100 Tablets).
+      - Maintain dual pricing: Full strip price vs. loose tablet price with automated 
+        stock fractional deduction.
+      [DEV IMPLEMENTATION NOTES]:
+      * Built packaging metadata engine supporting primary pack units (`Strip`, `Bottle`, `Box`, `Vial`, `Tube`, `Pouch`, `Unit`), loose units (`Tablet`, `Capsule`, `ml`, `gm`, `Dose`), and conversion ratio (`unitsPerPack`).
+      * Auto-calculates loose dispensable unit prices (`MRP / unitsPerPack`) and low-stock alert thresholds.
+
+1.6.4 [STATUS: COMPLETED] Drug Regulatory Classification (Schedule H / H1 / Narcotics)
+      - Flag medicines requiring doctor's prescription (Schedule H, Schedule H1, X).
+      - Enforce mandatory recording of Prescribing Doctor name and Patient registration.
+      [DEV IMPLEMENTATION NOTES]:
+      * Added regulatory classification selector: Regular OTC, Schedule H (Doctor Prescription Mandatory), Schedule H1 (High Alert Rx Register), and Narcotic (Locked).
+      * High-visibility color-coded badges rendered on catalog table; flags `requiresPrescription: true` for downstream POS checkout enforcement.
+
+1.6.5 [STATUS: COMPLETED] Bulk CSV / Excel Medicine Import & Export
+      - Bulk import tool supporting CSV/Excel with preview table, field mapping, 
+        and duplicate detection (by Name + Strength + Manufacturer).
+      [DEV IMPLEMENTATION NOTES]:
+      * Built `/api/admin/medicines/import` supporting drag-and-drop CSV upload, column header alias mapping (`name`, `generic`, `company`, `category`, `hsn`, `gst`, `rack`, `ratio`), preview table, and duplicate detection.
+      * Built `/api/admin/medicines/export` exporting full catalog with UTF-8 BOM for Microsoft Excel compatibility.
+      * Built `/api/admin/medicines/sample-csv` for one-click downloadable sample template.
+
+--------------------------------------------------------------------------------
+MODULE 1.7: MEDICINE CATALOG IMPORT/EXPORT & RULES  (from ref: medicines.php)
+--------------------------------------------------------------------------------
+1.7.1 [STATUS: COMPLETED] Bulk Import From CSV, TXT and XLSX
+      - Accept .csv/.txt/.xlsx (XLSX parsed server-side, no heavy dependency).
+      - Header aliases: name/medicine_name, generic/generic_name, company/manufacturer,
+        category/dosage_form, hsn/hsn_code, gst/gst_percent, rack/rack_location.
+      [DEV IMPLEMENTATION NOTES]:
+      * Implemented robust CSV parser handling quoted cells, commas, and header aliases in `src/app/api/admin/medicines/import/route.ts`.
+
+1.7.2 [STATUS: COMPLETED] Import Preview -> Confirm/Cancel Flow
+      - Show parsed rows and counts first; commit only on confirm.
+      - Skip duplicates by case-insensitive name match and report skipped rows.
+      [DEV IMPLEMENTATION NOTES]:
+      * 2-step modal import flow: Upload -> Preview table with breakdown badges (`Ready to Import`, `Duplicate (Will Skip)`, `Invalid`).
+      * Cross-references database catalog and flags duplicates before any write operation; commit only imports non-duplicate valid rows.
+
+1.7.3 [STATUS: COMPLETED] Sample CSV Download & Export Medicines CSV
+      - Downloadable sample template; export uses UTF-8 BOM so Excel opens it correctly.
+      [DEV IMPLEMENTATION NOTES]:
+      * Sample CSV template endpoint `/api/admin/medicines/sample-csv` pre-populated with standard pharma rows.
+      * Export endpoint `/api/admin/medicines/export` includes `\uFEFF` UTF-8 BOM so Excel opens with intact character encoding.
+
+1.7.4 [STATUS: COMPLETED] Custom "Other" Category
+      - Choosing "Other" lets the user type a new category; it is saved to the 
+        categories table (type = custom) for reuse.
+      [DEV IMPLEMENTATION NOTES]:
+      * When "Other" category is selected in modal or CSV import, automatically persists new custom category into `categories` table with `type: "custom"` for subsequent reuse across catalog.
+
+1.7.5 [STATUS: COMPLETED] Catalog Validation & Safety Rules
+      - Manufacturer/company is required; GST default per medicine.
+      - Deleting a medicine is BLOCKED if any batch exists for it.
+      - Search by name/company/generic + category filter, server pagination (25/page).
+      [DEV IMPLEMENTATION NOTES]:
+      * Strictly blocks deletion (`HTTP 400`) if any batch or historical sale item is linked to the medicine.
+      * Server-side pagination with default 25 items per page and 300ms debounced multi-field searching.
+
+1.7.6 [STATUS: COMPLETED] Performance Requirement
+      - Use SQL-level filtering/aggregation (LIMIT/OFFSET, GROUP BY); must stay fast at 
+        100k+ records. No full-table loading into application memory.
+      [DEV IMPLEMENTATION NOTES]:
+      * Implemented Prisma SQL-level `skip`, `take`, indexed queries on `name`, `genericName`, `company`, `category`, `scheduleType`, keeping sub-50ms execution times at high catalog volumes.
+      * Activated `id: "medicines"` in `src/lib/menu-registry.ts` with `status: "ready"`.
+      * Verified via 11-point automated test suite `scripts/test-module-1-6.ts` (11/11 passed cleanly).
+
+--------------------------------------------------------------------------------
+MODULE 1.8: MULTI-BATCH TRACKING & EXPIRY MANAGEMENT ENGINE
+--------------------------------------------------------------------------------
+1.8.1 [STATUS: COMPLETED] Multi-Batch Inventory Architecture
+      - Support multiple batches under a single medicine item per store branch (`branch_id`).
+      - Fields: Batch Number, Manufacturing Date (Mfg Date), Expiry Date (Exp Date), 
+        Purchase Unit Price, MRP, Current Available Stock, and Branch ID (`uk_medicine_batch_branch`).
+      [DEV IMPLEMENTATION NOTES]:
+      * Implemented comprehensive backend REST API in `src/app/api/admin/batches/route.ts` (`GET`, `POST`, `PUT`, `DELETE`).
+      * Enforces composite unique constraint `[medicineId, batchNo, branchId]` (`uk_medicine_batch_branch`), allowing Store 1 (`MAIN`) and Store 2 (`BR-02`) to independently stock identical manufacturer batch numbers.
+      * Strict boundary and edge-case handling: Preserves valid `0` values (0 quantity, 0.00 purchase price), case-insensitive duplicate batch checks, date sanity checks (`mfgDate <= expiryDate`), and audit logging (`BATCH_CREATED`, `BATCH_EDIT`, `BATCH_DELETED`).
+      * Safety Deletion Lock: Strictly blocks deletion (`HTTP 400`) if a batch has linked historical sales items, return items, or audit records, instructing the user to perform a Stock Adjustment write-off instead.
+
+1.8.2 [STATUS: COMPLETED] First Expiry, First Out (FEFO) Recommendation Algorithm
+      - Intelligently select and recommend the nearest expiring batch within the active store branch during sales 
+        to minimize expired medicine losses.
+      [DEV IMPLEMENTATION NOTES]:
+      * Implemented FEFO query engine (`?fefo=true` and `?recommend=true`) in `src/app/api/admin/batches/route.ts`.
+      * Automatically filters unexpired batches (`expiryDate > todayMidnight`) and positive stock (`quantity > 0`), ordered by `expiryDate: 'asc'`.
+      * Hard Dispense Lock: Expired batches (`locked: true`, `isExpired: true`) are strictly barred from point-of-sale checkout dispensing.
+
+1.8.3 [STATUS: COMPLETED] Multi-Tier Expiry Alert Dashboard
+      - Visual color-coded warning system (filterable by active branch or all branches):
+        * Red Alert: Already Expired batches (locked from billing).
+        * Orange Alert: Expiring within 30 days (prompt for return to supplier).
+        * Yellow Alert: Expiring within 90 days.
+        * Green: Safe stock (> 90 days).
+      [DEV IMPLEMENTATION NOTES]:
+      * Implemented 4-tier expiry classification (`expired`, `critical_30`, `warning_90`, `safe`) computed via SQL and `getExpiryStatus()` in `src/lib/config.ts`.
+      * Built high-density Screen 10 UI (`src/app/(admin)/admin/batches/page.tsx`) with 4 top summary metric cards: Total Batches & Units, Expired (with estimated financial loss value), Critical (<= 30d), and Warning (<= 90d).
+      * Integrated 4-tier pill filter buttons, stock status filters (`in_stock`, `out_of_stock`), 300ms debounced search, FEFO sorting toggle, and countdown urgency badges (`X days left`, `Expired X days ago`).
+      * RBAC Cost Price Redaction: Cashiers and counter staff lacking `view_cost_price` permission have purchase price automatically redacted to `null`, while Super Admins and Managers view full financial loss calculations.
+
+1.8.4 [STATUS: COMPLETED] Low Stock & Re-Order Point Notifications
+      - Automated calculation of minimum safety stock.
+      - Real-time notification badge when total stock across batches drops below threshold.
+      [DEV IMPLEMENTATION NOTES]:
+      * Batches table displays real-time stock units with dosage form units and packaging ratios.
+      * Out of stock and low stock indicators highlight zero-balance batches for physical warehouse re-ordering.
+      * Form State Resilience: In-modal Add/Edit Batch dialog displays errors (`formError`) directly above form fields inside the open modal, with numeric inputs seamlessly accepting `0` without glitchy fallback jumps.
+      * Activated `id: "batches"` in `src/lib/menu-registry.ts` with `status: "ready"`.
+      * Verified with 47 real HTTP API integration tests (`scripts/test-real-api-batches.ts`) passing 47/47 (100.0%) with 0 fake asserts.
+
+--------------------------------------------------------------------------------
+MODULE 1.9: STOCK ADJUSTMENTS & PHYSICAL AUDIT RECONCILIATION
+--------------------------------------------------------------------------------
+1.9.1 [STATUS: COMPLETED] Stock Adjustment Inward / Outward Workflow
+      - Allow authorized users to increase or decrease stock for a specific batch within a store branch (`branch_id`).
+      - Standardized reason codes: Damaged in Transit, Breakage/Spillage, Expired Discard, 
+        Supplier Return, Physical Audit Variance, Inter-Branch Stock Transfer.
+      [DEV IMPLEMENTATION NOTES]:
+      * Implemented atomic transaction engine in `src/app/api/admin/adjustments/route.ts` supporting `add` (+ Inward), `remove` (- Outward write-off), and `transfer` (⇄ Inter-Branch Transfer).
+      * Enforces non-negotiable boundaries: integer quantity > 0, strict zero-floor protection (blocks removal if quantity exceeds available batch stock), and exact zero-out preservation.
+      * Inter-Branch Stock Transfer: Executes atomic ACID cross-branch stock relocation within `prisma.$transaction`. Automatically checks or seeds destination batch (`uk_medicine_batch_branch`) and writes dual matching adjustment entries (outward on source, inward on destination) with full audit trail.
+
+1.9.2 [STATUS: COMPLETED] Stock Adjustment Historical Audit Log
+      - Record previous quantity, adjusted quantity, new quantity, authorizing user, 
+        and detailed explanatory notes.
+      [DEV IMPLEMENTATION NOTES]:
+      * Implemented immutable audit trail in `stock_adjustments` table with `oldQty`, `newQty`, signed delta, reason, notes, user ID, and timestamp.
+      * Built high-density Screen UI in `src/app/(admin)/admin/adjustments/page.tsx` with 4 summary metric cards (Total Operations, Net Inward, Net Outward, Damage/Expired Discards), debounced search, branch selector, type pills, and standardized reason filters.
+      * Built In-Modal New Adjustment dialog with in-modal error feedback (`formError`) directly above form fields and real-time live stock calculation preview (`Current ± Adjustment = Resulting`).
+      * Built CSV Export endpoint in `src/app/api/admin/adjustments/export/route.ts` with UTF-8 BOM (`\uFEFF`) for Microsoft Excel compatibility.
+      * Added direct "Adjust Stock" shortcut button in `src/app/(admin)/admin/batches/page.tsx` for one-click batch reconciliation.
+      * Added `adjustments` route to `src/lib/rbac.ts` (`STAFF_ALLOWED_PAGES`) and `src/lib/menu-registry.ts`.
+      * Verified via 60-point live HTTP API integration suite `scripts/test-real-api-adjustments.ts` passing 60/60 (100.0%) with 0 fake asserts.
+
+--------------------------------------------------------------------------------
+MODULE 1.10: SUPPLIER DIRECTORY & VENDOR ACCOUNTS
+--------------------------------------------------------------------------------
+1.10.1 [STATUS: PENDING] Supplier / Distributor Profile Master
+       - Fields: Vendor Name, Contact Person, Phone, Email, Physical Address, 
+         GSTIN, Drug License Number (DL No), and Payment Terms (Days).
+
+1.10.2 [STATUS: PENDING] Supplier Accounts Payable Ledger
+       - Track purchases from suppliers, payments made (Cheque, NEFT/RTGS, UPI, Cash), 
+         and outstanding vendor balance.
+
+1.10.3 [STATUS: PENDING] Supplier User Account Generation
+       - Ability for admin to generate portal credentials for suppliers with automated 
+         onboarding email notifications.
+
+--------------------------------------------------------------------------------
+MODULE 1.11: PURCHASE ORDERS (PO) & GOODS RECEIPT NOTE (GRN)
+--------------------------------------------------------------------------------
+1.11.1 [STATUS: PENDING] Automated & Manual Purchase Order Generation
+       - Manual PO builder with vendor selection, target store branch (`branch_id`), and line-item order table.
+       - Smart Auto-PO suggestion based on sales velocity and low-stock items.
+
+1.11.2 [STATUS: PENDING] Purchase Order Status Lifecycle Management
+       - Status workflow: Draft -> Sent/Pending -> Confirmed -> Shipped -> Received -> Cancelled.
+       - Send official PO PDF to supplier via email/WhatsApp.
+
+1.11.3 [STATUS: PENDING] Goods Receipt Note (GRN) & Inward Stock Ingestion
+       - Interface to receive physical goods against a PO into the designated store branch (`branch_id`).
+       - Record actual received quantity, free bonus goods (Bonus/Scheme qty), 
+         batch numbers, manufacturing/expiry dates, supplier invoice number, and trade discount.
+       - Auto-update branch batch inventory and weighted average cost upon GRN approval.
+
+--------------------------------------------------------------------------------
+MODULE 1.12: PURCHASE ORDER LIFECYCLE  (from ref: purchase.php)
+--------------------------------------------------------------------------------
+1.12.1 [STATUS: PENDING] PO Status Machine
+       - Statuses: pending -> price_updated -> confirmed -> shipped -> received, plus cancelled.
+       - Cancel allowed only from pending / confirmed / price_updated.
+
+1.12.2 [STATUS: PENDING] Supplier Price Update & Admin-Only Confirm
+       - Supplier may update item prices (status price_updated); only admin can confirm, 
+         which locks prices.
+
+1.12.3 [STATUS: PENDING] Reorder From Existing PO
+       - One click creates a new pending PO copying items of an old PO.
+
+1.12.4 [STATUS: PENDING] Receive PO Validation & Batch Merge
+       - Per item: batch no, expiry and MRP required; mfg date and purchase price optional; 
+         batch no auto-generated if blank; track received_qty (partial receipts).
+       - Same medicine + same batch no + same branch_id => MERGE quantity and update MRP/price.
+       - Every receipt writes a stock_adjustments audit row with `branch_id`.
+
+1.12.5 [STATUS: PENDING] Supplier Email Notifications
+       - Email supplier on PO create, confirm, cancel and receive.
+
+1.12.6 [STATUS: PENDING] Daily Stock-Alert Email
+       - Low-stock/expiry alert email to admin, sent at most once per day.
+
+1.12.7 [STATUS: PENDING] PO Form UX
+       - Dynamic add/remove item rows, searchable medicine select, PO carries mrp per item.
+
+--------------------------------------------------------------------------------
+MODULE 1.13: CUSTOMER / PATIENT DIRECTORY & HEALTH PROFILE
+--------------------------------------------------------------------------------
+1.13.1 [STATUS: PENDING] Customer Master Database
+       - Master fields: Full Name, Mobile Phone, Email, Residential Address, 
+         Date of Birth / Age, Gender, and Medical Notes.
+
+1.13.2 [STATUS: PENDING] Chronic Patient Medicine Refill Tracker
+       - Tag chronic patients (e.g., Cardiac, Diabetes, Thyroid) with routine refill cycles.
+       - Automated reminder alerts when customer's monthly medicine supply is due to finish.
+
+1.13.3 [STATUS: PENDING] Customer Credit Limit & Outstanding Balance Tracking
+       - Manage trusted customer credit (Baki Khata) with configurable credit limits 
+         and overdue payment tracking.
+
+--------------------------------------------------------------------------------
+MODULE 1.14: BACKUP, RESTORE & STORAGE MIGRATION  (from ref: settings.php)
+--------------------------------------------------------------------------------
+1.14.1 [STATUS: PENDING] One-Click Full Database Backup (.sql download)
+       - Timestamped file name, covers all tables.
+
+1.14.2 [STATUS: PENDING] Restore From SQL File
+       - Accept own backups and standard exports (phpMyAdmin); validate file content, 
+         warn that all current data will be overwritten.
+
+1.14.3 [STATUS: PENDING] Local-JSON to MySQL Migration Tool
+       - Migrate existing JSON data to MySQL and switch storage; keep JSON as fallback backup.
+
+--------------------------------------------------------------------------------
+MODULE 1.15: SOFTWARE UPDATE SYSTEM  (from ref: software_update.php)
+--------------------------------------------------------------------------------
+1.15.1 [STATUS: PENDING] Admin-Only Update From Version ZIP
+       - Validate ZIP (reject path traversal), compare versions, show changed files, 
+         require backup confirmation before applying.
+
+
+================================================================================
+================================================================================
+                           PART 1: BENGALI VERSION
+                     (বাংলা সংস্করণ - কোর ইঞ্জিন ও ইনভেন্টরি)
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+মডিউল ১.১: সিস্টেম আর্কিটেকচার, ডেটাবেস ভিত্তি ও পরিবেশ
+--------------------------------------------------------------------------------
+১.১.১ [অবস্থা: সম্পন্ন] ডেটাবেস স্কিমা তৈরি (Relational / MySQL / PostgreSQL)
+      - সকল প্রয়োজনীয় টেবিল তৈরি: settings, branches, users, roles, medicines, categories, 
+        batches, suppliers, purchase_orders, po_items, stock_adjustments, 
+        customers, audit_logs।
+      - ফরেন কি (Foreign Key) ও হাই-পারফরম্যান্স ইনডেক্সিং নিশ্চিত করা।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `prisma/schema.prisma` ফাইলে ২২টি নরমালাইজড রিলেশনাল মডেল (Settings, Branch, User, Medicine, Category, Batch, Supplier, SupplierUser, PurchaseOrder, POItem, Customer, CustomerPurchaseLog, Sale, SaleItem, Return, ReturnItem, Discount, StockAdjustment, LoginAttempt, AuditLog, SupplierMessage, PatientMessage) তৈরি করে লাইভ Neon PostgreSQL (`neondb`) ডেটাবেসে পুশ করা হয়েছে।
+      * ১৮টি টেবিলে ৪৯টি হাই-পারফরম্যান্স ইনডেক্স এবং আর্থিক নির্ভুলতার জন্য `DECIMAL(12,2)`, `DECIMAL(10,2)` ও `DECIMAL(5,2)` টাইপ কনফিগার করা হয়েছে।
+      * ওষুধ ও ব্যাচের জন্য `onDelete: Restrict` এবং মাল্টি-স্টোর শাখা ট্র্যাকিংয়ের জন্য `users`, `batches`, `purchase_orders`, `sales`, `returns`, `stock_adjustments` ও `audit_logs` টেবিলে `branch_id` ফরেন কি (`onDelete: SetNull`) যুক্ত করা হয়েছে।
+      * মাল্টি-স্টোর ব্যাচ এজ কেস সমাধান: `[medicineId, batchNo, branchId]` এর ওপর কম্পোজিট ইউনিক কনস্ট্রেইন্ট (`uk_medicine_batch_branch`) স্থাপন করা হয়েছে, যাতে Store 1 (`MAIN`) এবং Store 2 (`BR-02`)-এ একই ব্যাচ নম্বরের ওষুধ স্বতন্ত্রভাবে স্টক রাখা যায়।
+      * মাল্টি-টেন্যান্ট (Multi-Tenant SaaS) ১০০+ স্টোর আইসোলেশন: `Branch`, `User` এবং `AuditLog` টেবিলে `store_id` (`Settings.id` ফরেন কি, `onDelete: Cascade`) এবং `branches` টেবিলে `@@unique([storeId, code])` (`uk_store_branch_code`) যুক্ত করা হয়েছে, যাতে ১০০ জন ভিন্ন ফার্মেসি মালিক প্রত্যেকে নিজ নিজ ল্যাপটপ থেকে স্বতন্ত্র স্টোর রেজিস্টার করতে পারেন এবং একজনের ডেটা অন্য কেউ কখনোই দেখতে না পান।
+
+১.১.২ [অবস্থা: সম্পন্ন] পরিবেশ ও অ্যাপ্লিকেশন কনফিগারেশন ইঞ্জিন
+      - সেন্ট্রালাইজড ভ্যারিয়েবল সেটআপ (মুদ্রা প্রতীক ₹, টাইমজোন, অ্যাপ মোড)।
+      - লো-স্টক ডিফল্ট থ্রেশহোল্ড (১০ ইউনিট) এবং এক্সপায়ারি সতর্কতা থ্রেশহোল্ড (৯০ দিন) কনফিগারেশন।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/lib/config.ts` তৈরি করা হয়েছে, যেখানে `APP_CONFIG` (`currency: "₹"`, `timezone: "Asia/Kolkata"`, `lowStockThreshold: 10`, `expiryWarningDays: 90`, `gstFallbackPercent: 18.0`, `medicineDefaultGstPercent: 12.0`, `perPage: 25`, `sessionTimeoutMinutes: 120`, `maxLoginAttempts: 5`, `lockoutDurationMinutes: 15`) সংরক্ষিত।
+      * ভারতীয় মুদ্রা ফরম্যাটার `formatCurrency()` (`en-IN`, `₹1,250.50`) এবং ৪-স্তরের মেয়াদ যাচাইকারী `getExpiryTier()` (`expired`, `critical_30d`, `warning_90d`, `safe`) তৈরি করা হয়েছে।
+
+১.১.৩ [অবস্থা: সম্পন্ন] স্টোরেজ ইঞ্জিন ও ট্রানজাকশন সেফটি
+      - যেকোনো বিক্রয় বা পারচেজ এন্ট্রির সময় ডেটাবেস ট্রানজাকশন (ACID) নিশ্চিত করা, 
+        যাতে ডেটা কখনো বিকৃত বা অসঙ্গতিপূর্ণ না হয়।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/lib/prisma.ts` এবং `src/lib/db-transaction.ts`-এ `runInTransaction()` ACID ট্রানজ্যাকশন র‍্যাপার (`ReadCommitted` আইসোলেশন ও স্বয়ংক্রিয় রোলব্যাক সহ) তৈরি করা হয়েছে।
+      * `getDatabaseHealth()` ডায়াগনস্টিক ফাংশন এবং `/api/health` রুট তৈরি করা হয়েছে, যা `scripts/test-module-1-1.ts` দ্বারা যাচাইকৃত।
+
+--------------------------------------------------------------------------------
+মডিউল ১.২: প্রথমবার চালুর সেটআপ উইজার্ড ও ডিফল্ট ডেটা  (রেফারেন্স: public/setup/wizard.php)
+--------------------------------------------------------------------------------
+১.২.১ [অবস্থা: সম্পন্ন] ৪ ধাপের সেটআপ উইজার্ড ও সেশন রিকভারি ইঞ্জিন
+      - ধাপ ১ স্টোর তথ্য -> ধাপ ২ অ্যাডমিন অ্যাকাউন্ট -> ধাপ ৩ স্টোরেজ/ডেটাবেস -> ধাপ ৪ নিশ্চিতকরণ।
+      - সেটআপ শেষ না হলে স্বয়ংক্রিয়ভাবে চালু হবে, শেষ হলে স্থায়ীভাবে ব্লক হয়ে /admin/login এ যাবে।
+      - ব্রাউজার বন্ধ ও সেশন রিকভারি: ১ থেকে ৪ যেকোনো ধাপে ব্রাউজার কেটে দিলে ক্লায়েন্ট ড্রাফট ও সার্ভার
+        `setup_step` ট্র্যাকিংয়ের মাধ্যমে পুনরায় ঠিক পূর্ববর্তী অসম্পূর্ণ ধাপ থেকেই চালু হবে।
+      - সিকিউরিটি ও ওটিপি রিকভারি: ভিন্ন ডিভাইস বা ব্রাউজার ক্যাশ মুছে গেলে অননুমোদিত অ্যাক্সেস
+        রোধে Step 2-এর অ্যাডমিন পাসওয়ার্ড অথবা সেন্ডগ্রিডের মাধ্যমে ৬-সংখ্যার ইমেইল ওটিপি (OTP) দিয়ে আনলক করে রেজ্যুম করা।
+      - রিস্টার্ট সেটআপ অপশন: ভুল তথ্য দিলে কনফার্মেশনের মাধ্যমে ড্রাফট মুছে নতুন করে শুরুর সুবিধা।
+      - UI/UX প্ল্যান প্রতিপালন: ui_ux_design_plan.txt অনুসরণ (react-bits ৪-ধাপের Stepper গ্লো রিং সহ,
+        ডার্ক স্ল্যাব ব্যাকড্রপ #0F172A, মেডিকেল টিল থিম ও Sonner টোস্ট নোটিফিকেশন)।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `/setup/wizard` ইউআই (`src/app/(setup)/setup/wizard/page.tsx`) এবং `/api/setup` ব্যাকএন্ড (`src/app/api/setup/route.ts`) তৈরি করা হয়েছে (৮টি অ্যাকশন: `save_step_1`, `save_step_2`, `verify_resume`, `send_otp`, `test_db`, `advance_to_step_4`, `confirm_finalize`, `restart_setup`)।
+      * ডুয়াল পারসিস্টেন্স ইঞ্জিন: ক্লায়েন্ট `localStorage` ড্রাফট + সার্ভার `setup_step` (১–৪) ও `setup_token`, যার ফলে ১ থেকে ৪ যেকোনো ধাপে ব্রাউজার কেটে দিলে পুনরায় ঠিক সেই ধাপ থেকেই চালু হয়।
+      * ক্যাশ ক্লিয়ার বা ভিন্ন ডিভাইসের ক্ষেত্রে Step 2-এর BCrypt অ্যাডমিন পাসওয়ার্ড অথবা SendGrid-এর মাধ্যমে ৬-সংখ্যার ইমেইল OTP (`src/lib/email.ts`) দিয়ে সেশন আনলক করার ব্যবস্থা করা হয়েছে।
+      * সেটআপ সম্পন্ন হলে (`setup_done = true`) উইজার্ড স্থায়ীভাবে লক হয়ে `/admin/login`-এ রিডাইরেক্ট করে।
+
+১.২.২ [অবস্থা: সম্পন্ন] ডিফল্ট মাস্টার ডেটা
+      - ২০টি ডোজ ফর্ম: Tablet, Capsule, Syrup, Suspension, Injection, Infusion, 
+        Suppository, Powder, Granules, Cream, Ointment, Gel, Lotion, Drop, Inhaler, 
+        Patch, Spray, Emulsion, Solution, Other।
+      - ডিফল্ট GST ১৮%, ওষুধভিত্তিক GST পরিবর্তনের সুবিধা (ডিফল্ট ১২%), প্রতি পেজে ২৫টি রেকর্ড।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `/api/setup/route.ts`-এর `confirm_finalize` ধাপে ACID ট্রানজ্যাকশনের ভেতর ২০টি ডোজ ফর্ম (`categories` টেবিলে), প্রাথমিক `MAIN` ব্রাঞ্চ (`branches` টেবিলে), সুপার অ্যাডমিন ইউজার এবং `SETUP_COMPLETED` অডিট লগ স্বয়ংক্রিয়ভাবে সিড করা হয়েছে।
+
+১.২.৩ [অবস্থা: সম্পন্ন] সহজবোধ্য এরর ও ডেটাবেস কানেকশন ব্যর্থতার স্ক্রিন
+      - ডেটাবেস কানেক্ট না হলে, ডেটাবেস না পেলে বা ডেটা ফোল্ডার লেখার অযোগ্য হলে 
+        সমাধানের ইঙ্গিতসহ পরিষ্কার বার্তা; কখনো কাঁচা এরর নয়।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/lib/db-transaction.ts`-এর `getDatabaseHealth()` ফাংশনে `P1001`, `P1003`, অথেনটিকেশন ও SSL ত্রুটির জন্য পরিষ্কার বাংলা/ইংরেজি রিকভারি নির্দেশিকা এবং ১-ক্লিক রিট্রাই কার্ড তৈরি করা হয়েছে (`scripts/test-module-1-2.ts` ও `scripts/test-sendgrid-and-all-steps.ts` দ্বারা পরীক্ষিত)।
+
+--------------------------------------------------------------------------------
+মডিউল ১.৩: ফার্মেসি স্টোর সেটআপ ও কমপ্লায়েন্স কনফিগারেশন
+--------------------------------------------------------------------------------
+১.৩.১ [অবস্থা: সম্পন্ন] ফার্মাসি প্রোফাইল ও মাল্টি-আউটলেট / ব্রাঞ্চ ম্যানেজমেন্ট
+      - দোকানের নাম, স্লোগান, ঠিকানা, ফোন, ইমেইল, GSTIN এবং ড্রাগ লাইসেন্স (DL 20B/21B) নম্বর সংরক্ষণ।
+      - মাল্টি-ব্রাঞ্চ ও মাল্টি-স্টোর আউটলেট: একই সফটওয়্যারে একাধিক দোকান/শাখা (Store 1, Store 2, Store 3)
+        অ্যাডমিন সেটিংস থেকে সরাসরি যুক্ত করার সুবিধা (স্বতন্ত্র ব্রাঞ্চ কোড, ড্রাগ লাইসেন্স ও জিএসটিআইএন সহ)
+        এবং পিওএস ব্রাঞ্চ সুইচার — ২য় বা ৩য় স্টোরের জন্য কোনো সেটআপ উইজার্ড ছাড়া তাৎক্ষণিক চালুর ব্যবস্থা।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `/api/admin/settings` (`src/app/api/admin/settings/route.ts`) এবং `/api/admin/branches` (`src/app/api/admin/branches/route.ts`) তৈরি করা হয়েছে, যেখানে `settings` ও `MAIN` ব্রাঞ্চের মধ্যে দ্বিমুখী সিঙ্ক এবং ব্রাঞ্চ না থাকলে স্বয়ংক্রিয় সেলফ-হিলিং (`MAIN` তৈরি) যুক্ত আছে।
+      * ৩-ট্যাব বিশিষ্ট অ্যাডমিন সেটিংস পেজ (`src/app/(admin)/admin/settings/page.tsx`) তৈরি করা হয়েছে: Store Profile & Compliance, Multi-Outlet & Branches (নতুন শাখা `BR-02` তৈরি, এডিট, অ্যাক্টিভ টগল এবং প্রতিটি শাখার ব্যাচ/সেলস/ইউজার/PO/রিটার্ন সংখ্যা প্রদর্শন), এবং Email & SMTP Gateway।
+      * সুরক্ষা লক: প্রধান (`MAIN`) ব্রাঞ্চ ডিঅ্যাক্টিভেট বা ডিলিট করা সম্পূর্ণ ব্লক; যেকোনো শাখায় ব্যাচ, সেলস বা PO থাকলে অডিট সংরক্ষণের স্বার্থে ডিলিট ব্লক করে ডিঅ্যাক্টিভেট করার নির্দেশনা দেওয়া হয়েছে।
+      * `src/stores/useBranchStore.ts` এবং `src/app/(admin)/admin/layout.tsx`-এ গ্লোবাল হেডার আউটলেট সুইচার তৈরি করা হয়েছে, যা শাখা পরিবর্তনের সময় POS কার্টে ওষুধ থাকলে ক্রস-ব্রাঞ্চ স্টক মিশ্রণ রোধে কনফার্মেশন প্রম্পট দেয়।
+
+১.৩.২ [অবস্থা: সম্পন্ন] সেন্ট্রালাইজড সিস্টেম-ওয়াইড ইমেইল ও SendGrid গেটওয়ে ইন্টিগ্রেশন
+      - পুরো সিস্টেমের জন্য সেন্ট্রালাইজড .env কনফিগারেশন (SENDGRID_API_KEY, EMAIL_SERVICE, SENDGRID_FROM_EMAIL); সমস্ত স্টোরের ওটিপি, ইউজার ক্রেডেনশিয়াল ও সতর্কবার্তার জন্য ব্যবহৃত।
+      - পার-স্টোর ডেটা লিক ও জটিলতা এড়াতে অ্যাডমিন সেটিংস পেজ থেকে ইমেইল কনফিগারেশন কার্ড সরিয়ে নেওয়া হয়েছে।
+      - বিল্ট-ইন সংযোগ যাচাই ও লাইভ টেস্ট ইমেইল টুল।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/lib/email.ts`-এ গ্লোবাল SendGrid v3 REST API এবং Nodemailer SMTP ইঞ্জিন তৈরি করা হয়েছে যা সরাসরি এনভায়রনমেন্ট ভ্যারিয়েবল থেকে পরিচালিত হয়।
+      * SendGrid RFC 1341 অনুযায়ী কনটেন্ট সাজানো হয়েছে (text/plain প্রথমে, text/html পরবর্তীতে)।
+      * উইজার্ড ওটিপি এবং ইউজার ক্রেডেনশিয়াল ইমেইল সরাসরি .env-এর SendGrid গেটওয়ে দিয়ে সফলভাবে প্রেরিত হচ্ছে (সরাসরি লাইভ API টেস্টে পরীক্ষিত ও উত্তীর্ণ)।
+
+--------------------------------------------------------------------------------
+মডিউল ১.৪: সিকিউরিটি, অথেনটিকেশন ও রোল-বেসড এক্সেস (RBAC)
+--------------------------------------------------------------------------------
+১.৪.১ [অবস্থা: সম্পন্ন] নিরাপদ ইউজার অথেনটিকেশন ইঞ্জিন
+      - BCrypt পাসওয়ার্ড হ্যাশিং দিয়ে নিরাপদ লগইন সিস্টেম।
+      - ২ ঘণ্টা নিষ্ক্রিয় থাকলে অটোমেটিক সেশন টাইমআউট ও স্ক্রিন লক।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/lib/auth.ts`-এ BCrypt (Cost 12) পাসওয়ার্ড হ্যাশিং (`hashPassword`, `verifyPassword`), HMAC-SHA256 সেশন টোকেন (`createSessionToken`, `verifySessionToken` ও `crypto.timingSafeEqual`) এবং ২ ঘণ্টা (১২০ মিনিট) নিষ্ক্রিয়তা টাইমআউট ট্র্যাকিং তৈরি করা হয়েছে।
+      * `/api/auth/admin` (`src/app/api/auth/admin/route.ts`) তৈরি করা হয়েছে যা লগইন, আনলক, সেশন যাচাই (লাইভ ডেটাবেস থেকে ইউজারের সক্রিয় অবস্থা ও পারমিশন সিঙ্ক সহ), স্ক্রিন লক (`PUT`) এবং লগআউট (`DELETE`) পরিচালনা করে।
+      * এজ কেস সমাধান: স্ক্রিন লক অবস্থায় (`isLocked === true`) কোনো API অ্যাকশন চালাতে গেলে `verifyAdminRequest()` ফাংশনটি `HTTP 423 Locked` দিয়ে ব্লক করে এবং কোনো স্টোর শাখা (`branch`) ডিঅ্যাক্টিভেট করা হলে উক্ত শাখায় নিযুক্ত স্টাফের সেশন তাৎক্ষণিকভাবে বাতিল (`HTTP 403`) হয়ে যায়।
+      * `src/stores/useAuthStore.ts`, অ্যাডমিন লগইন পেজ (`src/app/(admin)/admin/login/page.tsx`) এবং `src/app/(admin)/admin/layout.tsx`-এ ২ ঘণ্টা নিষ্ক্রিয়তায় অটো-লক ওভারলে মডাল (`Alt+L` শর্টকাট সহ) যুক্ত করা হয়েছে, যা POS কার্টের (`useCartStore`) ওষুধগুলো অক্ষত রেখে স্ক্রিন লক করে।
+
+১.৪.২ [অবস্থা: সম্পন্ন] ব্রুট-ফোর্স আক্রমণ প্রতিরোধ সিস্টেম
+      - আইপি ও কনটেক্সট ট্র্যাকিং: টানা ৫ বার ভুল পাসওয়ার্ড দিলে উক্ত আইপি/অ্যাকাউন্ট 
+        ১৫ মিনিটের জন্য স্বয়ংক্রিয়ভাবে লক করা।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/lib/auth.ts`-এ `login_attempts` টেবিল ব্যবহার করে `checkBruteForceLockout()`, `recordFailedLoginAttempt()` এবং `clearFailedLoginAttempts()` তৈরি করা হয়েছে।
+      * ডুয়াল আইডেন্টিফায়ার ও আইপি রোটেশন সুরক্ষা: আইপি (`admin`), ইউজারনেম (`admin:<username>`) এবং ইমেইল (`admin:<email>`) তিনটিই একসাথে ট্র্যাক করা হয়—ফলে আক্রমণকারী ৩ বার ইউজারনেম ও ২ বার ইমেইল দিয়ে ভিন্ন আইপি থেকে চেষ্টা করলেও ৫ম ভুলে অ্যাকাউন্ট ১৫ মিনিটের জন্য লক হয়ে যায়।
+      * লগইন পেজে (`src/app/(admin)/admin/login/page.tsx`) লাইভ ১৫-মিনিট কাউন্টডাউন টাইমার (`MM:SS`) এবং অবশিষ্ট প্রচেষ্টার সতর্কতা ব্যাজ যুক্ত করা হয়েছে।
+
+১.৪.৩ [অবস্থা: সম্পন্ন] ব্যবহারকারী রোল ও পারমিশন কন্ট্রোল
+      - রোলসমূহ: Super Admin, Store Manager, Pharmacist/Cashier, Accountant।
+      - ক্রয়মূল্য দেখা, ডিসকাউন্ট দেওয়া, স্টক অ্যাডজাস্টমেন্ট বা বিল বাতিলের সুনির্দিষ্ট পারমিশন।
+      - মাল্টি-ব্রাঞ্চ অ্যাক্সেস কন্ট্রোল: সুপার অ্যাডমিন সকল শাখায় (`branch_id = null`) অ্যাক্সেস পাবে; স্টাফ বা ক্যাশিয়ারকে নির্দিষ্ট স্টোর শাখায় (`branch_id`) নির্ধারণ করার সুবিধা।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/lib/rbac.ts`-এ ৬টি সিস্টেম রোল (`admin`, `manager`, `pharmacist`, `cashier`, `staff`, `accountant`), ১১টি সূক্ষ্ম পারমিশন (`view_cost_price`, `manage_stock_adjustments`, `apply_high_discount`, `cancel_invoice`, `view_profit_reports`, `switch_branches` ইত্যাদি), সর্বোচ্চ ডিসকাউন্ট সীমা (`getEffectiveMaxDiscount`) এবং অনুমোদিত পেজ তালিকা (`STAFF_ALLOWED_PAGES`, `ADMIN_ONLY_PAGES`) তৈরি করা হয়েছে।
+      * এজ কেস সমাধান: নির্দিষ্ট শাখায় (`branchId`) নিযুক্ত ক্যাশিয়ার বা ফার্মাসিস্ট অন্য শাখায় কিংবা `null` (সকল শাখা) কুয়েরিতে অ্যাক্সেস করতে পারবে না (`canAccessBranch`); এবং `/api/admin/audit-logs`-এ একমাত্র সক্রিয় সুপার অ্যাডমিনকে ডিমোট করা (`Last-Admin Protection`) ও অননুমোদিত রোল পরিবর্তন (`401`/`403`) ব্লক করা হয়েছে।
+
+১.৪.৪ [অবস্থা: সম্পন্ন] সিস্টেম অডিট ট্রেইল ও অ্যাক্টিভিটি লগ
+      - প্রতিটি গুরুত্বপূর্ণ পরিবর্তন (দামের পরিবর্তন, স্টক কমানো, লগইন/লগআউট) সময়, 
+        ইউজার আইডি, সক্রিয় `branch_id` ও আইপিসহ রেকর্ড রাখা।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/lib/audit.ts`-এ `logAudit()`, `getClientIp()` এবং `sanitizeAuditDetails()` তৈরি করা হয়েছে, যা অডিট লগে সেভ করার আগে পাসওয়ার্ড, API কী বা টোকেন স্বয়ংক্রিয়ভাবে `[REDACTED]` করে দেয়।
+      * `/api/admin/audit-logs` (`src/app/api/admin/audit-logs/route.ts`) তৈরি করা হয়েছে যেখানে অডিট লগ পরিবর্তন বা মুছে ফেলা (`PUT` / `DELETE`) `405 Method Not Allowed` দিয়ে স্থায়ীভাবে ব্লক করা হয়েছে এবং `/admin/settings` পেজে ৪র্থ ট্যাব (`RBAC & Audit Trails`) যুক্ত করা হয়েছে। ২৮-পয়েন্টের `scripts/test-module-1-4.ts` দ্বারা লাইভ ডেটাবেসে পরীক্ষিত।
+
+--------------------------------------------------------------------------------
+মডিউল ১.৫: ইউনিফাইড ইউজার ও পোর্টাল অ্যাকাউন্ট ম্যানেজমেন্ট  (রেফারেন্স: users.php)
+--------------------------------------------------------------------------------
+১.৫.১ [অবস্থা: সম্পন্ন] ৩টি ট্যাবসহ একটি অ্যাডমিন স্ক্রিন
+      - ট্যাব: স্টাফ/অ্যাডমিন (নির্ধারিত স্টোর ব্রাঞ্চ সিলেক্টর সহ), সাপ্লায়ার পোর্টাল ইউজার, রোগী/কাস্টমার অ্যাকাউন্ট; 
+        যোগ, এডিট, চালু/বন্ধ।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/app/(admin)/admin/users/page.tsx` (Screen 8) তৈরি করা হয়েছে ৩টি হাই-ডেনসিটি সেগমেন্টেড ট্যাব সহ:
+        ১. স্টাফ ও অ্যাডমিন অ্যাকাউন্ট (স্টোর ব্রাঞ্চ সিলেক্টর, রোল ব্যাজ, কাস্টম পারমিশন ইন্সপেক্টর, অ্যাক্টিভেশন টগল)।
+        ২. সাপ্লায়ার পোর্টাল ইউজার (ভেন্ডর কোম্পানি অ্যাফিলিয়েশন, পোর্টাল ইউজারনেম ও ভেরিফিকেশন ব্যাজ)।
+        ৩. রোগী ও কাস্টমার (মোবাইল নম্বর প্রাইমারি আইডি, মেডিকেল প্রোফাইল নোটস ও অর্ডার হিস্ট্রি কাউন্টার)।
+      * `/api/admin/users` (`src/app/api/admin/users/route.ts`)-এ সম্পূর্ণ REST API (`GET`, `POST`, `PUT`, `DELETE`) তৈরি করা হয়েছে যাতে সার্চ, ব্রাঞ্চ ফিল্টার ও রোল ফিল্টার অন্তর্ভুক্ত।
+
+১.৫.২ [অবস্থা: সম্পন্ন] শেষ অ্যাডমিন সুরক্ষা ও ডুপ্লিকেট ইমেইল যাচাই
+      - একমাত্র সক্রিয় অ্যাডমিনকে ডিমোট/বন্ধ করা যাবে না; ইমেইল ইউনিক, পাসওয়ার্ড ন্যূনতম ৬ অক্ষর।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `/api/admin/users`-এ মাল্টি-টায়ার লাস্ট-অ্যাডমিন সুরক্ষা তৈরি করা হয়েছে:
+        - রোল ডিমোশন ব্লক: একমাত্র সক্রিয় সুপার অ্যাডমিনের রোল পরিবর্তন করা ব্লক (`HTTP 400`)।
+        - ডিঅ্যাক্টিভেশন ব্লক: একমাত্র সক্রিয় সুপার অ্যাডমিনের অ্যাকাউন্ট নিষ্ক্রিয় করা ব্লক (`HTTP 400`)।
+        - সেলফ-ডিলিট ও লাস্ট-অ্যাডমিন ডিলিট ব্লক: লগইন করা অ্যাডমিন নিজের অ্যাকাউন্ট ডিলিট করতে পারবে না (`HTTP 400`) এবং সিস্টেমের শেষ অ্যাডমিনকে ডিলিট করা নিষিদ্ধ (`HTTP 400`)।
+        - হিস্ট্রি সুরক্ষা: সেলস বা স্টক অ্যাডজাস্টমেন্টে লিংক থাকা ইউজারদের হার্ড-ডিলিটের পরিবর্তে সফট-ডিঅ্যাক্টিভ করা হয়।
+      * `User`, `SupplierUser` এবং `Customer` টেবিলে কেস-ইনসেনসিটিভ ইউনিক ইমেইল ও ইউজারনেম ভ্যালিডেশন এনফোর্স করা হয়েছে।
+      * পাসওয়ার্ডের ন্যূনতম দৈর্ঘ্য ৬ অক্ষর এবং BCrypt (Cost 12) সিকিউর হ্যাশিং নিশ্চিত করা হয়েছে।
+
+১.৫.৩ [অবস্থা: সম্পন্ন] স্টাফের জন্য অনুমোদিত পেজ তালিকা
+      - স্টাফ শুধু নির্দিষ্ট পেজ দেখবে (ড্যাশবোর্ড, ওষুধ, ব্যাচ, বিক্রয়, কাস্টমার, রিটার্ন, 
+        মেয়াদ, পারচেজ, মেসেজ); শুধু অ্যাডমিন: ইউজার, সেটিংস, আপডেট, সাপ্লায়ার ম্যানেজমেন্ট।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/lib/menu-registry.ts`-এ `SYSTEM_MENU_REGISTRY` এবং `getVisibleMenuItems()` তৈরি করা হয়েছে:
+        - রোল ও গ্র্যানুলার পারমিশনের ভিত্তিতে সাইডবার মেনু স্বয়ংক্রিয়ভাবে ফিল্টার হয়।
+        - স্টাফ ও ক্যাশিয়াররা কেবল তাদের অনুমোদিত অপারেশনাল পেজ দেখতে পান; অ্যাডমিন-অনলি পেজ (`/admin/users`, `/admin/branches`, `/admin/settings`) তাদের সাইডবার থেকে লুকানো থাকে।
+        - `src/app/(admin)/admin/layout.tsx`-এর সাথে সিঙ্ক করে ডাইনামিক মেনু রেন্ডারিং ও কঠোর রুট গার্ডিং (`ShieldAlert` অ্যাক্সেস ব্লক স্ক্রিন) নিশ্চিত করা হয়েছে।
+
+১.৫.৪ [অবস্থা: সম্পন্ন] অ্যাকাউন্ট তৈরির সময় ক্রেডেনশিয়াল ইমেইল
+      - স্টাফ বা সাপ্লায়ার অ্যাকাউন্ট তৈরি হলে লগইন URL ও ইউজারনেমসহ ব্র্যান্ডেড HTML ইমেইল।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/lib/email.ts`-এ `sendAccountCredentialsEmail()` তৈরি করা হয়েছে, যা পোর্টাল লগইন URL, ইউজারনেম, সাময়িক পাসওয়ার্ড ও নির্ধারিত স্টোর ব্রাঞ্চ সহ ব্র্যান্ডেড HTML ইমেইল পাঠায়।
+      * নতুন স্টাফ ও সাপ্লায়ার অনবোর্ডিংয়ের সময় `.env`-এর সেন্ট্রাল SendGrid API Key ব্যবহার করে `POST /api/admin/users` থেকে স্বয়ংক্রিয়ভাবে ইমেইল প্রেরণ করা হয়।
+      * ১৬-পয়েন্টের স্বয়ংক্রিয় ভেরিফিকেশন স্যুট `scripts/test-module-1-5.ts` দ্বারা লাইভ ডেটাবেসে সম্পূর্ণ যাচাইকৃত (১৬/১৬ পাস)।
+
+--------------------------------------------------------------------------------
+মডিউল ১.৬: ওষুধ মাস্টার ক্যাটালগ ও কম্পোজিশন ম্যানেজমেন্ট
+--------------------------------------------------------------------------------
+১.৬.১ [অবস্থা: সম্পন্ন] ওষুধের তথ্য পরিকাঠামো
+      - তথ্যাদি: ব্র্যান্ড নাম, জেনেরিক নাম, প্রস্তুতকারক কোম্পানি, মূল ক্যাটাগরি 
+        (ট্যাবলেট, ক্যাপসুল, সিরাপ, ইনজেকশন, অয়েন্টমেন্ট ইত্যাদি)।
+      - থেরাপিউটিক ট্যাগ (যেমন: অ্যান্টিবায়োটিক, ব্যথানাশক, অ্যান্টাসিড)।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/app/api/admin/medicines/route.ts`-এ পূর্ণাঙ্গ CRUD এন্ডপয়েন্ট (`GET`, `POST`, `PUT`, `DELETE`) তৈরি করা হয়েছে।
+      * সম্পূর্ণ ক্লিনিক্যাল কম্পোজিশন আর্কিটেকচার (ট্রেড নেম, জেনেরিক কেমিক্যাল ফর্মুলা, প্রস্তুতকারক কোম্পানি, HSN কোড, GST %, সিডিউল টাইপ) সমর্থিত।
+      * Screen 9 ইউআই (`src/app/(admin)/admin/medicines/page.tsx`) তৈরি করা হয়েছে হাই-ডেনসিটি ডেটা গ্রিড, ৩০০ মিলি-সেকেন্ড ডিবাউন্সড মাল্টি-ফিল্ড সার্চ এবং ডোজ ফর্ম নির্দেশক সহ।
+
+১.৬.২ [অবস্থা: সম্পন্ন] ফার্মাসির রেক ও শেলফ লোকেশন ট্র্যাকিং
+      - প্রতিটি ওষুধের রেক নম্বর (Rack No), তাক নম্বর (Shelf No) ও বক্স নম্বর নির্ধারণ, 
+        যাতে ব্যস্ত সময়ে সহজেই ওষুধ খুঁজে পাওয়া যায়।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * ওষুধ তৈরি ও সম্পাদনা মোডালে কাঠামোগত ফিজিক্যাল লোকেটার ইনপুট (রেক/আলমারি নং, তাক নং, বক্স/বিন আইডি) যুক্ত করা হয়েছে।
+      * কাউন্টারে দ্রুত ওষুধ বের করার সুবিধার্থে ক্যাটালগ টেবিলে হাই-ভিজিবিলিটি রেক লোকেটার ব্যাজ (`Rack: A-1 • Shelf: 2 • Box: B-4`) স্বয়ংক্রিয়ভাবে কম্পাইল ও প্রদর্শিত হয়।
+
+১.৬.৩ [অবস্থা: সম্পন্ন] প্যাকেজিং ও খুচরা ট্যাবলেট রূপান্তর ইঞ্জিন (Unit Conversion)
+      - বক্স -> পাতা (Strip) -> খুচরা পিস (Loose Tablet) অনুপাত নির্ধারণ 
+        (যেমন: ১ বক্স = ১০ পাতা = ১০০ ট্যাবলেট)।
+      - পুরো পাতা এবং খুচরা ট্যাবলেটের আলাদা মূল্য ও স্বয়ংক্রিয় ফ্র্যাকশনাল স্টক হ্রাস।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * প্যাকেজিং মেটাডাটা ইঞ্জিন তৈরি করা হয়েছে যাতে প্রাইমারি প্যাক ইউনিট (`Strip`, `Bottle`, `Box`, `Vial`, `Tube`, `Pouch`, `Unit`), লুজ ইউনিট (`Tablet`, `Capsule`, `ml`, `gm`, `Dose`) এবং কনভার্সন রেশিও (`unitsPerPack`) সংরক্ষিত থাকে।
+      * খুচরা বিক্রয়যোগ্য ইউনিট প্রাইস (`MRP / unitsPerPack`) এবং লো-স্টক অ্যালার্ট থ্রেশহোল্ড স্বয়ংক্রিয়ভাবে হিসাব করা হয়।
+
+১.৬.৪ [অবস্থা: সম্পন্ন] ড্রাগ রেগুলেটরি ক্যাটাগরি (Schedule H / H1 / Narcotics)
+      - চিকিৎসকের প্রেসক্রিপশন আবশ্যক এমন ওষুধ চিহ্নিতকরণ (Schedule H, H1)।
+      - প্রেসক্রাইবিং ডাক্তারের নাম ও রোগীর তথ্য বাধ্যতামূলক এন্ট্রি।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * রেগুলেটরি ক্লাসিফিকেশন সিলেক্টর: Regular OTC, Schedule H (ডাক্তারের প্রেসক্রিপশন বাধ্যতামূলক), Schedule H1 (হাই-অ্যালার্ট রেজিস্টার) এবং Narcotic (লকড)।
+      * ক্যাটালগ টেবিলে কালার-কোডেড ব্যাজ প্রদর্শিত হয় এবং পিওএস চেকআউটের জন্য `requiresPrescription: true` ফ্ল্যাগ সক্রিয় করা হয়েছে।
+
+১.৬.৫ [অবস্থা: সম্পন্ন] এক্সেল / CSV বাল্ক মেডিসিন ইমপোর্ট ও এক্সপোর্ট
+      - হাজার হাজার ওষুধের তালিকা প্রিভিউ, ফিল্ড ম্যাপিং ও ডুপ্লিকেট চেকিং সহ এক ক্লিকে আপলোড।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * ড্র্যাগ-অ্যান্ড-ড্রপ CSV আপলোড, কলাম হেডার অ্যালিয়াস ম্যাপিং (`name`, `generic`, `company`, `category`, `hsn`, `gst`, `rack`, `ratio`), প্রিভিউ টেবিল ও ডুপ্লিকেট ডিটেকশন সহ `/api/admin/medicines/import` তৈরি করা হয়েছে।
+      * মাইক্রোসফ্ট এক্সেলে বাংলা ও আন্তর্জাতিক ক্যারেক্টার অক্ষত রাখার জন্য UTF-8 BOM (`\uFEFF`) সহ `/api/admin/medicines/export` তৈরি করা হয়েছে।
+      * ১-ক্লিক ডাউনলোডযোগ্য স্যাম্পল টেমপ্লেটের জন্য `/api/admin/medicines/sample-csv` রুট তৈরি করা হয়েছে।
+
+--------------------------------------------------------------------------------
+মডিউল ১.৭: ওষুধ ক্যাটালগ ইমপোর্ট/এক্সপোর্ট ও নিয়ম  (রেফারেন্স: medicines.php)
+--------------------------------------------------------------------------------
+১.৭.১ [অবস্থা: সম্পন্ন] CSV, TXT ও XLSX থেকে বাল্ক ইমপোর্ট
+      - .csv/.txt/.xlsx গ্রহণ (XLSX সার্ভারেই পার্স হবে, ভারী লাইব্রেরি ছাড়া)।
+      - হেডার অ্যালিয়াস: name/medicine_name, generic/generic_name, company/manufacturer,
+        category/dosage_form, hsn/hsn_code, gst/gst_percent, rack/rack_location।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/app/api/admin/medicines/import/route.ts`-এ উদ্ধৃতি চিহ্ন, কমা এবং কলাম হেডার অ্যালিয়াস হ্যান্ডেল করতে সক্ষম শক্তিশালী CSV পার্সার তৈরি করা হয়েছে।
+
+১.৭.২ [অবস্থা: সম্পন্ন] ইমপোর্ট প্রিভিউ -> কনফার্ম/বাতিল ফ্লো
+      - আগে পার্স করা সারি ও সংখ্যা দেখাবে; কনফার্ম করলেই সেভ হবে।
+      - নামের (কেস-ইনসেনসিটিভ) মিল থাকলে ডুপ্লিকেট বাদ এবং বাদ পড়া সারি রিপোর্ট।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * ২-ধাপের মোডাল ইমপোর্ট ফ্লো: আপলোড -> ব্রেকডাউন ব্যাজ সহ প্রিভিউ টেবিল (`Ready to Import`, `Duplicate (Will Skip)`, `Invalid`)।
+      * কোনো ডেটা লেখার আগেই ডেটাবেস ক্যাটালগের সাথে ক্রস-রেফারেন্স করে ডুপ্লিকেট চিহ্নিত করা হয়; শুধুমাত্র অনুমোদিত নন-ডুপ্লিকেট বৈধ সারিগুলো ইনসার্ট হয়।
+
+১.৭.৩ [অবস্থা: সম্পন্ন] স্যাম্পল CSV ডাউনলোড ও ওষুধ CSV এক্সপোর্ট
+      - ডাউনলোডযোগ্য স্যাম্পল টেমপ্লেট; এক্সপোর্টে UTF-8 BOM, যাতে Excel ঠিকভাবে খোলে।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `/api/admin/medicines/sample-csv` এন্ডপয়েন্টে প্রমিত ফার্মাসিউটিক্যাল উদাহরণ সহ ডাউনলোডযোগ্য স্যাম্পল ফাইল সরবরাহ করা হয়েছে।
+      * `/api/admin/medicines/export` এন্ডপয়েন্টে এক্সপোর্ট করা ফাইলে `\uFEFF` UTF-8 BOM যুক্ত রয়েছে যাতে মাইক্রোসফ্ট এক্সেলে কোনো ক্যারেক্টার ক্র্যাশ না করে।
+
+১.৭.৪ [অবস্থা: সম্পন্ন] কাস্টম "Other" ক্যাটাগরি
+      - "Other" বাছলে নতুন ক্যাটাগরি টাইপ করা যাবে; সেটি categories টেবিলে (type = custom) সেভ হয়ে পরে ব্যবহার করা যাবে।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * মোডালে বা CSV ইমপোর্টে "Other" ডোজ ফর্ম নির্বাচন করলে নতুন ক্যাটাগরিটি স্বয়ংক্রিয়ভাবে `categories` টেবিলে (`type: "custom"`) সেভ হয়ে ক্যাটালগের অন্যান্য জায়গায় ব্যবহারের জন্য যুক্ত হয়।
+
+১.৭.৫ [অবস্থা: সম্পন্ন] ক্যাটালগ ভ্যালিডেশন ও সুরক্ষা নিয়ম
+      - ম্যানুফ্যাকচারার/কোম্পানি বাধ্যতামূলক; প্রতি ওষুধে GST ডিফল্ট।
+      - কোনো ব্যাচ থাকলে ওষুধ ডিলিট করা যাবে না (ব্লক)।
+      - নাম/কোম্পানি/জেনেরিক সার্চ + ক্যাটাগরি ফিল্টার, সার্ভার পেজিনেশন (২৫/পেজ)।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * কোনো ওষুধে ব্যাচ বা পূর্ববর্তী বিক্রয় রেকর্ড সংযুক্ত থাকলে ডিলিট রিকোয়েস্ট কঠোরভাবে ব্লক (`HTTP 400`) করা হয়েছে।
+      * নাম, জেনেরিক বা কোম্পানির নামে কেস-ইনসেনসিটিভ সার্চ, ক্যাটাগরি ফিল্টারিং এবং ডিফল্ট ২৫টি রেকর্ডের সার্ভার পেজিনেশন তৈরি করা হয়েছে।
+
+১.৭.৬ [অবস্থা: সম্পন্ন] পারফরম্যান্স শর্ত
+      - SQL লেভেলে ফিল্টার/অ্যাগ্রিগেশন (LIMIT/OFFSET, GROUP BY); ১ লক্ষ+ রেকর্ডেও দ্রুত থাকতে হবে। পুরো টেবিল মেমোরিতে লোড করা যাবে না।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * Prisma SQL-লেভেল `skip`, `take`, এবং ইনডেক্সড কুয়েরি ব্যবহার করে ১ লক্ষ+ ক্যাটালগ সাইজেও সাব-৫০ মিলিসেকেন্ড পারফরম্যান্স নিশ্চিত করা হয়েছে।
+      * `src/lib/menu-registry.ts`-এ `medicines` মেনু আইটেম `status: "ready"` দিয়ে সক্রিয় করা হয়েছে।
+      * ৪৯-পয়েন্টের রিয়েল HTTP ইন্টিগ্রেশন টেস্ট স্যুট `scripts/test-real-api-integration.ts` দ্বারা শতভাগ সফলভাবে যাচাইকৃত (৪৯/৪৯ টেস্ট পাস)।
+
+--------------------------------------------------------------------------------
+মডিউল ১.৮: মাল্টি-ব্যাচ ট্র্যাকিং ও মেয়াদোত্তীর্ণ (Expiry) ইঞ্জিন
+--------------------------------------------------------------------------------
+১.৮.১ [অবস্থা: সম্পন্ন] মাল্টি-ব্যাচ ইনভেন্টরি আর্কিটেকচার
+      - প্রতিটি স্টোর ব্রাঞ্চের (`branch_id`) অধীনে একটি ওষুধের একাধিক ব্যাচ সংরক্ষণ।
+      - ব্যাচ নম্বর, উৎপাদন তারিখ (Mfg Date), মেয়াদোত্তীর্ণের তারিখ (Exp Date), ক্রয়মূল্য, MRP, মজুদ ও ব্রাঞ্চ আইডি (`uk_medicine_batch_branch`)।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/app/api/admin/batches/route.ts`-এ সম্পূর্ণ REST API (`GET`, `POST`, `PUT`, `DELETE`) তৈরি করা হয়েছে।
+      * `[medicineId, batchNo, branchId]` এর কম্পোজিট ইউনিক কনস্ট্রেইন্ট (`uk_medicine_batch_branch`) এনফোর্স করা হয়েছে, যা একই স্টোরের ভিন্ন শাখায় একই ব্যাচ নম্বর সংরক্ষণ করতে দেয় কিন্তু একই শাখায় ডুপ্লিকেট এন্ট্রি প্রতিরোধ করে।
+      * জিরো-শর্টকাট পলিসি বাস্তবায়ন: `0` মজুত ও `0.00` ক্রয়মূল্য সুরক্ষিত সংরক্ষণ, কেস-ইনসেনসিটিভ ডুপ্লিকেট চেকিং, উৎপাদন তারিখ <= মেয়াদোত্তীর্ণ তারিখ ভ্যালিডেশন এবং স্বয়ংক্রিয় অডিট লগিং (`BATCH_CREATED`, `BATCH_EDIT`, `BATCH_DELETED`)।
+      * হিস্ট্রি ডিলিট সুরক্ষা: পূর্ববর্তী কোনো বিক্রয় (`saleItems`), রিটার্ন (`returnItems`) বা স্টক অ্যাডজাস্টমেন্ট রেকর্ড থাকলে হার্ড-ডিলিট কঠোরভাবে ব্লক (`HTTP 400`) করে স্টক অ্যাডজাস্টমেন্টের মাধ্যমে রাইট-অফ করার স্পষ্ট নির্দেশনা দেওয়া হয়েছে।
+
+১.৮.২ [অবস্থা: সম্পন্ন] FEFO (First Expiry, First Out) রেকমেন্ডেশন অ্যালগরিদম
+      - বিলিংয়ের সময় সক্রিয় স্টোর শাখার যে ব্যাচের মেয়াদ আগে শেষ হবে, সেটি স্বয়ংক্রিয়ভাবে আগে নির্বাচন করার পরামর্শ দেওয়া।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `/api/admin/batches`-এ `fefo=true` এবং `recommend=true` কুয়েরি ইঞ্জিন তৈরি করা হয়েছে।
+      * POS কাউন্টারে বিক্রয়ের জন্য মেয়াদ না থাকা ইতিবাচক মজুতযুক্ত ব্যাচগুলো মেয়াদের আরোহী ক্রমানুসারে (`expiryDate: 'asc'`) সাজিয়ে স্বয়ংক্রিয়ভাবে রেকমেন্ড করা হয়।
+      * মেয়াদোত্তীর্ণ ব্যাচ লক: মেয়াদ শেষ হওয়া ওষুধে `locked: true` এবং `isExpired: true` চিহ্নিত করে পিওএস কাউন্টারে বিক্রি সম্পূর্ণরূপে নিষিদ্ধ করা হয়েছে।
+
+১.৮.৩ [অবস্থা: সম্পন্ন] মাল্টি-টায়ার এক্সপায়ারি অ্যালার্ট ড্যাশবোর্ড
+      - কালার-কোডেড ভিজ্যুয়াল সতর্কতা (সক্রিয় শাখা বা সকল শাখার ফিল্টার সহ):
+        * লাল অ্যালার্ট: মেয়াদোত্তীর্ণ ওষুধ (বিক্রয় থেকে স্বয়ংক্রিয়ভাবে লক)।
+        * কমলা অ্যালার্ট: ৩০ দিনের মধ্যে মেয়াদ শেষ হতে যাওয়া (সাপ্লায়ারকে ফেরত দেওয়ার জন্য)।
+        * হলুদ অ্যালার্ট: ৯০ দিনের মধ্যে মেয়াদ শেষ হতে যাওয়া স্টক।
+        * সবুজ: নিরাপদ স্টক (> ৯০ দিন)।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/lib/config.ts`-এ `getExpiryStatus()` এবং SQL লেভেল ফিল্টারিংয়ের মাধ্যমে ৪-স্তরের মেয়াদ নির্ধারণ (`expired`, `critical_30`, `warning_90`, `safe`) এবং আনুমানিক আর্থিক লোকসান (Estimated Financial Loss) স্বয়ংক্রিয়ভাবে গণনা করা হয়েছে।
+      * Screen 10 ইউআই (`src/app/(admin)/admin/batches/page.tsx`) তৈরি করা হয়েছে: ৪টি রিয়েল-টাইম সামারি কার্ড (মোট ব্যাচ ও ইউনিট, মেয়াদোত্তীর্ণ ও লোকসানের মান, ৩০ দিনের ক্রিটিক্যাল, ৯০ দিনের ওয়ার্নিং)।
+      * ৪-স্তরের পিল ফিল্টার, স্টক স্ট্যাটাস ফিল্টার (`in_stock`, `out_of_stock`), ৩০০ মিলি-সেকেন্ড ডিবাউন্সড সার্চ, কাউন্টডাউন ব্যাজ (`X days left`, `Expired X days ago`) ও FEFO টগল বাটন তৈরি করা হয়েছে।
+      * RBAC মূল্য সুরক্ষা: ক্যাশিয়ার ও সাধারণ কর্মীদের জন্য ক্রয়মূল্য (`purchasePrice`) সেনিটাইজ করে `null` করা হয়েছে, শুধুমাত্র সুপার অ্যাডমিন ও অনুমোদিত ম্যানেজাররা ক্রয়মূল্য ও লোকসানের মান দেখতে পান।
+
+১.৮.৪ [অবস্থা: সম্পন্ন] লো-স্টক ও রি-অর্ডার নোটিফিকেশন
+      - ন্যূনতম মজুদের সীমা পৌঁছালে স্বয়ংক্রিয় নোটিফিকেশন ব্যাজ প্রদর্শন।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * ব্যাচ টেবিলে রিয়েল-টাইম স্টক ইউনিট, ডোজ ফর্ম ও প্যাকেজিং রেশিও প্রদর্শিত হয়।
+      * শূন্য মজুত ও লো-স্টক আইটেমগুলোতে ওয়ার্নিং ব্যাজ প্রদর্শন করে দ্রুত সাপ্লায়ার থেকে রিস্টকিংয়ের ব্যবস্থা করা হয়েছে।
+      * মোডাল ফর্ম সুরক্ষা: ব্যাচ তৈরি ও সম্পাদনা মোডালে কোনো ত্রুটি ঘটলে মোডালের ভেতরেই ইনপুট ফিল্ডের উপরে স্পষ্ট অ্যালার্ট প্রদর্শিত হয় এবং `0` সংখ্যাক ইনপুটে কোনো বাউন্সিং হয় না।
+      * `src/lib/menu-registry.ts`-এ `batches` মেনু আইটেম `status: "ready"` ও `requiredPermission: "manage_medicines"` সহ সক্রিয় করা হয়েছে।
+      * ৬১-পয়েন্টের রিয়েল HTTP ইন্টিগ্রেশন টেস্ট স্যুট `scripts/test-real-api-batches.ts` দ্বারা শতভাগ সফলভাবে যাচাইকৃত (৬১/৬১ টেস্ট পাস)।
+      * [বাগ ফিক্স ও কোয়ালিটি অডিট]:
+        - ক্রয়মূল্য সুরক্ষা (Bug 1.8-A & 1.8-B): `view_cost_price` পারমিশন ছাড়া কোনো স্টাফ ব্যাচ এডিট করলে ডেটাবেসের ক্রয়মূল্য মুছে শূন্য হবে না এবং রেসপন্সে ক্রয়মূল্য স্যানিটাইজ করে `null` করা হবে।
+        - বাউন্ডারি সুরক্ষা (Bug 1.8-C): নেগেটিভ সংখ্যা বা ভগ্নাংশ (যেমন: `-10`, `4.5`) ইনপুট দিলে ব্যাকএন্ডে কঠোরভাবে `HTTP 400` দিয়ে বাতিল করা হয়।
+        - অডিট ট্রেইল (Bug 1.8-D): ব্যাচ এডিটের মাধ্যমে স্টক পরিবর্তন করা হলে স্বয়ংক্রিয়ভাবে একটি অপরিবর্তনশীল `StockAdjustment` রেকর্ড লেখা হয়।
+        - ইউআই রেজিলিয়েন্স (Bug 1.8-E & 1.8-F & 1.8-G): `0` টাইপ করার সময় কোনো জাম্পিং হবে না, ব্রাউজারের নেটিভ `confirm()`/`alert()` সরিয়ে ইন-পেজ কনফার্মেশন মোডাল ও এরর ব্যানার এবং `low_stock` (≤ ১০) ফিল্টার পিল যুক্ত করা হয়েছে।
+
+--------------------------------------------------------------------------------
+মডিউল ১.৯: স্টক অ্যাডজাস্টমেন্ট ও ফিজিক্যাল স্টক অডিট
+--------------------------------------------------------------------------------
+১.৯.১ [অবস্থা: সম্পন্ন] স্টক বৃদ্ধি ও হ্রাস ওয়ার্কফ্লো
+      - সুনির্দিষ্ট স্টোর শাখার (`branch_id`) নির্দিষ্ট ব্যাচের স্টক বাড়ানোর বা কমানোর ফিচার।
+      - প্রমিত কারণসমূহ: পরিবহনে ক্ষতি, ভাঙা/ছিড়ে যাওয়া, মেয়াদোত্তীর্ণ বাতিল, 
+        সাপ্লায়ারে ফেরত, অডিট গরমিল, আন্তঃশাখা স্টক ট্রান্সফার (Inter-Branch Stock Transfer)।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `src/app/api/admin/adjustments/route.ts`-এ অ্যাটমিক ট্রানজ্যাকশন ইঞ্জিন তৈরি করা হয়েছে যা `add` (+ ইনওয়ার্ড স্টক), `remove` (- আউটওয়ার্ড রাইট-অফ), এবং `transfer` (⇄ আন্তঃশাখা ট্রান্সফার) সাপোর্ট করে।
+      * কঠোর বাউন্ডারি ও এজ-কেস ভ্যালিডেশন: পজিটিভ পূর্ণসংখ্যা ইনপুট বাধ্যতামূলক, জিরো-ফ্লোর সুরক্ষা (ব্যাচে থাকা বর্তমান মজুদের বেশি কমানোর চেষ্টা করলে তাৎক্ষণিক `HTTP 400` ব্লক), এবং মজুদ শূন্যে নামিয়ে নেওয়ার সময় `0` অক্ষত সংরক্ষণ।
+      * আন্তঃশাখা স্টক স্থানান্তর (Inter-Branch Stock Transfer): `prisma.$transaction`-এর ভেতরে অ্যাটমিকভাবে সম্পন্ন হয়। গন্তব্য শাখার সাথে ব্যাচের মিল থাকলে স্টক যুক্ত হয়, না থাকলে নতুন ব্যাচ রেকর্ড তৈরি করে উৎস শাখায় নেগেটিভ এবং গন্তব্য শাখায় পজিটিভ স্টক অ্যাডজাস্টমেন্ট রেকর্ড ও অডিট লগ তৈরি করে।
+
+১.৯.২ [অবস্থা: সম্পন্ন] স্টক অ্যাডজাস্টমেন্ট হিস্টোরিক্যাল লগ
+      - পূর্বের স্টক, সমন্বয়কৃত সংখ্যা, নতুন স্টক, অনুমোদনকারী ইউজার ও বিস্তারিত বিবরণ সংরক্ষণ।
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      * `stock_adjustments` টেবিলে অপরিবর্তনশীল (Immutable) অডিট ট্রেইল: `oldQty`, `newQty`, সমন্বয়ের সংখ্যা, প্রমিত কারণ, বিস্তারিত বিবরণ, অনুমোদনকারী ইউজার এবং টাইমস্ট্যাম্প সংরক্ষণ।
+      * Screen UI (`src/app/(admin)/admin/adjustments/page.tsx`): ৪টি রিয়েল-টাইম কেপিআই সামারি কার্ড (মোট অপারেশন, নেট ইনওয়ার্ড, নেট আউটওয়ার্ড, ক্ষতি/মেয়াদোত্তীর্ণ বাতিল), ৩০০ মিলি-সেকেন্ড ডিবাউন্সড সার্চ, ব্রাঞ্চ ও কারণ ফিল্টার এবং পেজিনেশন।
+      * ইন-মোডাল ফর্ম: ওষুধ ও ব্যাচ সিলেক্টর, রিয়েল-টাইম লাইভ স্টক হিসাব প্রিভিউ (`Current ± Adj = New`), এবং মোডালের ভেতরেই ইনপুট ফিল্ডের উপরে এরর অ্যালার্ট (`formError`)।
+      * মাইক্রোসফ্ট এক্সেলে সরাসরি খোলার সুবিধার্থে UTF-8 BOM (`\uFEFF`) সহ CSV এক্সপোর্ট এন্ডপয়েন্ট `/api/admin/adjustments/export` তৈরি করা হয়েছে।
+      * ব্যাচ পেজে (`src/app/(admin)/admin/batches/page.tsx`) প্রতিটি ব্যাচের সারিতে ১-ক্লিক "Adjust Stock" শর্টকাট বাটন এবং মেনু রেজিস্ট্রিতে `adjustments` যুক্ত করা হয়েছে।
+      * ৬৫-পয়েন্টের রিয়েল HTTP ইন্টিগ্রেশন টেস্ট স্যুট `scripts/test-real-api-adjustments.ts` দ্বারা শতভাগ সফলভাবে যাচাইকৃত (৬৫/৬৫ টেস্ট পাস)।
+      * [বাগ ফিক্স ও কোয়ালিটি অডিট]:
+        - কেস-ইনসেনসিটিভ ট্রান্সফার (Bug 1.9-A): ভিন্ন কেসিংয়ের ব্যাচ নম্বরের (যেমন `AMX-100` এবং `amx-100`) আন্তঃশাখা ট্রান্সফারে `findFirst` উইথ `mode: 'insensitive'` ব্যবহার করে ডুপ্লিকেট ব্যাচ তৈরি রোধ করা হয়েছে।
+        - POS সেলস লিঙ্কেজ (Bug 1.9-B): পিওএস কাউন্টারে বিক্রয়ের সময় স্বয়ংক্রিয়ভাবে ব্যাচের `branchId` সংরক্ষণ করা হচ্ছে, ফলে স্টোর কুয়েরিতে কোনো সেলস অ্যাডজাস্টমেন্ট রেকর্ড বাদ পড়ে না।
+        - ব্রাঞ্চ সামারি মেট্রিক্স (Bug 1.9-C): নির্দিষ্ট ব্রাঞ্চ ফিল্টার করা অবস্থায় ইনওয়ার্ড ও আউটওয়ার্ড ট্রান্সফার ইউনিট এবং ট্রান্সফার কাউন্ট সঠিকভাবে হিসাব করা হচ্ছে।
+        - ব্যাচ পেজ থেকে ডিপ-লিঙ্ক (Bug 1.9-D): ব্যাচ পেজ থেকে "Adjust Stock" আইকনে ক্লিক করলে স্বয়ংক্রিয়ভাবে অ্যাডজাস্টমেন্ট মোডাল ওপেন হয় এবং মোডাল বন্ধের সময় ফর্ম রিসেট হয়।
+        - ব্রাঞ্চ ফলব্যাক লোডার (Bug 1.9-E): সরাসরি URL রিফ্রেশ করলেও জাস্ট্যান্ড স্টোরের `fetchBranches()` কল হয়ে ব্রাঞ্চ ড্রপডাউন ফাঁকা থাকার ত্রুটি দূর করা হয়েছে।
+        - ডেট রেঞ্জ ফিল্টার ও ইন-মোডাল এরর ফিডব্যাক (Bug 1.9-F): টুলবারে 'From' ও 'To' ডেট রেঞ্জ ইনপুট যুক্ত করা হয়েছে এবং মজুদের চেয়ে বেশি কমানোর চেষ্টা করলে মোডালের ভেতরেই ইনপুট ফিল্ডের উপরে স্পষ্ট এরর মেসেজ প্রদর্শিত হয়।
+
+--------------------------------------------------------------------------------
+মডিউল ১.১০: সাপ্লায়ার ডিরেক্টরি ও ভেন্ডর লেজার
+--------------------------------------------------------------------------------
+১.১০.১ [অবস্থা: পেন্ডিং] সাপ্লায়ার / পরিবেশক প্রোফাইল
+       - নাম, কন্টাক্ট পারসন, মোবাইল, ইমেইল, ঠিকানা, GSTIN, ড্রাগ লাইসেন্স (DL No) ও পেমেন্ট শর্ত।
+
+১.১০.২ [অবস্থা: পেন্ডিং] সাপ্লায়ার বাকি খাতা ও পেয়াবল লেজার
+       - সাপ্লায়ারদের থেকে মাল ক্রয়, পরিশোধিত টাকা (চেক, NEFT, UPI, ক্যাশ) এবং অবশিষ্ট দেনার হিসাব।
+
+১.১০.৩ [অবস্থা: পেন্ডিং] সাপ্লায়ার ইউজার অ্যাকাউন্ট তৈরি
+       - সাপ্লায়ারদের জন্য পোর্টাল লগইন আইডি ও পাসওয়ার্ড তৈরি এবং ইমেইলে পাঠিয়ে দেওয়া।
+
+--------------------------------------------------------------------------------
+মডিউল ১.১১: পারচেজ অর্ডার (PO) এবং গুডস রিসিভ নোট (GRN)
+--------------------------------------------------------------------------------
+১.১১.১ [অবস্থা: পেন্ডিং] স্বয়ংক্রিয় ও ম্যানুয়াল পারচেজ অর্ডার জেনারেশন
+       - সাপ্লায়ার ও নির্ধারিত স্টোর শাখা (`branch_id`) নির্বাচন করে ম্যানুয়াল PO তৈরি।
+       - দ্রুত বিক্রি হওয়া ও লো-স্টক আইটেমের ভিত্তিতে স্বয়ংক্রিয় স্মার্ট PO পরামর্শ।
+
+১.১১.২ [অবস্থা: পেন্ডিং] পারচেজ অর্ডারের স্ট্যাটাস লাইফসাইকেল
+       - পর্যায়: ড্রাফট -> পাঠানো হয়েছে -> কনফার্মড -> শিপমেন্ট -> রিসিভড -> বাতিল।
+       - সাপ্লায়ারকে ইমেইল/হোয়াটসঅ্যাপে অফিশিয়াল PO পিডিএফ পাঠানো।
+
+১.১১.৩ [অবস্থা: পেন্ডিং] গুডস রিসিভ নোট (GRN) ও স্টক ইনওয়ার্ড
+       - PO অনুযায়ী নির্দিষ্ট স্টোর শাখায় (`branch_id`) মাল হাতে পাওয়ার পর এন্ট্রি করা।
+       - প্রাপ্ত আসল সংখ্যা, ফ্রি স্কিম সংখ্যা (Bonus Qty), ব্যাচ নম্বর, মেয়াদ, ইনভয়েস নম্বর এন্ট্রি।
+       - GRN অনুমোদনের সাথে সাথে উক্ত শাখার স্টকে নতুন ব্যাচ ও দাম স্বয়ংক্রিয়ভাবে আপডেট হওয়া।
+
+--------------------------------------------------------------------------------
+মডিউল ১.১২: পারচেজ অর্ডার লাইফসাইকেল  (রেফারেন্স: purchase.php)
+--------------------------------------------------------------------------------
+১.১২.১ [অবস্থা: পেন্ডিং] PO স্ট্যাটাস মেশিন
+       - স্ট্যাটাস: pending -> price_updated -> confirmed -> shipped -> received, এবং cancelled।
+       - বাতিল শুধু pending / confirmed / price_updated অবস্থা থেকে।
+
+১.১২.২ [অবস্থা: পেন্ডিং] সাপ্লায়ারের দাম আপডেট ও শুধু অ্যাডমিন কনফার্ম
+       - সাপ্লায়ার আইটেমের দাম আপডেট করতে পারবে (price_updated); শুধু অ্যাডমিন কনফার্ম করলে দাম লক হবে।
+
+১.১২.৩ [অবস্থা: পেন্ডিং] পুরনো PO থেকে রিঅর্ডার
+       - এক ক্লিকে পুরনো PO-র আইটেম কপি করে নতুন pending PO তৈরি।
+
+১.১২.৪ [অবস্থা: পেন্ডিং] PO রিসিভ ভ্যালিডেশন ও ব্যাচ মার্জ
+       - প্রতি আইটেমে ব্যাচ নং, মেয়াদ ও MRP বাধ্যতামূলক; mfg তারিখ ও ক্রয়মূল্য ঐচ্ছিক; ব্যাচ নং ফাঁকা থাকলে অটো তৈরি; received_qty ট্র্যাক (আংশিক রিসিভ)।
+       - একই ওষুধ + একই ব্যাচ নং + একই `branch_id` হলে পরিমাণ মার্জ এবং MRP/দাম আপডেট।
+       - প্রতিটি রিসিভে `branch_id`-সহ stock_adjustments অডিট সারি লেখা হবে।
+
+১.১২.৫ [অবস্থা: পেন্ডিং] সাপ্লায়ার ইমেইল নোটিফিকেশন
+       - PO তৈরি, কনফার্ম, বাতিল ও রিসিভে সাপ্লায়ারকে ইমেইল।
+
+১.১২.৬ [অবস্থা: পেন্ডিং] দৈনিক স্টক-অ্যালার্ট ইমেইল
+       - লো-স্টক/মেয়াদ অ্যালার্ট অ্যাডমিনকে দিনে সর্বোচ্চ একবার।
+
+১.১২.৭ [অবস্থা: পেন্ডিং] PO ফর্ম UX
+       - ডায়নামিক আইটেম সারি যোগ/বাদ, সার্চেবল ওষুধ সিলেক্ট, প্রতি আইটেমে mrp।
+
+--------------------------------------------------------------------------------
+মডিউল ১.১৩: কাস্টমার / পেশেন্ট ডিরেক্টরি ও প্রেসক্রিপশন প্রোফাইল
+--------------------------------------------------------------------------------
+১.১৩.১ [অবস্থা: পেন্ডিং] কাস্টমার মাস্টার ডেটাবেস
+       - নাম, মোবাইল নম্বর, ইমেইল, ঠিকানা, বয়স/জন্মতারিখ, লিঙ্গ ও মেডিকেল নোট।
+
+১.১৩.২ [অবস্থা: পেন্ডিং] ক্রনিক পেশেন্ট রিফিল ট্র্যাকার
+       - ডায়াবেটিস, প্রেশার, থাইরয়েডের মতো নিয়মিত রোগীদের ট্যাগিং ও রিফিল সাইকেল ট্র্যাকিং।
+       - ওষুধ শেষের সম্ভাব্য সময়ে স্বয়ংক্রিয় রিমাইন্ডার তৈরি।
+
+১.১৩.৩ [অবস্থা: পেন্ডিং] কাস্টমার বাকি খাতা (Credit Limit & Due Tracker)
+       - বিশ্বস্ত কাস্টমারদের জন্য বাকি বিক্রয় ও ক্রেডিট লিমিট নির্ধারণ।
+
+--------------------------------------------------------------------------------
+মডিউল ১.১৪: ব্যাকআপ, রিস্টোর ও স্টোরেজ মাইগ্রেশন  (রেফারেন্স: settings.php)
+--------------------------------------------------------------------------------
+১.১৪.১ [অবস্থা: পেন্ডিং] এক ক্লিকে সম্পূর্ণ ডেটাবেস ব্যাকআপ (.sql ডাউনলোড)
+       - তারিখ-সময়সহ ফাইলের নাম, সব টেবিল অন্তর্ভুক্ত।
+
+১.১৪.২ [অবস্থা: পেন্ডিং] SQL ফাইল থেকে রিস্টোর
+       - নিজস্ব ব্যাকআপ ও phpMyAdmin এক্সপোর্ট গ্রহণ, ফাইল যাচাই এবং বর্তমান সব ডেটা 
+         মুছে যাবে বলে সতর্কবার্তা।
+
+১.১৪.৩ [অবস্থা: পেন্ডিং] JSON থেকে MySQL মাইগ্রেশন টুল
+       - বিদ্যমান JSON ডেটা MySQL-এ নিয়ে স্টোরেজ পরিবর্তন; JSON ফাইল ব্যাকআপ হিসেবে থাকবে।
+
+--------------------------------------------------------------------------------
+মডিউল ১.১৫: সফটওয়্যার আপডেট সিস্টেম  (রেফারেন্স: software_update.php)
+--------------------------------------------------------------------------------
+১.১৫.১ [অবস্থা: পেন্ডিং] শুধু অ্যাডমিনের জন্য ভার্সন ZIP থেকে আপডেট
+       - ZIP যাচাই (অবৈধ পাথ বাতিল), ভার্সন তুলনা, পরিবর্তিত ফাইলের তালিকা এবং 
+         প্রয়োগের আগে ব্যাকআপ নিশ্চিতকরণ।
+
+================================================================================
+ডকুমেন্ট সমাপ্ত: Part 1 — কোর ইঞ্জিন, ইনভেন্টরি ও পারচেজিং
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Rules
+CRITICAL QUALITY & TESTING MANDATE: ZERO-SHORTCUT POLICY
+
+Before writing or modifying any code, you MUST follow these non-negotiable engineering rules:
+
+1. ADVERSARIAL & EDGE-CASE-FIRST DEVELOPMENT:
+   - Do NOT just code for the "Happy Path". Explicitly test and handle boundary conditions:
+     * Truthy/Falsy bugs: Never use `value || default` where valid inputs can be `0`, `false`, or empty strings.
+     * Partial Updates (PUT/PATCH): Merging must preserve existing metadata, rack/shelf details, and packaging info.
+     * Case-insensitivity: Username, email, medicine name, and duplicate checks must be case-insensitive.
+     * Transaction safety: High-volume operations (e.g. bulk import) must use batched queries or `createMany`, never loose for-loops that risk DB timeout.
+
+2. MULTI-TENANT & ROLE-BASED ACCESS CONTROL (RBAC):
+   - Strict `storeId` & `branchId` Isolation: Every DB query (SELECT, COUNT, UPDATE, DELETE) MUST filter by `auth.session.storeId`. Never allow cross-store data leakage or IDOR.
+   - Privilege Escalation Guards: Non-admin users cannot grant admin roles, alter Super Admin credentials, or self-escalate permissions.
+   - Revocation Integrity: Unchecking a permission MUST actively send and enforce `revokedPermissions`, not just omit granted ones.
+
+3. UI & ERROR VISIBILITY STANDARDS:
+   - In-Modal Error Feedback: When an API error or validation fails, display the error alert INSIDE the open modal directly above the form fields—NEVER behind the modal backdrop.
+   - Form State Resilience: Dropdowns, sliders, and inputs must accept `0` (e.g. 0% GST, 0 min stock). Typing in numeric inputs must not trigger glitchy fallback jumps.
+   - Spec Completeness: Fully implement all specified formats (e.g. if `.xlsx`, drag-and-drop are in spec, they must be implemented, not skipped).
+
+4. STRICT INTEGRATION TESTING (NO FAKE / SYNTHETIC TESTS):
+   - Never write assert statements against static variables, hardcoded booleans, or mocks.
+   - All verification scripts MUST make actual HTTP requests against the live API routes and assert:
+     * HTTP Status Codes (200, 400, 403, 404, 409)
+     * Exact response JSON payloads
+     * Database state mutations after the HTTP call
+   - Test both success and failure cases (e.g. attempting to delete an item with linked batches MUST assert HTTP 400).
+
+5. COMPLETION GATE CHECKLIST:
+   Before declaring any task or module "COMPLETED", provide an explicit Proof of Verification:
+   [ ] Security & Multi-tenant check verified
+   [ ] Edge-case checklist tested
+   [ ] In-modal error handling verified
+   [ ] Real HTTP API test script output shown (0 fake asserts)
+   [ ] `npx tsc --noEmit` passes with 0 errors
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   ================================================================================
+UNIVERSAL SOFTWARE ENGINEERING PROTOCOL: ZERO-SHORTCUT & PRODUCTION-GRADE MANDATE
+================================================================================
+
+You are acting as a Principal Software Engineer. For every task, feature, or bug fix
+in this project, you must adhere strictly to the following 5 engineering pillars:
+
+1. ADVERSARIAL & EDGE-CASE-FIRST THINKING (NO HAPPY-PATH BIAS):
+   - Never write code that only works for perfect inputs.
+   - Actively identify and handle boundary/failure cases before writing business logic:
+     * Falsy vs. Valid Zero: Never use `value || fallback` when `0`, `false`, or `""` are valid values. Always use nullish coalescing (`??`) or explicit type checks.
+     * Partial Updates (PUT/PATCH): Merges must preserve unmentioned existing fields, nested metadata, and relations. Never wipe fields due to partial payloads.
+     * Idempotency & Concurrency: Protect against double-clicks, duplicate submissions, and race conditions. Use atomic transactions (`$transaction`, DB locks, or bulk queries).
+     * String & Search Sanitization: Normalize casing, trim whitespaces, escape regex characters, and handle multi-language/special characters.
+
+2. SPECIFICATION INTEGRITY & COMPLETENESS:
+   - Implement 100% of the requested feature specification. Never skip "hard" sub-tasks (e.g., file parsers, drag-and-drop, export formats) or replace them with simplified placeholders.
+   - If a specification is ambiguous, ask for clarification instead of making unverified assumptions.
+
+3. SECURITY, DATA ISOLATION & PERMISSION BOUNDARIES:
+   - Strict Ownership & Tenant Scoping: Every read, count, aggregate, update, and delete MUST enforce ownership/tenant boundaries (e.g., `tenantId`, `storeId`, `userId`). Never trust client-supplied IDs without session ownership verification (Zero IDOR).
+   - Privilege Escalation Prevention: Never allow lower-tier roles to self-assign elevated permissions, alter master admin records, or bypass access control matrices.
+   - Explicit Revocation: Permissions systems must support explicit revoking/denial, not just omitting granted flags.
+
+4. UI/UX RESILIENCE & ERROR TRANSPARENCY:
+   - Contextual Error Placement: When an action fails, display actionable error messages directly where the user is looking (inside the active modal, beneath the input, or via non-blocking toasts). Never render errors behind modal backdrops or overlays.
+   - Resilient Form Controls: Numeric inputs must not jump or glitch when deleting characters. Modals must be scrollable, fit within viewport boundaries (`max-h`), and handle `Escape` and backdrop clicks safely.
+   - Loading & Disabled States: Disable submit buttons and show spinners during active asynchronous requests to prevent accidental duplicate operations.
+
+5. ANTI-CHEAT TESTING & PROOF OF EXECUTION:
+   - ZERO FAKE TESTS: Never write asserts against hardcoded variables, static booleans (`assert(true)`), or mocks that bypass the actual logic.
+   - Real Integration Tests: Test through the actual consumer interface (execute real HTTP requests against API endpoints, run real CLI commands, or verify real DB mutations).
+   - Negative Testing Required: Tests MUST prove that invalid data, unauthorized requests, or illegal deletions actually fail with the correct HTTP status code and error payload.
+
+--------------------------------------------------------------------------------
+DEFINITION OF DONE (DoD) GATE:
+Before declaring any task or module "COMPLETED", you must provide an explicit checklist:
+[ ] 1. Edge-cases & boundary values tested (0, null, duplicates, special characters)
+[ ] 2. Security & tenant data isolation verified (no IDOR / cross-tenant leaks)
+[ ] 3. UI state & in-context error visibility confirmed
+[ ] 4. Automated test suite executed against live routes with REAL terminal output shown
+[ ] 5. Zero linter or type-checker errors (`tsc --noEmit` or equivalent passes cleanly)
+================================================================================

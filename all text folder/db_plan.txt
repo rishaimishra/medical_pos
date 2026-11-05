@@ -1,0 +1,1130 @@
+================================================================================
+           MEDICAL POS & PHARMACY MANAGEMENT SYSTEM — DATABASE PLAN
+               RELATIONAL SCHEMA, INDEXING, CONSTRAINTS & SEEDING
+================================================================================
+Target File: all text folder/db_plan.txt
+Reference Origin: DRxStore v2.0.0 (helpers/MySQLDB.php, JsonDB.php, schema audit)
+Format: English Version (Top) | Bengali Version (Bottom)
+Status Tracking: Each actionable schema task is marked with [STATUS: PENDING] (English) | [অবস্থা: পেন্ডিং] (Bengali)
+
+================================================================================
+================================================================================
+                           PART 1: ENGLISH VERSION
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+1. DATABASE ARCHITECTURAL FOUNDATION & DESIGN PRINCIPLES
+--------------------------------------------------------------------------------
+The database layer for the Medical POS and Pharmacy Management System is engineered
+for zero-latency retail checkout, clinical regulatory compliance (Schedule H/H1, GST),
+and high-concurrency multi-user operations.
+
+1.1 Core Engineering Principles:
+    - ACID Compliance: All checkout sales, purchase order receipts, and return processing
+      must execute inside atomic database transactions (`START TRANSACTION` ... `COMMIT`).
+      Any failure rolls back all inventory and payment records completely.
+    - Strict Financial Precision: Monetary values, taxable base values, and tax amounts
+      use `DECIMAL(12,2)` or `DECIMAL(10,2)`. GST percentages use `DECIMAL(5,2)`. Floating
+      point data types (`FLOAT`, `DOUBLE`) are strictly prohibited for currency.
+    - Foreign Key Integrity: Relational referential integrity enforces constraints between
+      medicines, batches, sales, and line items. Master drug deletion is blocked if active
+      batches exist.
+    - Audit Trail Preservation: Inventory adjustments, price changes, and returns write
+      immutable append-only audit rows (`stock_adjustments`, `customer_purchase_log`).
+    - Character Set & Collation: Standardized on `utf8mb4` with `utf8mb4_unicode_ci` to
+      support international drug compositions, supplier names, and currency symbols (`₹`).
+    - Dual Storage & Migration Pipeline: Supports direct SQL relational storage (MySQL /
+      PostgreSQL / SQLite) with automated schema self-healing, plus JSON import/export
+      for offline backups and historical data migrations.
+
+--------------------------------------------------------------------------------
+2. COMPLETE RELATIONAL SCHEMA DEFINITION (22 TABLES)
+--------------------------------------------------------------------------------
+
+Table 1: `settings` (System Configuration & Store Metadata)
+    - Purpose: Stores store profile, licensing, tax defaults, and communication credentials.
+    - Columns:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `store_name`      VARCHAR(255) NOT NULL DEFAULT 'Medical POS Pharmacy'
+      * `store_address`   TEXT
+      * `store_phone`     VARCHAR(50)
+      * `store_email`     VARCHAR(255)
+      * `store_gst`       VARCHAR(50)  COMMENT 'Store GSTIN / Tax Identification'
+      * `store_dl`        VARCHAR(50)  COMMENT 'Drug License Number (DL No)'
+      * `currency`        VARCHAR(20)  DEFAULT '&#8377;' COMMENT 'HTML entity or symbol'
+      * `low_qty`         INT          DEFAULT 10 COMMENT 'Threshold for low-stock alert'
+      * `expiry_days`     INT          DEFAULT 90 COMMENT 'Days threshold for near-expiry alert'
+      * `email_provider`  VARCHAR(20)  DEFAULT 'sendgrid' COMMENT 'sendgrid or smtp'
+      * `sendgrid_key`    VARCHAR(255) COMMENT 'SendGrid v3 REST API key'
+      * `smtp_host`       VARCHAR(255)
+      * `smtp_port`       INT          DEFAULT 587
+      * `smtp_user`       VARCHAR(255)
+      * `smtp_pass`       VARCHAR(255)
+      * `smtp_from`       VARCHAR(255)
+      * `smtp_name`       VARCHAR(255)
+      * `smtp_secure`     VARCHAR(10)  DEFAULT 'tls'
+      * `setup_done`      TINYINT(1)   DEFAULT 0 COMMENT '1 if first-run wizard completed'
+      * `setup_step`      INT          DEFAULT 1 COMMENT 'Server-side wizard step recovery (1-4)'
+      * `setup_token`     VARCHAR(100) COMMENT 'Device session token for wizard auto-resume'
+      * `setup_otp`       VARCHAR(10)  COMMENT '6-digit email OTP for cross-device wizard unlock'
+      * `setup_otp_exp`   DATETIME     COMMENT 'OTP expiration timestamp'
+      * `storage`         VARCHAR(20)  DEFAULT 'postgres' COMMENT 'Storage engine flag: postgres/mysql/json'
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+Table 2: `users` (Staff, Pharmacist & Admin Authentication)
+    - Purpose: Admin, Pharmacist, and Cashier accounts with RBAC permissions, store tenant isolation (`store_id`), and branch assignment.
+    - Columns:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `store_id`        INT          COMMENT 'Foreign key to settings(id) for Multi-Tenant Store Isolation (100+ independent pharmacy owners)'
+      * `name`            VARCHAR(255) NOT NULL
+      * `username`        VARCHAR(100) NOT NULL UNIQUE
+      * `email`           VARCHAR(255) NOT NULL UNIQUE
+      * `password`        VARCHAR(255) NOT NULL COMMENT 'Bcrypt or Argon2 hash'
+      * `role`            VARCHAR(50)  DEFAULT 'staff' COMMENT 'admin, staff, cashier, accountant'
+      * `permissions`     TEXT         COMMENT 'JSON or comma-separated allowed modules'
+      * `branch_id`       INT          COMMENT 'NULL for global all-branch access within store_id; ID for assigned branch'
+      * `active`          TINYINT(1)   DEFAULT 1
+      * `last_login`      DATETIME
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+Table 3: `medicines` (Master Drug Catalog)
+    - Purpose: Central catalog of brand names, generics, dosage categories, and rack locations.
+    - Columns:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `name`            VARCHAR(255) NOT NULL COMMENT 'Brand / Trade Name'
+      * `generic_name`    VARCHAR(255) COMMENT 'Active Pharmaceutical Ingredient (API)'
+      * `company`         VARCHAR(255) NOT NULL COMMENT 'Manufacturer / Pharma Co'
+      * `category`        VARCHAR(100) NOT NULL COMMENT 'Dosage form (Tablet, Syrup, etc.)'
+      * `custom_category` VARCHAR(100) COMMENT 'Saved if user entered custom Other category'
+      * `hsn_code`        VARCHAR(50)  COMMENT 'Harmonized System of Nomenclature code'
+      * `gst_percent`     DECIMAL(5,2) DEFAULT 12.00 COMMENT 'Default tax rate for medicine'
+      * `description`     TEXT
+      * `rack_location`   VARCHAR(100) COMMENT 'Physical pharmacy rack/shelf/bin coordinate'
+      * `schedule_type`   VARCHAR(20)  DEFAULT 'normal' COMMENT 'normal, schedule_h, schedule_h1'
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+Table 4: `categories` (Dosage Forms & Categories)
+    - Purpose: Standard drug dosage forms (Tablet, Syrup, Injection) plus user custom forms.
+    - Columns:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `name`            VARCHAR(100) NOT NULL UNIQUE
+      * `type`            VARCHAR(50)  DEFAULT 'dosage' COMMENT 'dosage (system seeded) or custom'
+
+Table 5: `batches` (Multi-Batch Inventory & Stock Ledger)
+    - Purpose: Specific manufactured batches per medicine with distinct expiry, MRP & stock per store branch.
+    - Columns:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `medicine_id`     INT NOT NULL
+      * `batch_no`        VARCHAR(100) NOT NULL
+      * `mfg_date`        DATE
+      * `expiry_date`     DATE NOT NULL
+      * `quantity`        INT NOT NULL DEFAULT 0 COMMENT 'Current available stock'
+      * `purchase_price`  DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Cost price incl. GST'
+      * `mrp`             DECIMAL(10,2) NOT NULL COMMENT 'Maximum Retail Price incl. GST'
+      * `supplier_id`     INT
+      * `branch_id`       INT COMMENT 'Store branch holding this batch stock (Composite UK: medicine_id + batch_no + branch_id)'
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+Table 6: `suppliers` (Vendor & Distributor Directory)
+    - Purpose: Pharma distributors, drug licenses, GSTIN, and credit ledgers.
+    - Columns:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `name`            VARCHAR(255) NOT NULL
+      * `contact`         VARCHAR(255) COMMENT 'Contact person name'
+      * `phone`           VARCHAR(50)  NOT NULL
+      * `email`           VARCHAR(255)
+      * `address`         TEXT
+      * `gst_no`          VARCHAR(50)  COMMENT 'Supplier GSTIN'
+      * `dl_no`           VARCHAR(50)  COMMENT 'Supplier Drug License No'
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+Table 7: `supplier_users` (Supplier Extranet Portal Credentials)
+    - Purpose: Login credentials for distributors to view POs and update prices.
+    - Columns:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `supplier_id`     INT NOT NULL
+      * `name`            VARCHAR(255)
+      * `username`        VARCHAR(100) NOT NULL UNIQUE
+      * `email`           VARCHAR(255)
+      * `phone`           VARCHAR(50)
+      * `password`        VARCHAR(255) NOT NULL COMMENT 'Bcrypt hash'
+      * `active`          TINYINT(1)   DEFAULT 1
+      * `verified`        TINYINT(1)   DEFAULT 0
+      * `last_login`      DATETIME
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+Table 8: `customers` (Patient & Customer Registry)
+    - Purpose: Patients, chronic refill tracking, and customer portal accounts.
+    - Columns:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `name`            VARCHAR(255) NOT NULL
+      * `phone`           VARCHAR(50)  NOT NULL
+      * `email`           VARCHAR(255)
+      * `address`         TEXT
+      * `dob`             DATE         COMMENT 'Date of Birth'
+      * `password`        VARCHAR(255) COMMENT 'Bcrypt hash for customer portal login'
+      * `active`          TINYINT(1)   DEFAULT 1
+      * `verified`        TINYINT(1)   DEFAULT 0 COMMENT 'Email verified flag'
+      * `verify_token`    VARCHAR(100) COMMENT '32-byte hex email verification token'
+      * `verify_sent_at`  DATETIME
+      * `verified_at`     DATETIME
+      * `last_login`      DATETIME
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+Table 9: `sales` (POS Invoices & Sales Master)
+    - Purpose: Sales headers with financial totals, customer link, payment method, branch & doctor info.
+    - Columns:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `invoice_no`      VARCHAR(50)  UNIQUE COMMENT 'Formally formatted DRX-YYYY-00001 or INV-YYYY-00001'
+      * `customer_id`     INT          COMMENT 'NULL for retail Walk-in'
+      * `sale_date`       DATE         NOT NULL
+      * `total_amount`    DECIMAL(12,2) NOT NULL COMMENT 'Gross / Taxable subtotal'
+      * `gst_amount`      DECIMAL(12,2) NOT NULL COMMENT 'Aggregated GST collected'
+      * `discount_amount` DECIMAL(12,2) DEFAULT 0.00
+      * `discount_id`     INT          COMMENT 'Reference to discounts table if applied'
+      * `grand_total`     DECIMAL(12,2) NOT NULL COMMENT 'Net bill amount paid'
+      * `payment_method`  VARCHAR(50)  NOT NULL DEFAULT 'cash' COMMENT 'cash, upi, card, cheque, credit'
+      * `upi_ref`         VARCHAR(100) COMMENT 'UPI transaction reference or UTR'
+      * `cheque_no`       VARCHAR(100)
+      * `cheque_bank`     VARCHAR(100)
+      * `cheque_date`     DATE
+      * `doctor_name`     VARCHAR(255) COMMENT 'Prescribing doctor for Schedule H/H1 drugs'
+      * `doctor_reg_no`   VARCHAR(100) COMMENT 'Medical council registration number'
+      * `created_by`      INT          COMMENT 'User ID of cashier/pharmacist'
+      * `branch_id`       INT          COMMENT 'Store branch where invoice was billed'
+      * `created_at`      DATETIME     NOT NULL
+
+Table 10: `sales_items` (Invoice Line Items)
+     - Purpose: Individual drugs billed in a sale, linked to specific batches and prices.
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `sale_id`         INT NOT NULL
+       * `medicine_id`     INT NOT NULL
+       * `batch_id`        INT NOT NULL
+       * `quantity`        INT NOT NULL
+       * `mrp`             DECIMAL(10,2) NOT NULL COMMENT 'Unit MRP incl. GST'
+       * `taxable_base`    DECIMAL(10,2) NOT NULL COMMENT 'Base price excl. GST (mrp / (1 + gst%/100))'
+       * `gst_percent`     DECIMAL(5,2)  NOT NULL COMMENT 'GST % applied'
+       * `gst_amount`      DECIMAL(10,2) NOT NULL COMMENT 'GST component per item'
+       * `price`           DECIMAL(12,2) NOT NULL COMMENT 'Final line total (mrp * qty)'
+
+Table 11: `purchase_orders` (Vendor Purchase Orders)
+     - Purpose: Purchase order tracking through its entire lifecycle per store branch.
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `po_number`       VARCHAR(50)  UNIQUE COMMENT 'PO-00001 format'
+       * `supplier_id`     INT NOT NULL
+       * `branch_id`       INT          COMMENT 'Store branch ordering/receiving stock'
+       * `po_date`         DATE NOT NULL
+       * `status`          VARCHAR(50)  DEFAULT 'pending' COMMENT 'pending, price_updated, confirmed, shipped, received, cancelled'
+       * `total`           DECIMAL(12,2) NOT NULL DEFAULT 0.00
+       * `notes`           TEXT
+       * `shipped_at`      DATETIME
+       * `received_at`     DATETIME
+       * `confirmed_at`    DATETIME
+       * `updated_at`      DATETIME
+       * `created_at`      DATETIME
+
+Table 12: `po_items` (Purchase Order Line Items)
+     - Purpose: Medicines and quantities ordered from distributor, tracking partial delivery.
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `po_id`           INT NOT NULL
+       * `medicine_id`     INT NOT NULL
+       * `quantity`        INT NOT NULL COMMENT 'Quantity ordered'
+       * `price`           DECIMAL(10,2) NOT NULL COMMENT 'Purchase unit price'
+       * `mrp`             DECIMAL(10,2) NOT NULL COMMENT 'Expected selling MRP'
+       * `received_qty`    INT DEFAULT 0 COMMENT 'Quantity received so far'
+       * `updated_at`      DATETIME
+
+Table 13: `returns` (Sales Returns & Refund Requests)
+     - Purpose: Customer sales returns initiated by cashier or requested online.
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `return_number`   VARCHAR(50)  UNIQUE COMMENT 'RET-0001 or RET-00001 format'
+       * `sale_id`         INT NOT NULL
+       * `customer_id`     INT
+       * `branch_id`       INT          COMMENT 'Store branch processing the return'
+       * `reason`          TEXT NOT NULL
+       * `refund_amount`   DECIMAL(12,2) NOT NULL
+       * `status`          VARCHAR(50)  DEFAULT 'pending' COMMENT 'pending, processed, rejected'
+       * `stock_adjusted`  TINYINT(1)   DEFAULT 0 COMMENT '1 if items restocked'
+       * `requested_by`    VARCHAR(50)  DEFAULT 'staff' COMMENT 'staff or customer'
+       * `created_by`      INT          COMMENT 'Staff user ID'
+       * `processed_at`    DATETIME
+       * `updated_at`      DATETIME
+       * `created_at`      DATETIME
+
+Table 14: `return_items` (Return Line Items)
+     - Purpose: Individual batch items being returned with restock decisions.
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `return_id`       INT NOT NULL
+       * `sale_item_id`    INT NOT NULL COMMENT 'Foreign key to sales_items(id)'
+       * `medicine_id`     INT COMMENT 'Denormalized from sales_items for direct lookup'
+       * `batch_id`        INT COMMENT 'Denormalized from sales_items for direct lookup'
+       * `quantity`        INT NOT NULL
+       * `price`           DECIMAL(12,2) NOT NULL COMMENT 'Refund amount per item'
+       * `restock_action`  VARCHAR(20) DEFAULT 'restock' COMMENT 'restock, damaged_write_off'
+
+Table 15: `discounts` (Discount Schemes & Promotions)
+     - Purpose: Pre-configured master discounts (e.g. Senior Citizen, festive schemes).
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `name`            VARCHAR(255) NOT NULL
+       * `type`            VARCHAR(20)  NOT NULL DEFAULT 'percent' COMMENT 'percent or flat'
+       * `value`           DECIMAL(10,2) NOT NULL
+       * `min_amount`      DECIMAL(10,2) DEFAULT 0.00 COMMENT 'Minimum cart total required'
+       * `active`          TINYINT(1)   DEFAULT 1
+       * `updated_at`      DATETIME
+       * `created_at`      DATETIME
+
+Table 16: `stock_adjustments` (Immutable Inventory Audit Log)
+     - Purpose: Permanent trace of every stock change (Sale, GRN, Adjustment, Return, Disposal, Transfer).
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `batch_id`        INT NOT NULL
+       * `medicine_id`     INT NOT NULL
+       * `branch_id`       INT          COMMENT 'Store branch where stock adjustment occurred'
+       * `type`            VARCHAR(20)  NOT NULL COMMENT 'add, remove, sale, return, transfer'
+       * `quantity`        INT NOT NULL
+       * `reason`          VARCHAR(255) NOT NULL COMMENT 'Sale: INV-X, Damaged, Disposal, GRN: PO-X'
+       * `old_qty`         INT NOT NULL COMMENT 'Medicine total quantity before'
+       * `new_qty`         INT NOT NULL COMMENT 'Medicine total quantity after'
+       * `user_id`         INT          COMMENT 'User who initiated action'
+       * `created_at`      DATETIME     NOT NULL
+
+Table 17: `login_attempts` (Security & Brute Force Rate Limiting)
+     - Purpose: Tracks failed logins per IP to trigger 15-minute lockout after 5 attempts.
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `ip`              VARCHAR(45)  NOT NULL COMMENT 'IPv4 or IPv6 address'
+       * `context`         VARCHAR(50)  NOT NULL COMMENT 'admin, supplier, customer'
+       * `ts`              DATETIME     NOT NULL
+
+Table 18: `customer_purchase_log` (Patient Purchase History Summary)
+     - Purpose: Aggregated patient purchase ledger for CRM, refill reminders, and loyalty.
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `customer_id`     INT NOT NULL
+       * `sale_id`         INT NOT NULL
+       * `amount`          DECIMAL(12,2) NOT NULL
+       * `date`            DATE NOT NULL
+
+Table 19: `supplier_messages` (Distributor Portal Messaging Inbox)
+     - Purpose: Message thread between pharmacy administration and suppliers.
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `supplier_id`     INT NOT NULL
+       * `supplier_name`   VARCHAR(255)
+       * `sender_email`    VARCHAR(255)
+       * `subject`         VARCHAR(255) NOT NULL
+       * `message`         TEXT NOT NULL
+       * `direction`       VARCHAR(10)  DEFAULT 'in' COMMENT 'in (from supplier), out (from admin)'
+       * `reply`           TEXT
+       * `replied_at`      DATETIME
+       * `status`          VARCHAR(20)  DEFAULT 'unread' COMMENT 'unread, read, replied'
+       * `created_at`      DATETIME     NOT NULL
+
+Table 20: `patient_messages` (Customer Inquiries & Prescription Uploads)
+     - Purpose: Direct patient communications with secure prescription file attachments.
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `customer_id`     INT NOT NULL
+       * `direction`       VARCHAR(10)  DEFAULT 'in' COMMENT 'in (from patient), out (from admin)'
+       * `message`         TEXT
+       * `file_path`       VARCHAR(500) COMMENT 'Relative path inside secure storage'
+       * `file_name`       VARCHAR(255) COMMENT 'Original uploaded file name'
+       * `file_type`       VARCHAR(50)  COMMENT 'MIME type: pdf, jpg, png'
+       * `is_read`         TINYINT(1)   DEFAULT 0
+       * `created_by`      INT          COMMENT 'Admin user ID if direction=out'
+       * `created_at`      DATETIME     NOT NULL
+
+Table 21: `audit_logs` (System-wide Tamper-Proof Audit Trail)
+     - Purpose: Immutable audit log for price updates, security changes, batch edits, and master operations, strictly isolated per store tenant (`store_id`).
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `store_id`        INT          COMMENT 'Foreign key to settings(id) for Multi-Tenant Store Isolation'
+       * `user_id`         INT          COMMENT 'Staff or Admin user ID'
+       * `branch_id`       INT          COMMENT 'Store branch context of action'
+       * `action`          VARCHAR(100) NOT NULL COMMENT 'Action code (e.g. PRICE_CHANGE, BATCH_EDIT, LOGIN)'
+       * `entity`          VARCHAR(100) NOT NULL COMMENT 'Affected table or module (e.g. medicine, batch, user)'
+       * `entity_id`       INT          COMMENT 'ID of modified record'
+       * `details`         TEXT         COMMENT 'JSON or detailed description of old vs new values'
+       * `ip_address`      VARCHAR(45)  COMMENT 'Originating IP address'
+       * `created_at`      DATETIME     NOT NULL
+
+Table 22: `branches` (Multi-Outlet Stores & Pharmacy Branches)
+     - Purpose: Manage multiple pharmacy outlets/branches per store tenant (`store_id`) from a single installation without repeating setup wizard.
+     - Columns:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `store_id`        INT          COMMENT 'Foreign key to settings(id) for Multi-Tenant Store Isolation'
+       * `code`            VARCHAR(20)  NOT NULL COMMENT 'Branch identifier e.g. MAIN, BR-02 (Unique per store_id via uk_store_branch_code)'
+       * `name`            VARCHAR(255) NOT NULL COMMENT 'Store / Branch display name'
+       * `tagline`         VARCHAR(255) COMMENT 'Branch subtitle or counter type (e.g. 24x7 OPD)'
+       * `address`         TEXT         COMMENT 'Physical branch address printed on branch invoices'
+       * `phone`           VARCHAR(50)
+       * `email`           VARCHAR(255)
+       * `gst_no`          VARCHAR(50)  COMMENT 'Branch-specific or inherited GSTIN'
+       * `dl_no`           VARCHAR(50)  COMMENT 'Branch-specific Drug License (DL 20B/21B)'
+       * `is_main`         TINYINT(1)   DEFAULT 0 COMMENT '1 for primary store (cannot be deleted/deactivated)'
+       * `active`          TINYINT(1)   DEFAULT 1 COMMENT 'Active for POS counter billing & inventory'
+       * `updated_at`      DATETIME
+       * `created_at`      DATETIME
+
+Referential Integrity Constraints Matrix:
+     - `branches`:
+       * `fk_branch_store`: `store_id` -> `settings(id)` ON DELETE CASCADE ON UPDATE CASCADE
+       * `uk_store_branch_code`: UNIQUE (`store_id`, `code`)
+     - `users`:
+       * `fk_user_store`: `store_id` -> `settings(id)` ON DELETE CASCADE ON UPDATE CASCADE
+       * `fk_user_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `batches`:
+       * `fk_batch_medicine`: `medicine_id` -> `medicines(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_batch_supplier`: `supplier_id` -> `suppliers(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `fk_batch_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `uk_medicine_batch_branch`: UNIQUE (`medicine_id`, `batch_no`, `branch_id`)
+     - `sales`:
+       * `fk_sale_customer`: `customer_id` -> `customers(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `fk_sale_discount`: `discount_id` -> `discounts(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `fk_sale_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `sales_items`:
+       * `fk_saleitem_sale`: `sale_id` -> `sales(id)` ON DELETE CASCADE ON UPDATE CASCADE
+       * `fk_saleitem_medicine`: `medicine_id` -> `medicines(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_saleitem_batch`: `batch_id` -> `batches(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+     - `purchase_orders`:
+       * `fk_po_supplier`: `supplier_id` -> `suppliers(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_po_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `po_items`:
+       * `fk_poitem_po`: `po_id` -> `purchase_orders(id)` ON DELETE CASCADE ON UPDATE CASCADE
+       * `fk_poitem_medicine`: `medicine_id` -> `medicines(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+     - `returns`:
+       * `fk_return_sale`: `sale_id` -> `sales(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_return_customer`: `customer_id` -> `customers(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `fk_return_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `return_items`:
+       * `fk_returnitem_return`: `return_id` -> `returns(id)` ON DELETE CASCADE ON UPDATE CASCADE
+       * `fk_returnitem_saleitem`: `sale_item_id` -> `sales_items(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+     - `stock_adjustments`:
+       * `fk_adj_batch`: `batch_id` -> `batches(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_adj_medicine`: `medicine_id` -> `medicines(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_adj_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `audit_logs`:
+       * `fk_audit_user`: `user_id` -> `users(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `fk_audit_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `supplier_users`:
+       * `fk_supuser_supplier`: `supplier_id` -> `suppliers(id)` ON DELETE CASCADE ON UPDATE CASCADE
+     - `customer_purchase_log`:
+       * `fk_purchaselog_customer`: `customer_id` -> `customers(id)` ON DELETE CASCADE ON UPDATE CASCADE
+       * `fk_purchaselog_sale`: `sale_id` -> `sales(id)` ON DELETE CASCADE ON UPDATE CASCADE
+     - `patient_messages`:
+       * `fk_msg_customer`: `customer_id` -> `customers(id)` ON DELETE CASCADE ON UPDATE CASCADE
+     - `supplier_messages`:
+       * `fk_supmsg_supplier`: `supplier_id` -> `suppliers(id)` ON DELETE CASCADE ON UPDATE CASCADE
+
+--------------------------------------------------------------------------------
+3. PERFORMANCE INDEXING SPECIFICATION (ALL 16 INDEXED TABLES & COMPOSITE KEYS)
+--------------------------------------------------------------------------------
+Directly mapped from DRxStore v2.0.0 (helpers/MySQLDB.php indexDefinitions) and optimized
+for sub-100ms response times across 100,000+ transaction rows:
+
+3.1 Full Indexing Registry (39 Indexes across 16 Tables):
+    - `sales`:
+      * `idx_sale_date` -> (sale_date)
+      * `idx_customer_id` -> (customer_id)
+      * `idx_created_at` -> (created_at)
+      * `idx_invoice_no` -> (invoice_no) [Unique]
+    - `sales_items`:
+      * `idx_sale_id` -> (sale_id)
+      * `idx_medicine_id` -> (medicine_id)
+      * `idx_batch_id` -> (batch_id)
+    - `batches`:
+      * `idx_medicine_id` -> (medicine_id)
+      * `idx_expiry_date` -> (expiry_date)
+      * `idx_quantity` -> (quantity)
+      * `idx_med_qty_exp` -> (medicine_id, quantity, expiry_date) [Composite FEFO Index]
+    - `medicines`:
+      * `idx_name` -> (name)
+      * `idx_category` -> (category)
+      * `idx_generic_name` -> (generic_name)
+      * `idx_hsn` -> (hsn_code)
+    - `purchase_orders`:
+      * `idx_supplier_id` -> (supplier_id)
+      * `idx_po_date` -> (po_date)
+      * `idx_status` -> (status)
+    - `po_items`:
+      * `idx_po_id` -> (po_id)
+      * `idx_medicine_id_po` -> (medicine_id)
+    - `returns`:
+      * `idx_sale_id` -> (sale_id)
+      * `idx_customer_id` -> (customer_id)
+      * `idx_status` -> (status)
+      * `idx_created_at` -> (created_at)
+    - `return_items`:
+      * `idx_return_id` -> (return_id)
+      * `idx_sale_item_id` -> (sale_item_id)
+    - `customers`:
+      * `idx_email` -> (email)
+      * `idx_phone` -> (phone)
+      * `idx_verified` -> (verified)
+      * `idx_verify_token` -> (verify_token)
+    - `users`:
+      * `idx_email` -> (email)
+      * `idx_role` -> (role)
+    - `supplier_users`:
+      * `idx_supplier_id` -> (supplier_id)
+    - `stock_adjustments`:
+      * `idx_batch_id` -> (batch_id)
+      * `idx_medicine_id` -> (medicine_id)
+      * `idx_created_at` -> (created_at)
+    - `login_attempts`:
+      * `idx_ip_context` -> (ip, context) [Composite Rate-Limit Window]
+      * `idx_ts` -> (ts)
+    - `customer_purchase_log`:
+      * `idx_customer_id` -> (customer_id)
+      * `idx_sale_id` -> (sale_id)
+    - `patient_messages`:
+      * `idx_customer_id` -> (customer_id)
+      * `idx_is_read` -> (is_read)
+    - `supplier_messages`:
+      * `idx_supplier_id` -> (supplier_id)
+      * `idx_status` -> (status)
+
+--------------------------------------------------------------------------------
+4. SEED DATA SPECIFICATION & SELF-HEALING ENGINE
+--------------------------------------------------------------------------------
+
+4.1 Default Dosage Forms (Categories Table):
+    - 20 seeded standard categories (type = 'dosage'):
+      1. Tablet
+      2. Capsule
+      3. Syrup
+      4. Suspension
+      5. Injection
+      6. Infusion
+      7. Suppository
+      8. Powder
+      9. Granules
+      10. Cream
+      11. Ointment
+      12. Gel
+      13. Lotion
+      14. Drop
+      15. Inhaler
+      16. Patch
+      17. Spray
+      18. Emulsion
+      19. Solution
+      20. Other (Dynamic custom category fallback)
+
+4.2 Default Settings (Settings Table):
+    - `store_name`: 'DRxStore Pharmacy'
+    - `currency`: '&#8377;' (Indian Rupee symbol ₹)
+    - `low_qty`: 10 (Alert threshold for low stock)
+    - `expiry_days`: 90 (Near-expiry warning window)
+    - `gst_fallback`: 18.00% (store default), 12.00% (default per new medicine)
+    - `storage`: 'mysql'
+
+4.3 Schema Self-Healing & Corrupted Currency Migration (from MySQLDB.php):
+    - Auto-Column Addition: `SHOW COLUMNS FROM {tbl}` checks all defined fields; if a column
+      is missing on system boot, `ALTER TABLE {tbl} ADD COLUMN {col} {def}` executes silently.
+    - Corrupted Currency Healing: If database character encoding corrupted the currency symbol
+      to '?', '??', or non-HTML strings, automatically executes:
+      `UPDATE settings SET currency = '&#8377;' WHERE currency NOT LIKE '%&%'`
+
+4.4 Default System Accounts (Users Table):
+    - Role `admin`: Full system control (first user created in Setup Wizard).
+    - Role `staff` / `cashier`: Restricted to POS billing, catalog lookup, and customer entry.
+
+--------------------------------------------------------------------------------
+5. DATABASE SCHEMA & PERFORMANCE TODOS
+--------------------------------------------------------------------------------
+5.1.1 [STATUS: COMPLETED] Execute Initial DDL Migration (22 Tables with PostgreSQL & UTF8)
+      [DEV IMPLEMENTATION NOTES]:
+      - Created all 22 normalized relational tables in `prisma/schema.prisma` (including `branches` table for multi-outlet support) and pushed to Neon PostgreSQL (`neondb`).
+      - Configured strict `DECIMAL(12,2)`, `DECIMAL(10,2)`, and `DECIMAL(5,2)` financial columns across `batches`, `sales`, `sales_items`, `purchase_orders`, `po_items`, `returns`, and `return_items`.
+5.1.2 [STATUS: COMPLETED] Apply Performance Indexes (49 index definitions across 18 tables)
+      [DEV IMPLEMENTATION NOTES]:
+      - Applied 49 high-performance single and composite indexes across 18 tables, including `branch_id` indexes on `users`, `batches`, `purchase_orders`, `sales`, `returns`, `stock_adjustments`, and `audit_logs`, plus composite unique constraint `uk_medicine_batch_branch` on `[medicine_id, batch_no, branch_id]`.
+5.1.3 [STATUS: COMPLETED] Configure Foreign Key Constraints with Cascade and Restrict Rules
+      [DEV IMPLEMENTATION NOTES]:
+      - Configured strict `onDelete: Restrict` on `medicines` -> `batches`/`saleItems`/`poItems` and `batches` -> `saleItems`/`stockAdjustments` to prevent deleting master catalog records that have historical stock or sales.
+      - Configured `onDelete: SetNull` on `branch_id` relations across `users`, `batches`, `purchase_orders`, `sales`, `returns`, `stock_adjustments`, and `audit_logs`.
+5.1.4 [STATUS: COMPLETED] Seed Master Dosage Forms (20 standard categories) and GST Defaults
+      [DEV IMPLEMENTATION NOTES]:
+      - Implemented idempotent seeding of all 20 standard dosage forms (`Tablet` through `Other`) in `src/lib/config.ts` and `/api/setup/route.ts` within an ACID transaction, alongside automatic `MAIN` branch creation.
+5.1.5 [STATUS: PENDING] Build Schema Self-Healing Mechanism (Auto-check & ADD COLUMN if missing)
+5.1.6 [STATUS: COMPLETED] Implement Atomic Checkout Transaction wrapper (rollback on batch failure)
+      [DEV IMPLEMENTATION NOTES]:
+      - Built `runInTransaction()` wrapper in `src/lib/db-transaction.ts` with `ReadCommitted` isolation, 5s maxWait, 15s timeout, and automatic full rollback on any nested exception.
+5.1.7 [STATUS: PENDING] Implement SQL Dump Backup generator and SQL Restore executor
+5.1.8 [STATUS: PENDING] Build JSON-to-MySQL Migration ETL script for legacy data conversion
+5.1.9 [STATUS: PENDING] Optimize Aggregation Queries for 12-month reports and P&L statements
+
+================================================================================
+================================================================================
+                           পার্ট ২: বাংলা সংস্করণ (PART 2: BENGALI VERSION)
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+১. ডেটাবেস আর্কিটেকচারাল ভিত্তি ও ডিজাইন নীতিমালা (DATABASE ARCHITECTURAL FOUNDATION & DESIGN PRINCIPLES)
+--------------------------------------------------------------------------------
+মেডিকেল POS এবং ফার্মেসি ম্যানেজমেন্ট সিস্টেমের ডেটাবেস স্তরটি অতি-দ্রুত রিটেইল চেকআউট,
+ক্লিনিক্যাল রেগুলেটরি কমপ্লায়েন্স (Schedule H/H1 ড্রাগ অডিট, GST ট্যাক্সেশন) এবং উচ্চ-কনকারেন্সি
+মাল্টি-ইউজার অপারেশনের জন্য বিশেষভাবে ডিজাইন করা হয়েছে।
+
+১.১ মূল ইঞ্জিনিয়ারিং নীতিমালা:
+    - ACID কমপ্লায়েন্স (ACID Compliance): সকল সেলস চেকআউট, পারচেজ অর্ডার রিসিভিং এবং
+      রিটার্ন প্রসেসিং অবশ্যই অ্যাটমিক ডেটাবেস ট্রানজ্যাকশনের (`START TRANSACTION` ... `COMMIT`)
+      মধ্যে সম্পাদিত হবে। কোনো পর্যায়ে ব্যর্থতা ঘটলে ইনভেন্টরি স্টক ও পেমেন্ট রেকর্ড সম্পূর্ণ রোলব্যাক হবে।
+    - কঠোর আর্থিক নির্ভুলতা (Strict Financial Precision): সমস্ত মুদ্রাগত মান, ট্যাক্সেবল বেস
+      এবং ট্যাক্স পরিমাণের জন্য `DECIMAL(12,2)` বা `DECIMAL(10,2)` ব্যবহৃত হবে। জিএসটি
+      শতকরা হারের জন্য `DECIMAL(5,2)`। আর্থিক বা কারেন্সি ফিল্ডে ফ্লোটিং পয়েন্ট ডেটা টাইপ
+      (`FLOAT`, `DOUBLE`) ব্যবহার সম্পূর্ণ নিষিদ্ধ।
+    - ফরেন কি ইন্টিগ্রিটি (Foreign Key Integrity): ওষুধ, ব্যাচ, সেলস এবং লাইন আইটেমের মধ্যে
+      রেফারেন্সিয়াল ইন্টিগ্রিটি নিয়ম প্রয়োগ করা হবে। সক্রিয় ব্যাচ বর্তমান থাকলে মূল ওষুধ
+      মুছে ফেলা (Delete) প্রতিহত করা হবে (Restrict Rule)।
+    - অডিট ট্রেইল সংরক্ষণ (Audit Trail Preservation): স্টক সমন্বয়, মূল্য পরিবর্তন এবং
+      পণ্য ফেরতের জন্য অপরিবর্তনযোগ্য অ্যাপেন্ড-অনলি অডিট রেকর্ড বজায় রাখা হবে (`stock_adjustments`,
+      `customer_purchase_log`)।
+    - ক্যারেক্টার সেট ও কোলেশন (Character Set & Collation): আন্তর্জাতিক ওষুধের রাসায়নিক
+      কম্পোজিশন, সরবরাহকারীর ঠিকানা এবং মুদ্রা প্রতীক (`₹`) ত্রুটিহীনভাবে সংরক্ষণের জন্য
+      `utf8mb4` ও `utf8mb4_unicode_ci` প্রমিত করা হয়েছে।
+    - ডুয়াল স্টোরেজ ও মাইগ্রেশন পাইপলাইন (Dual Storage & Migration Pipeline): স্বয়ংক্রিয়
+      স্কিমা সেলফ-হিলিং সহ সরাসরি রিলেশনাল এসকিউএল স্টোরেজ (MySQL / PostgreSQL / SQLite)
+      এবং অফলাইন ব্যাকআপ ও হিস্টোরিক্যাল ডেটা কনভার্শনের জন্য JSON ইমপোর্ট/এক্সপোর্ট পাইপলাইন সমর্থিত।
+
+--------------------------------------------------------------------------------
+২. সম্পূর্ণ রিলেশনাল স্কিমা ডেফিনিশন (২১টি টেবিল) (COMPLETE RELATIONAL SCHEMA DEFINITION)
+--------------------------------------------------------------------------------
+
+টেবিল ১: `settings` (সিস্টেম কনফিগারেশন ও স্টোর মেটাডেটা)
+    - উদ্দেশ্য: ফার্মেসির প্রোফাইল, লাইসেন্সিং, কর সেটিংস এবং ইমেইল সার্ভার ক্রেডেনশিয়াল সংরক্ষণ।
+    - কলামসমূহ:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `store_name`      VARCHAR(255) NOT NULL DEFAULT 'Medical POS Pharmacy'
+      * `store_address`   TEXT
+      * `store_phone`     VARCHAR(50)
+      * `store_email`     VARCHAR(255)
+      * `store_gst`       VARCHAR(50)  COMMENT 'ফার্মেসির GSTIN / ট্যাক্স নম্বর'
+      * `store_dl`        VARCHAR(50)  COMMENT 'ফার্মেসির ড্রাগ লাইসেন্স নম্বর (DL No)'
+      * `currency`        VARCHAR(20)  DEFAULT '&#8377;' COMMENT 'HTML এনটিটি বা প্রতীক'
+      * `low_qty`         INT          DEFAULT 10 COMMENT 'লো-স্টক সতর্কবার্তা থ্রেশহোল্ড'
+      * `expiry_days`     INT          DEFAULT 90 COMMENT 'মেয়াদোত্তীর্ণ সতর্কবার্তা সময়সীমা (দিন)'
+      * `smtp_host`       VARCHAR(255)
+      * `smtp_port`       INT          DEFAULT 587
+      * `smtp_user`       VARCHAR(255)
+      * `smtp_pass`       VARCHAR(255)
+      * `smtp_from`       VARCHAR(255)
+      * `smtp_name`       VARCHAR(255)
+      * `smtp_secure`     VARCHAR(10)  DEFAULT 'tls'
+      * `setup_done`      TINYINT(1)   DEFAULT 0 COMMENT '১ যদি প্রাথমিক সেটআপ উইজার্ড সম্পন্ন হয়'
+      * `storage`         VARCHAR(20)  DEFAULT 'mysql' COMMENT 'স্টোরেজ ইঞ্জিন ফ্ল্যাগ: mysql অথবা json'
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+টেবিল ২: `users` (স্টাফ, ফার্মাসিস্ট ও অ্যাডমিন প্রমাণীকরণ)
+    - উদ্দেশ্য: অ্যাডমিন, ফার্মাসিস্ট এবং ক্যাশিয়ার অ্যাকাউন্ট ও আরবিএসি (RBAC) পারমিশন।
+    - কলামসমূহ:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `name`            VARCHAR(255) NOT NULL
+      * `username`        VARCHAR(100) NOT NULL UNIQUE
+      * `email`           VARCHAR(255) NOT NULL UNIQUE
+      * `password`        VARCHAR(255) NOT NULL COMMENT 'Bcrypt বা Argon2 পাসওয়ার্ড হ্যাশ'
+      * `role`            VARCHAR(50)  DEFAULT 'staff' COMMENT 'admin, staff, cashier'
+      * `permissions`     TEXT         COMMENT 'JSON বা কমা-সেপারেটেড অনুমোদিত মডিউল'
+      * `active`          TINYINT(1)   DEFAULT 1
+      * `last_login`      DATETIME
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+টেবিল ৩: `medicines` (মাস্টার ড্রাগ ক্যাটালগ)
+    - উদ্দেশ্য: ব্র্যান্ডের নাম, জেনেরিক নাম, ডোজ ক্যাটাগরি এবং স্টোর র‍্যাক লোকেশনের কেন্দ্রীয় ক্যাটালগ।
+    - কলামসমূহ:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `name`            VARCHAR(255) NOT NULL COMMENT 'ওষুধের ব্র্যান্ড / ট্রেড নাম'
+      * `generic_name`    VARCHAR(255) COMMENT 'সক্রিয় উপাদানের জেনেরিক নাম (API)'
+      * `company`         VARCHAR(255) NOT NULL COMMENT 'ফার্মা প্রস্তুতকারক কোম্পানি'
+      * `category`        VARCHAR(100) NOT NULL COMMENT 'ডোজের ধরন (Tablet, Syrup, Injection ইত্যাদি)'
+      * `custom_category` VARCHAR(100) COMMENT 'ব্যবহারকারী কাস্টম ক্যাটাগরি দিলে সংরক্ষিত নাম'
+      * `hsn_code`        VARCHAR(50)  COMMENT 'হারমোনাইজড সিস্টেম অফ নোমেনক্লেচার কোড'
+      * `gst_percent`     DECIMAL(5,2) DEFAULT 12.00 COMMENT 'ওষুধের প্রযোজ্য ডিফল্ট জিএসটি হার'
+      * `description`     TEXT
+      * `rack_location`   VARCHAR(100) COMMENT 'ফার্মেসির ভৌত শেলফ বা র‍্যাকের অবস্থান'
+      * `schedule_type`   VARCHAR(20)  DEFAULT 'normal' COMMENT 'normal, schedule_h, schedule_h1'
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+টেবিল ৪: `categories` (ডোজ ফর্ম ও ক্যাটাগরি)
+    - উদ্দেশ্য: প্রমিত ওষুধের ফর্মসমূহ (Tablet, Syrup, Injection) এবং ব্যবহারকারীর তৈরি কাস্টম ফর্ম।
+    - কলামসমূহ:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `name`            VARCHAR(100) NOT NULL UNIQUE
+      * `type`            VARCHAR(50)  DEFAULT 'dosage' COMMENT 'dosage (সিস্টেম সিডেড) অথবা custom'
+
+টেবিল ৫: `batches` (মাল্টি-ব্যাচ ইনভেন্টরি ও স্টক লেজার)
+    - উদ্দেশ্য: প্রতিটি ওষুধের স্বতন্ত্র ব্যাচ নম্বর, উৎপাদন ও মেয়াদের তারিখ, এমআরপি এবং স্টক সংখ্যা।
+    - কলামসমূহ:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `medicine_id`     INT NOT NULL
+      * `batch_no`        VARCHAR(100) NOT NULL
+      * `mfg_date`        DATE
+      * `expiry_date`     DATE NOT NULL
+      * `quantity`        INT NOT NULL DEFAULT 0 COMMENT 'বর্তমান উপলব্ধ স্টক সংখ্যা'
+      * `purchase_price`  DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'জিএসটি সহ ক্রয়মূল্য'
+      * `mrp`             DECIMAL(10,2) NOT NULL COMMENT 'জিএসটি সহ সর্বোচ্চ খুচরা বিক্রয়মূল্য (MRP)'
+      * `supplier_id`     INT
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+টেবিল ৬: `suppliers` (ভেন্ডর ও ডিস্ট্রিবিউটর ডিরেক্টরি)
+    - উদ্দেশ্য: ফার্মা ডিস্ট্রিবিউটর, ড্রাগ লাইসেন্স, জিএসটিআইএন এবং যোগাযোগ তথ্য।
+    - কলামসমূহ:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `name`            VARCHAR(255) NOT NULL
+      * `contact`         VARCHAR(255) COMMENT 'যোগাযোগকারী ব্যক্তির নাম'
+      * `phone`           VARCHAR(50)  NOT NULL
+      * `email`           VARCHAR(255)
+      * `address`         TEXT
+      * `gst_no`          VARCHAR(50)  COMMENT 'সরবরাহকারীর GSTIN'
+      * `dl_no`           VARCHAR(50)  COMMENT 'সরবরাহকারীর ড্রাগ লাইসেন্স নম্বর'
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+টেবিল ৭: `supplier_users` (সরবরাহকারী এক্সট্রানেট পোর্টাল ক্রেডেনশিয়াল)
+    - উদ্দেশ্য: ডিস্ট্রিবিউটরদের জন্য ক্রয়াদেশ দেখা ও মূল্য হালনাগাদ করার লগইন পোর্টাল অ্যাকাউন্ট।
+    - কলামসমূহ:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `supplier_id`     INT NOT NULL
+      * `name`            VARCHAR(255)
+      * `username`        VARCHAR(100) NOT NULL UNIQUE
+      * `email`           VARCHAR(255)
+      * `phone`           VARCHAR(50)
+      * `password`        VARCHAR(255) NOT NULL COMMENT 'Bcrypt পাসওয়ার্ড হ্যাশ'
+      * `active`          TINYINT(1)   DEFAULT 1
+      * `verified`        TINYINT(1)   DEFAULT 0
+      * `last_login`      DATETIME
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+টেবিল ৮: `customers` (রোগী ও কাস্টমার রেজিস্ট্রি)
+    - উদ্দেশ্য: রোগী ও গ্রাহক তালিকা, নিয়মিত প্রেসক্রিপশন রিফিল এবং কাস্টমার পোর্টাল অ্যাকাউন্ট।
+    - কলামসমূহ:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `name`            VARCHAR(255) NOT NULL
+      * `phone`           VARCHAR(50)  NOT NULL
+      * `email`           VARCHAR(255)
+      * `address`         TEXT
+      * `dob`             DATE         COMMENT 'জন্ম তারিখ (Date of Birth)'
+      * `password`        VARCHAR(255) COMMENT 'কাস্টমার পোর্টাল লগইনের Bcrypt হ্যাশ'
+      * `active`          TINYINT(1)   DEFAULT 1
+      * `verified`        TINYINT(1)   DEFAULT 0 COMMENT 'ইমেইল ভেরিফাইড ফ্ল্যাগ'
+      * `verify_token`    VARCHAR(100) COMMENT '৩২-বাইট হেক্স ভেরিফিকেশন টোকেন'
+      * `verify_sent_at`  DATETIME
+      * `verified_at`     DATETIME
+      * `last_login`      DATETIME
+      * `updated_at`      DATETIME
+      * `created_at`      DATETIME
+
+টেবিল ৯: `sales` (POS ইনভয়েস ও সেলস মাস্টার)
+    - উদ্দেশ্য: বিক্রয়ের মূল বিল হেডার, আর্থিক মোট পরিমাণ, গ্রাহক সংযোগ, পেমেন্ট মাধ্যম ও ডাক্তার তথ্য।
+    - কলামসমূহ:
+      * `id`              INT AUTO_INCREMENT PRIMARY KEY
+      * `invoice_no`      VARCHAR(50)  UNIQUE COMMENT 'আনুষ্ঠানিক ফরম্যাট DRX-YYYY-00001 বা INV-YYYY-00001'
+      * `customer_id`     INT          COMMENT 'খুচরা ওয়াক-ইন ক্রেতাদের জন্য NULL'
+      * `sale_date`       DATE         NOT NULL
+      * `total_amount`    DECIMAL(12,2) NOT NULL COMMENT 'গ্রস / করযোগ্য সাবটোটাল'
+      * `gst_amount`      DECIMAL(12,2) NOT NULL COMMENT 'মোট সংগৃহীত জিএসটি কর'
+      * `discount_amount` DECIMAL(12,2) DEFAULT 0.00
+      * `discount_id`     INT          COMMENT 'প্রযোজ্য ডিসকাউন্ট টেবিলের আইডি'
+      * `grand_total`     DECIMAL(12,2) NOT NULL COMMENT 'গ্রাহকের পরিশোধিত নিট বিল মূল্য'
+      * `payment_method`  VARCHAR(50)  NOT NULL DEFAULT 'cash' COMMENT 'cash, upi, card, cheque, credit'
+      * `upi_ref`         VARCHAR(100) COMMENT 'UPI ট্রানজাকশন রেফারেন্স বা UTR নম্বর'
+      * `cheque_no`       VARCHAR(100)
+      * `cheque_bank`     VARCHAR(100)
+      * `cheque_date`     DATE
+      * `doctor_name`     VARCHAR(255) COMMENT 'প্রেসক্রাইবিং ডাক্তারের নাম'
+      * `doctor_reg_no`   VARCHAR(100) COMMENT 'মেডিকেল কাউন্সিল রেজিস্ট্রেশন নম্বর'
+      * `created_by`      INT          COMMENT 'ক্যাশিয়ার বা ফার্মাসিস্টের ইউজার আইডি'
+      * `created_at`      DATETIME     NOT NULL
+
+টেবিল ১০: `sales_items` (ইনভয়েস লাইন আইটেম)ECIMAL(12,2) NOT NULL COMMENT 'মোট করযোগ্য সাবটোটাল'
+      * `gst_amount`      DECIMAL(12,2) NOT NULL COMMENT 'আদায়কৃত মোট জিএসটি কর'
+      * `discount_amount` DECIMAL(12,2) DEFAULT 0.00
+      * `discount_id`     INT          COMMENT 'ডিসকাউন্ট টেবিলের রেফারেন্স'
+      * `grand_total`     DECIMAL(12,2) NOT NULL COMMENT 'সর্বমোট প্রদেয় অর্থ'
+      * `payment_method`  VARCHAR(50)  NOT NULL DEFAULT 'cash' COMMENT 'cash, upi, card, cheque, credit'
+      * `upi_ref`         VARCHAR(100) COMMENT 'ইউপিআই লেনদেন রেফারেন্স বা UTR'
+      * `cheque_no`       VARCHAR(100)
+      * `cheque_bank`     VARCHAR(100)
+      * `cheque_date`     DATE
+      * `doctor_name`     VARCHAR(255) COMMENT 'প্রেসক্রিপশনকারী ডাক্তারের নাম (Schedule H/H1 এর জন্য)'
+      * `doctor_reg_no`   VARCHAR(100) COMMENT 'ডাক্তারের মেডিকেল কাউন্সিল রেজিস্ট্রেশন নম্বর'
+      * `created_by`      INT          COMMENT 'বিলকারী ক্যাশিয়ার/ফার্মাসিস্টের ইউজার আইডি'
+      * `created_at`      DATETIME     NOT NULL
+
+টেবিল ১০: `sales_items` (ইনভয়েস লাইন আইটেম)
+     - উদ্দেশ্য: একটি বিলে অন্তর্ভুক্ত প্রতিটি নির্দিষ্ট ওষুধ, নির্দিষ্ট ব্যাচ ও বিক্রয়মূল্যের বিবরণ।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `sale_id`         INT NOT NULL
+       * `medicine_id`     INT NOT NULL
+       * `batch_id`        INT NOT NULL
+       * `quantity`        INT NOT NULL
+       * `mrp`             DECIMAL(10,2) NOT NULL COMMENT 'একক প্রতি এমআরপি (জিএসটি সহ)'
+       * `taxable_base`    DECIMAL(10,2) NOT NULL COMMENT 'করহীন মূল মূল্য (mrp / (1 + gst%/100))'
+       * `gst_percent`     DECIMAL(5,2)  NOT NULL COMMENT 'প্রযোজ্য জিএসটি শতকরা হার'
+       * `gst_amount`      DECIMAL(10,2) NOT NULL COMMENT 'আইটেম প্রতি জিএসটি করের পরিমাণ'
+       * `price`           DECIMAL(12,2) NOT NULL COMMENT 'লাইন আইটেমের মোট বিক্রয়মূল্য (mrp * qty)'
+
+টেবিল ১১: `purchase_orders` (ভেন্ডর পারচেজ অর্ডার)
+     - উদ্দেশ্য: ডিস্ট্রিবিউটরদের কাছে দেওয়া ক্রয়াদেশের সামগ্রিক লাইফসাইকেল ট্র্যাকিং।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `po_number`       VARCHAR(50)  UNIQUE COMMENT 'PO-00001 ফরম্যাট'
+       * `supplier_id`     INT NOT NULL
+       * `po_date`         DATE NOT NULL
+       * `status`          VARCHAR(50)  DEFAULT 'pending' COMMENT 'pending, price_updated, confirmed, shipped, received, cancelled'
+       * `total`           DECIMAL(12,2) NOT NULL DEFAULT 0.00
+       * `notes`           TEXT
+       * `shipped_at`      DATETIME
+       * `received_at`     DATETIME
+       * `confirmed_at`    DATETIME
+       * `updated_at`      DATETIME
+       * `created_at`      DATETIME
+
+টেবিল ১২: `po_items` (পারচেজ অর্ডার লাইন আইটেম)
+     - উদ্দেশ্য: সরবরাহকারীকে অর্ডার করা প্রতিটি ওষুধ ও পরিমাণের বিস্তারিত তালিকা ও আংশিক ডেলিভারি ট্র্যাকিং।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `po_id`           INT NOT NULL
+       * `medicine_id`     INT NOT NULL
+       * `quantity`        INT NOT NULL COMMENT 'অর্ডারকৃত মোট সংখ্যা'
+       * `price`           DECIMAL(10,2) NOT NULL COMMENT 'একক প্রতি ক্রয়মূল্য'
+       * `mrp`             DECIMAL(10,2) NOT NULL COMMENT 'প্রত্যাশিত বিক্রয় এমআরপি'
+       * `received_qty`    INT DEFAULT 0 COMMENT 'এ পর্যন্ত প্রাপ্ত স্টকের সংখ্যা'
+       * `updated_at`      DATETIME
+
+টেবিল ১৩: `returns` (সেলস রিটার্ন ও রিফান্ড রিকোয়েস্ট)
+     - উদ্দেশ্য: গ্রাহকদের বিক্রয় ফেরত এবং রিফান্ড আবেদনের মাস্টার রেকর্ড।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `return_number`   VARCHAR(50)  UNIQUE COMMENT 'RET-0001 বা RET-00001 ফরম্যাট'
+       * `sale_id`         INT NOT NULL
+       * `customer_id`     INT
+       * `reason`          TEXT NOT NULL
+       * `refund_amount`   DECIMAL(12,2) NOT NULL
+       * `status`          VARCHAR(50)  DEFAULT 'pending' COMMENT 'pending, processed, rejected'
+       * `stock_adjusted`  TINYINT(1)   DEFAULT 0 COMMENT '১ যদি মালামাল পুনরায় স্টকে যুক্ত হয়'
+       * `requested_by`    VARCHAR(50)  DEFAULT 'staff' COMMENT 'staff অথবা customer'
+       * `created_by`      INT          COMMENT 'কর্মচারী ইউজার আইডি'
+       * `processed_at`    DATETIME
+       * `updated_at`      DATETIME
+       * `created_at`      DATETIME
+
+টেবিল ১৪: `return_items` (রিটার্ন লাইন আইটেম)
+     - উদ্দেশ্য: ফেরত আসা প্রতিটি ব্যাচ আইটেমের বিবরণ এবং রিস্টকিং সংক্রান্ত সিদ্ধান্ত।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `return_id`       INT NOT NULL
+       * `sale_item_id`    INT NOT NULL COMMENT 'sales_items(id) এর ফরেন কি'
+       * `medicine_id`     INT COMMENT 'সরাসরি লুকআপের জন্য sales_items থেকে ডিনর্মালাইজড'
+       * `batch_id`        INT COMMENT 'সরাসরি লুকআপের জন্য sales_items থেকে ডিনর্মালাইজড'
+       * `quantity`        INT NOT NULL
+       * `price`           DECIMAL(12,2) NOT NULL COMMENT 'আইটেম প্রতি ফেরতের অর্থ'
+       * `restock_action`  VARCHAR(20) DEFAULT 'restock' COMMENT 'restock, damaged_write_off'
+
+টেবিল ১৫: `discounts` (ডিসকাউন্ট স্কিম ও প্রমোশন)
+     - উদ্দেশ্য: পূর্বনির্ধারিত মাস্টার ডিসকাউন্ট স্কিমসমূহ (যেমন: সিনিয়র সিটিজেন, উৎসবকালীন অফার)।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `name`            VARCHAR(255) NOT NULL
+       * `type`            VARCHAR(20)  NOT NULL DEFAULT 'percent' COMMENT 'percent অথবা flat'
+       * `value`           DECIMAL(10,2) NOT NULL
+       * `min_amount`      DECIMAL(10,2) DEFAULT 0.00 COMMENT 'প্রযোজ্য হতে কার্টের সর্বনিম্ন মান'
+       * `active`          TINYINT(1)   DEFAULT 1
+       * `updated_at`      DATETIME
+       * `created_at`      DATETIME
+
+টেবিল ১৬: `stock_adjustments` (অপরিবর্তনযোগ্য ইনভেন্টরি অডিট লগ)
+     - উদ্দেশ্য: যেকোনো ধরনের ইনভেন্টরি পরিবর্তনের স্থায়ী অডিট ট্রেইল (Sale, GRN, Adjustment, Return, Disposal)।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `batch_id`        INT NOT NULL
+       * `medicine_id`     INT NOT NULL
+       * `type`            VARCHAR(20)  NOT NULL COMMENT 'add, remove, sale, return'
+       * `quantity`        INT NOT NULL
+       * `reason`          VARCHAR(255) NOT NULL COMMENT 'Sale: INV-X, Damaged, Disposal, GRN: PO-X'
+       * `old_qty`         INT NOT NULL COMMENT 'পরিবর্তনের পূর্বে মোট ওষুধের সংখ্যা'
+       * `new_qty`         INT NOT NULL COMMENT 'পরিবর্তনের পরে মোট ওষুধের সংখ্যা'
+       * `user_id`         INT          COMMENT 'পরিবর্তনকারী ইউজারের আইডি'
+       * `created_at`      DATETIME     NOT NULL
+
+টেবিল ১৭: `login_attempts` (নিরাপত্তা ও ব্রুট ফোর্স রেট লিমিটিং)
+     - উদ্দেশ্য: আইপি ভিত্তিক ব্যর্থ লগইন ট্র্যাক করা এবং ৫ বারের বেশি ব্যর্থ হলে ১৫ মিনিটের লকআউট প্রদান।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `ip`              VARCHAR(45)  NOT NULL COMMENT 'IPv4 বা IPv6 অ্যাড্রেস'
+       * `context`         VARCHAR(50)  NOT NULL COMMENT 'admin, supplier, customer'
+       * `ts`              DATETIME     NOT NULL
+
+টেবিল ১৮: `customer_purchase_log` (রোগীর ক্রয় ইতিহাস সারাংশ)
+     - উদ্দেশ্য: সিআরএম, রিফিল রিমাইন্ডার এবং লয়্যালটি ট্র্যাকিংয়ের জন্য রোগীর ক্রয় বিবরণী।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `customer_id`     INT NOT NULL
+       * `sale_id`         INT NOT NULL
+       * `amount`          DECIMAL(12,2) NOT NULL
+       * `date`            DATE NOT NULL
+
+টেবিল ১৯: `supplier_messages` (ডিস্ট্রিবিউটর পোর্টাল মেসেজিং ইনবক্স)
+     - উদ্দেশ্য: ফার্মেসি অ্যাডমিন এবং পাইকারি ওষুধ সরবরাহকারীর মধ্যকার বার্তা আদান-প্রদান থ্রেড।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `supplier_id`     INT NOT NULL
+       * `supplier_name`   VARCHAR(255)
+       * `sender_email`    VARCHAR(255)
+       * `subject`         VARCHAR(255) NOT NULL
+       * `message`         TEXT NOT NULL
+       * `direction`       VARCHAR(10)  DEFAULT 'in' COMMENT 'in (সরবরাহকারী থেকে), out (অ্যাডমিন থেকে)'
+       * `reply`           TEXT
+       * `replied_at`      DATETIME
+       * `status`          VARCHAR(20)  DEFAULT 'unread' COMMENT 'unread, read, replied'
+       * `created_at`      DATETIME     NOT NULL
+
+টেবিল ২০: `patient_messages` (রোগীর অনুসন্ধান ও প্রেসক্রিপশন আপলোড)
+     - উদ্দেশ্য: প্রেসক্রিপশন ফাইল সংযুক্তি সহ রোগী এবং ফার্মেসির মধ্যকার গোপনীয় চ্যাট ও অনুসন্ধান।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `customer_id`     INT NOT NULL
+       * `direction`       VARCHAR(10)  DEFAULT 'in' COMMENT 'in (রোগী থেকে), out (অ্যাডমিন থেকে)'
+       * `message`         TEXT
+       * `file_path`       VARCHAR(500) COMMENT 'নিরাপদ স্টোরেজে আপলোডকৃত ফাইলের আপেক্ষিক পাথ'
+       * `file_name`       VARCHAR(255) COMMENT 'আসল ফাইলের নাম'
+       * `file_type`       VARCHAR(50)  COMMENT 'MIME টাইপ: pdf, jpg, png'
+       * `is_read`         TINYINT(1)   DEFAULT 0
+       * `created_by`      INT          COMMENT 'অ্যাডমিন আইডি যদি direction=out হয়'
+       * `created_at`      DATETIME     NOT NULL
+
+টেবিল ২১: `audit_logs` (সিস্টেম-ওয়াইড ট্যাম্পার-প্রুফ অডিট ট্রেইল)
+     - উদ্দেশ্য: দামের পরিবর্তন, ব্যাচ এডিট, সিকিউরিটি ও ব্যাকআপ সংক্রান্ত কাজের অপরিবর্তনযোগ্য লগ।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `user_id`         INT          COMMENT 'অ্যাডমিন বা স্টাফ ইউজার আইডি'
+       * `branch_id`       INT          COMMENT 'স্টোর শাখা বা ব্রাঞ্চ আইডি'
+       * `action`          VARCHAR(100) NOT NULL COMMENT 'কাজের কোড (যেমন: PRICE_CHANGE, BATCH_EDIT, LOGIN)'
+       * `entity`          VARCHAR(100) NOT NULL COMMENT 'প্রভাবিত মডিউল (যেমন: medicine, batch, user)'
+       * `entity_id`       INT          COMMENT 'রেকর্ডের আইডি'
+       * `details`         TEXT         COMMENT 'পরিবর্তিত তথ্যের বিবরণ'
+       * `ip_address`      VARCHAR(45)  COMMENT 'আইপি ঠিকানা'
+       * `created_at`      DATETIME     NOT NULL
+
+টেবিল ২২: `branches` (মাল্টি-আউটলেট স্টোর ও ফার্মেসি ব্রাঞ্চসমূহ)
+     - উদ্দেশ্য: একই সফটওয়্যারে একাধিক ফার্মেসি শাখা/স্টোর পরিচালনা করা (সেটআপ উইজার্ড পুনরায় না চালিয়ে)।
+     - কলামসমূহ:
+       * `id`              INT AUTO_INCREMENT PRIMARY KEY
+       * `code`            VARCHAR(20)  NOT NULL UNIQUE COMMENT 'ব্রাঞ্চ কোড যেমন: MAIN, BR-02'
+       * `name`            VARCHAR(255) NOT NULL COMMENT 'স্টোর বা শাখার নাম'
+       * `tagline`         VARCHAR(255) COMMENT 'শাখার সাবটাইটেল বা কাউন্টার ধরন (যেমন: 24x7 OPD)'
+       * `address`         TEXT         COMMENT 'শাখার ঠিকানা (বিলে মুদ্রণের জন্য)'
+       * `phone`           VARCHAR(50)
+       * `email`           VARCHAR(255)
+       * `gst_no`          VARCHAR(50)  COMMENT 'শাখা-ভিত্তিক বা মূল স্টোরের GSTIN'
+       * `dl_no`           VARCHAR(50)  COMMENT 'শাখা-ভিত্তিক ড্রাগ লাইসেন্স (DL 20B/21B)'
+       * `is_main`         TINYINT(1)   DEFAULT 0 COMMENT '১ হলে প্রধান শাখা (ডিলিট বা নিষ্ক্রিয় করা যাবে না)'
+       * `active`          TINYINT(1)   DEFAULT 1 COMMENT 'POS কাউন্টার বিলিং ও স্টকের জন্য সক্রিয়'
+       * `updated_at`      DATETIME
+       * `created_at`      DATETIME
+
+ফরেন কি রেফারেন্সিয়াল ইন্টিগ্রিটি মেট্রিক্স (Foreign Key Matrix):
+     - `users`:
+       * `fk_user_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `batches`:
+       * `fk_batch_medicine`: `medicine_id` -> `medicines(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_batch_supplier`: `supplier_id` -> `suppliers(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `fk_batch_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `uk_medicine_batch_branch`: UNIQUE (`medicine_id`, `batch_no`, `branch_id`)
+     - `sales`:
+       * `fk_sale_customer`: `customer_id` -> `customers(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `fk_sale_discount`: `discount_id` -> `discounts(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `fk_sale_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `sales_items`:
+       * `fk_saleitem_sale`: `sale_id` -> `sales(id)` ON DELETE CASCADE ON UPDATE CASCADE
+       * `fk_saleitem_medicine`: `medicine_id` -> `medicines(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_saleitem_batch`: `batch_id` -> `batches(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+     - `purchase_orders`:
+       * `fk_po_supplier`: `supplier_id` -> `suppliers(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_po_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `po_items`:
+       * `fk_poitem_po`: `po_id` -> `purchase_orders(id)` ON DELETE CASCADE ON UPDATE CASCADE
+       * `fk_poitem_medicine`: `medicine_id` -> `medicines(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+     - `returns`:
+       * `fk_return_sale`: `sale_id` -> `sales(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_return_customer`: `customer_id` -> `customers(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `fk_return_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `return_items`:
+       * `fk_returnitem_return`: `return_id` -> `returns(id)` ON DELETE CASCADE ON UPDATE CASCADE
+       * `fk_returnitem_saleitem`: `sale_item_id` -> `sales_items(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+     - `stock_adjustments`:
+       * `fk_adj_batch`: `batch_id` -> `batches(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_adj_medicine`: `medicine_id` -> `medicines(id)` ON DELETE RESTRICT ON UPDATE CASCADE
+       * `fk_adj_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `audit_logs`:
+       * `fk_audit_user`: `user_id` -> `users(id)` ON DELETE SET NULL ON UPDATE CASCADE
+       * `fk_audit_branch`: `branch_id` -> `branches(id)` ON DELETE SET NULL ON UPDATE CASCADE
+     - `supplier_users`:
+       * `fk_supuser_supplier`: `supplier_id` -> `suppliers(id)` ON DELETE CASCADE ON UPDATE CASCADE
+     - `customer_purchase_log`:
+       * `fk_purchaselog_customer`: `customer_id` -> `customers(id)` ON DELETE CASCADE ON UPDATE CASCADE
+       * `fk_purchaselog_sale`: `sale_id` -> `sales(id)` ON DELETE CASCADE ON UPDATE CASCADE
+     - `patient_messages`:
+       * `fk_msg_customer`: `customer_id` -> `customers(id)` ON DELETE CASCADE ON UPDATE CASCADE
+     - `supplier_messages`:
+       * `fk_supmsg_supplier`: `supplier_id` -> `suppliers(id)` ON DELETE CASCADE ON UPDATE CASCADE
+
+--------------------------------------------------------------------------------
+৩. পারফরম্যান্স ইনডেক্সিং স্পেসিফিকেশন (সকল ১৬টি ইনডেক্সড টেবিল ও কম্পোজিট কি) (PERFORMANCE INDEXING SPECIFICATION)
+--------------------------------------------------------------------------------
+DRxStore v2.0.0 (helpers/MySQLDB.php indexDefinitions) থেকে সরাসরি ম্যাপিং এবং
+১,০০,০০০+ লেনদেনের রেকর্ডে সাব-১০০ms রেসপন্স নিশ্চিত করার জন্য অপ্টিমাইজড:
+
+৩.১ সম্পূর্ণ ইনডেক্সিং রেজিস্ট্রি (১৬টি টেবিলে ৩৯টি ইনডেক্স):
+    - `sales`:
+      * `idx_sale_date` -> (sale_date)
+      * `idx_customer_id` -> (customer_id)
+      * `idx_created_at` -> (created_at)
+      * `idx_invoice_no` -> (invoice_no) [ইউনিক]
+    - `sales_items`:
+      * `idx_sale_id` -> (sale_id)
+      * `idx_medicine_id` -> (medicine_id)
+      * `idx_batch_id` -> (batch_id)
+    - `batches`:
+      * `idx_medicine_id` -> (medicine_id)
+      * `idx_expiry_date` -> (expiry_date)
+      * `idx_quantity` -> (quantity)
+      * `idx_med_qty_exp` -> (medicine_id, quantity, expiry_date) [কম্পোজিট FEFO ইনডেক্স]
+    - `medicines`:
+      * `idx_name` -> (name)
+      * `idx_category` -> (category)
+      * `idx_generic_name` -> (generic_name)
+      * `idx_hsn` -> (hsn_code)
+    - `purchase_orders`:
+      * `idx_supplier_id` -> (supplier_id)
+      * `idx_po_date` -> (po_date)
+      * `idx_status` -> (status)
+    - `po_items`:
+      * `idx_po_id` -> (po_id)
+      * `idx_medicine_id_po` -> (medicine_id)
+    - `returns`:
+      * `idx_sale_id` -> (sale_id)
+      * `idx_customer_id` -> (customer_id)
+      * `idx_status` -> (status)
+      * `idx_created_at` -> (created_at)
+    - `return_items`:
+      * `idx_return_id` -> (return_id)
+      * `idx_sale_item_id` -> (sale_item_id)
+    - `customers`:
+      * `idx_email` -> (email)
+      * `idx_phone` -> (phone)
+      * `idx_verified` -> (verified)
+      * `idx_verify_token` -> (verify_token)
+    - `users`:
+      * `idx_email` -> (email)
+      * `idx_role` -> (role)
+    - `supplier_users`:
+      * `idx_supplier_id` -> (supplier_id)
+    - `stock_adjustments`:
+      * `idx_batch_id` -> (batch_id)
+      * `idx_medicine_id` -> (medicine_id)
+      * `idx_created_at` -> (created_at)
+    - `login_attempts`:
+      * `idx_ip_context` -> (ip, context) [কম্পোজিট রেট-লিমিট উইন্ডো]
+      * `idx_ts` -> (ts)
+    - `customer_purchase_log`:
+      * `idx_customer_id` -> (customer_id)
+      * `idx_sale_id` -> (sale_id)
+    - `patient_messages`:
+      * `idx_customer_id` -> (customer_id)
+      * `idx_is_read` -> (is_read)
+    - `supplier_messages`:
+      * `idx_supplier_id` -> (supplier_id)
+      * `idx_status` -> (status)
+
+--------------------------------------------------------------------------------
+৪. সিড ডেটা স্পেসিফিকেশন ও সেলফ-হিলিং ইঞ্জিন (SEED DATA SPECIFICATION & SELF-HEALING ENGINE)
+--------------------------------------------------------------------------------
+
+৪.১ ডিফল্ট ডোজ ফর্ম (Categories টেবিল):
+    - ২০টি সিডেড প্রমিত ক্যাটাগরি (type = 'dosage'):
+      ১. Tablet
+      ২. Capsule
+      ৩. Syrup
+      ৪. Suspension
+      ৫. Injection
+      ৬. Infusion
+      ৭. Suppository
+      ৮. Powder
+      ৯. Granules
+      ১০. Cream
+      ১১. Ointment
+      ১২. Gel
+      ১৩. Lotion
+      ১৪. Drop
+      ১৫. Inhaler
+      ১৬. Patch
+      ১৭. Spray
+      ১৮. Emulsion
+      ১৯. Solution
+      ২০. Other (ডায়নামিক কাস্টম ক্যাটাগরি বিকল্প)
+
+৪.২ ডিফল্ট সেটিংস (Settings টেবিল):
+    - `store_name`: 'DRxStore Pharmacy'
+    - `currency`: '&#8377;' (ভারতীয় রুপি প্রতীক ₹)
+    - `low_qty`: 10 (স্বল্প মজুতের সতর্কবার্তা থ্রেশহোল্ড)
+    - `expiry_days`: 90 (আসন্ন মেয়াদোত্তীর্ণ সতর্কবার্তা সীমা)
+    - `gst_fallback`: 18.00% (স্টোর ডিফল্ট), 12.00% (প্রতিটি নতুন ওষুধের ডিফল্ট)
+    - `storage`: 'mysql'
+
+৪.৩ স্কিমা সেলফ-হিলিং এবং ত্রুটিপূর্ণ কারেন্সি মাইগ্রেশন (MySQLDB.php থেকে):
+    - স্বয়ংক্রিয় কলাম সংযোজন: `SHOW COLUMNS FROM {tbl}` প্রতিটি ফিল্ড যাচাই করে; সিস্টেম
+      চালুর সময় কোনো কলাম অনুপস্থিত থাকলে স্বয়ংক্রিয়ভাবে `ALTER TABLE {tbl} ADD COLUMN {col} {def}` নির্বাহ হয়।
+    - ত্রুটিপূর্ণ কারেন্সি মেরামত: ডেটাবেস এনকোডিং সমস্যার কারণে কারেন্সি প্রতীক '?', '??'
+      বা অশুদ্ধ স্ট্রিং হয়ে গেলে স্বয়ংক্রিয়ভাবে রান হয়:
+      `UPDATE settings SET currency = '&#8377;' WHERE currency NOT LIKE '%&%'`
+
+৪.৪ ডিফল্ট সিস্টেম অ্যাকাউন্টস (Users টেবিল):
+    - রোল `admin`: সম্পূর্ণ সিস্টেম নিয়ন্ত্রণ (সেটআপ উইজার্ডে তৈরি প্রথম ইউজার)।
+    - রোল `staff` / `cashier`: পিওএস বিলিং, ক্যাটালগ অনুসন্ধান এবং কাস্টমার এন্ট্রির মধ্যে সীমাবদ্ধ।
+
+--------------------------------------------------------------------------------
+৫. ডেটাবেস স্কিমা ও পারফরম্যান্স টুডু (DATABASE SCHEMA & PERFORMANCE TODOS)
+--------------------------------------------------------------------------------
+৫.১.১ [অবস্থা: সম্পন্ন] প্রাথমিক DDL মাইগ্রেশন সম্পন্ন করা (PostgreSQL ও UTF8 সহ ২২টি টেবিল)
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      - `prisma/schema.prisma` ফাইলে ২২টি নরমালাইজড রিলেশনাল টেবিল (মাল্টি-স্টোর পরিচালনার জন্য `branches` টেবিল সহ) তৈরি করে লাইভ Neon PostgreSQL (`neondb`) ডেটাবেসে সিঙ্ক করা হয়েছে।
+      - আর্থিক নিখুঁত হিসাবের জন্য `DECIMAL(12,2)`, `DECIMAL(10,2)` এবং `DECIMAL(5,2)` ফিল্ড কনফিগার করা হয়েছে।
+৫.১.২ [অবস্থা: সম্পন্ন] পারফরম্যান্স ইনডেক্স প্রয়োগ করা (১৮টি টেবিলে ৪৯টি ইনডেক্স ডেফিনিশন)
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      - ১৮টি টেবিলে ৪৯টি সিঙ্গেল ও কম্পোজিট ইনডেক্স যুক্ত করা হয়েছে, যার মধ্যে `users`, `batches`, `purchase_orders`, `sales`, `returns`, `stock_adjustments` ও `audit_logs` টেবিলে `branch_id` ইনডেক্স এবং `[medicine_id, batch_no, branch_id]` কম্পোজিট ইউনিক কনস্ট্রেইন্ট (`uk_medicine_batch_branch`) অন্তর্ভুক্ত।
+৫.১.৩ [অবস্থা: সম্পন্ন] ক্যাসকেড ও রেস্ট্রিক্ট রুল সহ ফরেন কি কনস্ট্রেইন্ট কনফিগার করা
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      - মাস্টার ওষুধ বা ব্যাচ মুছে ফেলা রোধে `onDelete: Restrict` এবং ব্রাঞ্চ রেফারেন্সের জন্য `onDelete: SetNull` কনফিগার করা হয়েছে।
+৫.১.৪ [অবস্থা: সম্পন্ন] মাস্টার ডোজ ফর্ম (২০টি প্রমিত ক্যাটাগরি) এবং ডিফল্ট জিএসটি সিড করা
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      - `src/lib/config.ts` ও `/api/setup/route.ts`-এর মাধ্যমে ACID ট্রানজ্যাকশনের ভেতর ২০টি ডোজ ফর্ম এবং ডিফল্ট `MAIN` ব্রাঞ্চ স্বয়ংক্রিয়ভাবে সিড করা হয়েছে।
+৫.১.৫ [অবস্থা: পেন্ডিং] স্কিমা সেলফ-হিলিং মেকানিজম তৈরি করা (কলাম অনুপস্থিত থাকলে অটো-চেক এবং ADD COLUMN)
+৫.১.৬ [অবস্থা: সম্পন্ন] অ্যাটমিক চেকআউট ট্রানজ্যাকশন র‍্যাপার বাস্তবায়ন করা (ব্যাচ ব্যর্থতায় স্বয়ংক্রিয় রোলব্যাক)
+      [ডেভেলপার নোট / কী কী করা হয়েছে]:
+      - `src/lib/db-transaction.ts`-এ `runInTransaction()` র‍্যাপার তৈরি করা হয়েছে যা যেকোনো ধাপে ত্রুটি ঘটলে সম্পূর্ণ ট্রানজ্যাকশন স্বয়ংক্রিয়ভাবে রোলব্যাক করে।
+৫.১.৭ [অবস্থা: পেন্ডিং] এসকিউএল ডাম্প ব্যাকআপ জেনারেটর এবং এসকিউএল রিস্টোর এক্সিকিউটর বাস্তবায়ন করা
+৫.১.৮ [অবস্থা: পেন্ডিং] লিগ্যাসি ডেটা রূপান্তরের জন্য JSON-টু-MySQL মাইগ্রেশন ETL স্ক্রিপ্ট তৈরি করা
+৫.১.৯ [অবস্থা: পেন্ডিং] ১২ মাসের রিপোর্ট ও P&L স্টেটমেন্টের জন্য এগ্রিগেশন কোয়েরি অপ্টিমাইজ করা

@@ -1,0 +1,85 @@
+/* 80mm / 58mm ESC/POS Thermal Receipt Print Stylesheet */
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  body {
+    width: 80mm;
+    margin: 0;
+    padding: 3mm;
+    font-family: var(--font-mono, "JetBrains Mono", monospace);
+    font-size: 11px;
+    line-height: 1.25;
+    color: #000;
+    background: #fff;
+  }
+
+  .noPrint {
+    display: none !important;
+  }
+
+  .thermalSlip {
+    width: 100%;
+  }
+
+  .storeHeader {
+    text-align: center;
+    border-bottom: 1px dashed #000;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+  }
+
+  .storeName {
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+
+  .metaRow {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    margin-bottom: 2px;
+  }
+
+  .itemTable {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 4px;
+  }
+
+  .itemTable th {
+    border-top: 1px dashed #000;
+    border-bottom: 1px dashed #000;
+    text-align: left;
+    padding: 2px 0;
+  }
+
+  .itemTable td {
+    padding: 2px 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .totalsSection {
+    border-top: 1px dashed #000;
+    margin-top: 6px;
+    padding-top: 4px;
+  }
+
+  .totalRow {
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+  }
+
+  .footerNotice {
+    text-align: center;
+    font-size: 9px;
+    margin-top: 8px;
+    border-top: 1px dashed #000;
+    padding-top: 4px;
+  }
+}
+

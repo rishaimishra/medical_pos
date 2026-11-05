@@ -1,0 +1,951 @@
+================================================================================
+                    MEDICAL POS & PHARMACY MANAGEMENT SYSTEM
+                     SCOPE OF WORK (SOW) & ARCHITECTURE PLAN
+================================================================================
+Reference Project: DRxStore v2.0.0 (Cloned in folder: "referense project")
+Target Platform: Modern Full-featured Medical POS & Pharmacy Management Application
+Technology Stack We Use: Next.js (App Router, TypeScript), Prisma ORM, PostgreSQL / MySQL, Zustand, Vanilla CSS / CSS Modules
+UI/UX Architecture Plan: Governed strictly by "all text folder/ui_ux_design_plan.txt" (Powered by 6 GitHub UI/UX repos: react-bits, emilkowalski/skills, dimensional-drawing, awesome-design-md, open-design, ui-ux-pro-max-skill)
+Prepared for: Medical POS Project Development
+Date: 27 October 2026
+Format: English Version (Top) | Bengali Version (Bottom)
+
+================================================================================
+================================================================================
+                           PART 1: ENGLISH VERSION
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+1. REFERENCE PROJECT AUDIT (DRxStore v2.0.0)
+--------------------------------------------------------------------------------
+We have cloned and thoroughly analyzed the DRxStore v2.0.0 codebase located in 
+the "referense project" folder.
+
+Project Architecture & Existing Features:
+--------------------------------------------------------------------------------
+1. Reference Project Technology Stack (Legacy PHP Architecture):
+   - Backend: Core PHP (7.4+)
+   - Storage Engine: Dual Mode — Flat JSON Database (JsonDB.php) or MySQL (MySQLDB.php)
+   - Frontend: Vanilla JavaScript, Custom CSS, Server-Side Rendered (SSR) HTML
+   - Security: BCrypt Password Hashing, CSRF Tokens, Brute-force Login Throttling, Session Expiry
+
+2. Technology Stack We Use For The New System (What We Use As Stack):
+   - Full-Stack Framework: Next.js (App Router, React 19/18, TypeScript)
+   - Backend ORM: Prisma ORM (Type-safe schemas & ACID transactions via prisma.$transaction)
+   - Relational Database Engine: PostgreSQL / MySQL 8.0+ (InnoDB engine, utf8mb4 collation)
+   - Client State & Caching: Zustand (In-memory zero-latency POS Cart) + TanStack Query (Real-time live stock cache)
+   - UI & Design System: Vanilla CSS / Modern CSS Modules with Design Tokens, strictly governed by the master plan in "all text folder/ui_ux_design_plan.txt" (utilizing react-bits, emilkowalski/skills, dimensional-drawing, awesome-design-md, open-design, ui-ux-pro-max-skill)
+   - Form Validation & Security: Zod schemas + Auth.js (NextAuth) / BCrypt with role-based access (RBAC)
+   - Printing Engine: Browser-native @media print CSS for 80mm/58mm thermal receipts & legal A4 Tax Invoices
+
+3. Reference Project Existing Modules & Functionality:
+   - Admin Dashboard: Daily/monthly sales stats, 7-day revenue chart, low-stock alerts, expiry notifications, top medicines, and recent sales feed.
+   - Medicine Management: Product catalog with medicine name, generic name, manufacturer/brand, category, HSN code, GST rate (%), rack/shelf location, and bulk CSV import.
+   - Batch & Stock Tracking: Multi-batch management per medicine, batch number, manufacturing date (Mfg Date), expiration date (Expiry Date), purchase price, maximum retail price (MRP), and available quantity.
+   - Stock Adjustments: Audit log for damaged, expired, or misplaced stock adjustments with reasons and timestamps.
+   - POS / Billing Terminal: Customer selector (Walk-in or registered), medicine lookup, dynamic batch selector with live stock and MRP, discount application (percentage or flat), tax calculation (GST), and payment methods (Cash, UPI with reference ID, Card, Cheque, Credit/Due).
+   - Invoicing & Printing: Printable thermal receipts and standard A4 tax invoices with store info, Drug License (DL), and GST numbers.
+   - Purchase Orders (PO): PO creation for suppliers, automated email alerts, and goods receiving (GRN) workflow.
+   - Returns Management: Sales returns processing, restock authorization, and refund tracking.
+   - Supplier Portal: Dedicated portal for suppliers to view purchase orders, update shipment statuses (confirmed -> shipped -> received), and contact the pharmacy.
+   - Customer / Patient Portal: Patient registration, email verification, order history, downloadable invoices, and prescription message upload.
+   - Financial Ledger & Reports: Income/expense/return entries, 12-month analytics, top selling medicines, payment breakdown, and tiered expiry reports (Expired, 30 days, 90 days, Good).
+
+--------------------------------------------------------------------------------
+2. MODERNIZATION & GAPS IDENTIFIED FOR THE NEW SYSTEM
+--------------------------------------------------------------------------------
+While the reference PHP system covers basic pharmacy workflows, a high-volume, 
+modern pharmacy requires key upgrades:
+1. UI/UX & Single Page Speed: In PHP, every transaction triggers a full page reload. A modern React / Vite Single Page Application (SPA) provides instantaneous, sub-second checkout speeds.
+2. Keyboard-Driven Workflow: Fast counters require zero-mouse operation using keyboard shortcuts (e.g., F2 for Medicine Search, F4 for Payment, Enter to Add, ESC to Clear/Cancel).
+3. Barcode & QR Code Scanner: Real-time barcode scanning directly adding the correct medicine and batch to cart.
+4. Offline-First Architecture (PWA / Local Storage): Uninterrupted billing capability even during temporary network/internet outages.
+5. Drug Interactions & Schedule H / H1 Compliance: Mandatory doctor details and prescription logging for controlled drugs (Schedule H and H1).
+6. Pack to Loose Tablet Conversion: Support for selling loose tablets/capsules alongside whole blister packs/strips with automated unit stock deduction.
+7. Digital Invoices (WhatsApp & SMS): Sending instant digital bills via WhatsApp/SMS in addition to physical thermal printing.
+
+--------------------------------------------------------------------------------
+3. PROPOSED MODERN TECHNOLOGY STACK ARCHITECTURE
+--------------------------------------------------------------------------------
+Based on high-concurrency retail checkout, ACID transaction guarantees, and the 20-table
+relational schema defined in db_plan.txt, the recommended production technology stack is:
+
+1. Unified Full-Stack Framework: Next.js (App Router, React 19/18, TypeScript)
+   - Single repository with unified TypeScript types shared between frontend and backend.
+   - High-speed Server Components and streaming SSR for instantaneous dashboard rendering.
+   - Route Handlers and Server Actions for sub-millisecond checkout APIs with zero CORS overhead.
+
+2. Backend ORM & Database Layer: Prisma ORM
+   - Strict Type Safety: Auto-generated TypeScript types matching all 20 relational models.
+   - ACID Database Transactions: Utilizes prisma.$transaction(async (tx) => { ... }) for
+     atomic sales finalization, batch stock deduction, stock_adjustments logging, and customer logs.
+   - Automated Migrations & Self-Healing: prisma migrate and schema introspection ensuring 
+     complete parity with the 20 tables and 39 performance indexes.
+   - Engine Agnostic: Works seamlessly with PostgreSQL (recommended enterprise production),
+     MySQL (direct compatibility with DRxStore reference), or SQLite (local standalone mode).
+
+3. Primary Database Engine: PostgreSQL / MySQL 8.0+
+   - Storage Engine: InnoDB with utf8mb4 character set and utf8mb4_unicode_ci collation.
+   - High data scale optimization (100,000+ records) utilizing the 39 indexes from db_plan.txt.
+
+4. Client State & Real-time POS Caching:
+   - Cart & Checkout State: Zustand for instantaneous, zero-latency in-memory cart operations.
+   - Server State & Cache: TanStack Query (React Query) / SWR for optimistic UI updates and
+     real-time stock queries without unnecessary full-page refetches.
+
+5. UI, Design System & Aesthetics (Strictly Following all text folder/ui_ux_design_plan.txt):
+   - Master Blueprint: Fully follows the dedicated 10-screen blueprint and 20-row component matrix in ui_ux_design_plan.txt.
+   - Core Styling: Vanilla CSS / CSS Modules with curated CSS Custom Properties (Design Tokens) from awesome-design-md.
+   - Verified UI Components from react-bits: SpotlightCard, MagicBento, BorderGlow, ElectricBorder, StarBorder, Stepper, Counter, CountUp, AnimatedList, GlassSurface, Aurora, and ShinyText.
+   - Micro-Interactions & Physics from emilkowalski/skills: Fluid keyboard navigation, tactile button depress, spring feedback, and non-blocking notifications.
+   - 3D/2D Visual Shelf Locating from dimensional-drawing: Isometric physical pharmacy rack/bin map for instant medicine finding.
+   - Enterprise Layouts from open-design: Highly responsive multi-pane split view, slide-over panels, and pharmacist collaborative workflows.
+   - Pharmacy Ergonomics from ui-ux-pro-max-skill: Zero-mouse checkout shortcuts, high-contrast readability, and anti-fatigue color palettes.
+   - Theme Support: First-class Light & Dark Mode with high contrast for all 10 core pharmacy screens.
+
+6. Validation & Security:
+   - Input Validation: Zod schemas shared between frontend client forms and backend server actions.
+   - Authentication & RBAC: Auth.js (NextAuth) or BCrypt/Argon2 JWT with role-based middleware
+     (Admin, Pharmacist, Cashier, Supplier, Customer).
+   - Rate Limiting: IP-based login attempt tracking in login_attempts table (lockout after 5 attempts).
+
+7. Printing & Reporting Engine:
+   - Thermal Receipt & Invoice Print: Browser-native @media print CSS engine supporting 
+     80mm/58mm thermal rolls and standard A4 legal tax invoices with store DL & GSTIN.
+   - Data Export: ExcelJS and UTF-8 BOM CSV streaming for instant analytics downloads.
+
+--------------------------------------------------------------------------------
+4. SCOPE OF WORK (SOW) - DETAILED MODULES
+--------------------------------------------------------------------------------
+
+Module 1: Modern Frontend & UI/UX Design System (Governed by ui_ux_design_plan.txt)
+- Master UI/UX Execution: Implement all 10 screen blueprints and component mappings from ui_ux_design_plan.txt.
+- Premium, high-contrast, modern UI with Light & Dark mode support using awesome-design-md tokens.
+- Specialized POS billing interface designed for pharmacist speed, low eye strain, and 100% keyboard shortcut coverage (F1-F12).
+- Micro-interactions (emilkowalski/skills) for tactile button feedback, smooth spring drawer transitions, and non-blocking toast alerts.
+- Visual Rack Locator (dimensional-drawing) rendering isometric rack/shelf coordinates directly on the medicine master and POS modal.
+- Fully responsive layout optimized for Desktop, Tablet, and Touch POS terminals.
+- Custom searchable select (desktop floating auto-flip panel and mobile bottom-sheet with backdrop).
+- Accessible modal dialogs (ESC/outside click close), auto-dismissing notifications (~4.5s), and action confirmation guards.
+
+Module 2: Medicine Master & Inventory Management
+- Comprehensive Medicine Master: Brand Name, Generic Composition, Manufacturer, Category (Tablet, Syrup, Injection, Ointment, etc.).
+- Custom "Other" Category support automatically saved to categories table for future reuse.
+- Delete Guard: Medicine deletion strictly blocked if any batches exist in the system.
+- Rack & Shelf Location Tracking: Clear visual indications to quickly locate medicines in the physical store.
+- Packaging & Unit Conversion: Automatic conversion between Box -> Strip -> Loose Units with precise stock reconciliation.
+- Bulk Import & Export: Multi-format import (CSV, TXT, XLSX) with preview-confirm-cancel flow, case-insensitive duplicate skipping, sample CSV template download, and UTF-8 BOM Excel-compatible CSV export.
+- Performance Architecture: SQL LIMIT/OFFSET pagination and index optimization ensuring snappy response at 100k+ records.
+
+Module 3: Batch & Expiry Management
+- Multi-Batch Tracking: Multiple batches per medicine with distinct batch numbers, expiry dates, purchase rates, and MRPs.
+- FEFO / FIFO Algorithm: First Expiry, First Out (FEFO) recommendation during sales to eliminate inventory waste.
+- Color-Coded Expiry Alerts: Visual warnings for Expired (Red), Expiring in 30 Days (Orange), and Expiring in 90 Days (Yellow).
+- Stock Adjustments: Logging additions/reductions for breakages, leakages, vendor returns, or inventory audits.
+
+Module 4: High-Speed POS Billing Terminal
+- Rapid, keyboard-driven billing with instant search (Brand name, Generic name, or Barcode).
+- Barcode and QR code scanner integration.
+- Fast customer selection (1-click Walk-in Customer or search by phone/name).
+- Flexible payment methods: Cash, UPI (Dynamic QR & transaction reference), Debit/Credit Card, Cheque (Cheque no, Bank, Date), and Customer Credit (Baki Khata).
+- Automated GST (CGST + SGST / IGST) and item/bill-level discount calculations (master discount or custom %).
+- Pre-checkout stock & expiry atomic revalidation inside DB transaction to prevent overselling or expired drug dispense.
+- Multi-format printing: 2-inch and 3-inch (80mm) thermal ESC/POS slips and legal TAX INVOICE A4 print/PDF with store GSTIN & DL.
+- Returns Engine: Discount-proportional refund calculation, already-returned quantity guards, and restock choice (add back to stock or write-off).
+- Automated customer purchase logging and optional emailed invoice receipt.
+
+Module 5: Customer & Patient Management (CRM)
+- Customer profiles with purchase history, contact info, and total spend metrics.
+- Chronic Patient Refill Reminders: Automated alerts for repeat medications (e.g., Diabetes, Hypertension).
+- Customer Due / Credit Ledger: Tracking credit limits, outstanding balances, and partial settlements.
+
+Module 6: Supplier & Purchase Management
+- Supplier directory with Drug License (DL), GSTIN, and contact details.
+- Full PO Lifecycle: State machine tracking pending -> price_updated -> confirmed -> shipped -> received, plus cancelled states.
+- Supplier portal price update capability with admin-only confirmation lock.
+- Reorder PO: One-click cloning of past purchase orders into new pending orders.
+- Goods Receipt Note (GRN): Inwarding with required Batch No, Expiry, and MRP; automatic batch merging if matching batch exists, and received_qty tracking for partial deliveries.
+- Automated email notifications to suppliers on PO creation, confirmation, cancellation, and receipt.
+- Daily admin low-stock and expiry notification digests.
+
+Module 7: GST & Regulatory Compliance
+- Drug License (DL) & Registered Pharmacist details integration on all formal invoices.
+- Schedule H / H1 Drug Register: Automated audit logs tracking prescription drug sales with doctor credentials.
+- GST-ready Reports: GSTR-1 (Outward supplies) and GSTR-3B compatible sales, returns, and tax summaries.
+
+Module 8: Financials, Ledger & Analytics
+- Executive Dashboard: Real-time Today/Month/Total net revenue (sales minus processed refunds), PO expense tracking, 7-day sales chart, recent sales feed, top 5 medicines, and notification bell with dismissible alert banners.
+- Day-end Cash Drawer Closing: Reconciliation of physical cash with recorded Cash/UPI/Card transactions.
+- Accurate Profit & Loss (P&L): Accurate COGS-based margin calculation (Selling Price minus Batch Purchase Cost).
+- Analytical Reports: Month-over-month growth %, daily average, 12-month summary table (sales count, revenue, GST, discount), top 10 medicines, top 5 customers, payment-method breakdown, and high-performance SQL aggregation scalable to 100k+ records.
+- Export Capabilities: One-click CSV (UTF-8 BOM) and Microsoft Excel (.xls) exports for all reports.
+
+Module 9: User Roles, RBAC & Security
+- Role-Based Access Control: Admin (Full control), Pharmacist / Cashier (Billing & inventory lookup only), and Accountant.
+- Tamper-proof Audit Trails: Logging every price edit, invoice void, return, and stock adjustment with user ID and timestamp.
+
+Module 10: System Administration, Multi-Tenant SaaS Store Isolation, Multi-Outlet Setup & Data Safety
+- Multi-Tenant SaaS Store Isolation (`store_id` Architecture for 100+ Independent Store Owners):
+  * Every unauthenticated visitor on any laptop sees the exact same clean, neutral Medical POS & Pharmacy System Portal Launchpad (`/`) without exposing any other store's name, settings, branches, or data.
+  * Any new store owner can independently launch `/setup/wizard` to register their own Pharmacy Store (`Settings` row), creating an isolated `store_id` tenant with its own Super Admin (`User.storeId`), primary `MAIN` branch (`Branch.storeId`), and audit trail (`AuditLog.storeId`).
+  * Once authenticated at `/admin/login`, each store owner and their staff are strictly scoped to their own `store_id` and can never see or access another store owner's settings, branches, users, or data.
+- First-run 4-step Setup Wizard (Store, Admin, Storage, Confirm) with dual session recovery (`setup_session_token` cookie + `localStorage`), SendGrid OTP unlock, automatic login cookie issuance upon completion, and default master data (20 dosage forms + primary `MAIN` branch).
+- Multi-Outlet / Multi-Branch Store Management (`branches` table): Manage multiple stores/branches (Store 1, Store 2, OPD Counter) under the owner's `store_id` with composite unique branch codes (`uk_store_branch_code` on `[store_id, code]`), branch-specific Drug Licenses (DL 20B/21B) & GSTIN, independent branch stock batches (`[medicine_id, batch_no, branch_id]`), and 1-click Header POS Outlet Switcher — completely bypassing the setup wizard for all secondary branches of that owner.
+- Dual Email Gateway Integration: SendGrid v3 REST API + Custom SMTP (Nodemailer) with built-in live handshake & diagnostic email tester.
+- One-click SQL backup, restore from SQL file, JSON-to-MySQL migration.
+- Admin-only software update from a version ZIP with safety checks.
+- Unified user management (Staff, Supplier, Patient tabs) with branch assignment (`branch_id`), last-admin protection, staff page allow-list, credential emails.
+
+Module 11: Supplier, Customer Portals & Messaging
+- Supplier portal: dashboard, order status updates, contact form, profile.
+- Customer portal: email-verified registration, purchase history, return requests, prescription upload, profile.
+- Message inboxes for patients and suppliers with secure, authenticated prescription file delivery.
+- Ledger CSV/Excel export, invoice amount-in-words, GST-inclusive MRP rule.
+
+--------------------------------------------------------------------------------
+5. DEVELOPMENT PHASES & ROADMAP
+--------------------------------------------------------------------------------
+- Phase 1: Architecture Setup, Database Schema Design, and Core Design System.
+- Phase 2: Medicine Master, Batch Management, Supplier, and Customer Modules.
+- Phase 3: Ultra-fast POS Billing Engine, Barcode Scanner, and Thermal Print Generation.
+- Phase 4: Purchase Management (PO & GRN), Stock Adjustments, and Expiry Alert Engine.
+- Phase 5: GST Calculation, Schedule Drug Compliance, and Customer Credit Ledger.
+- Phase 6: Analytics Dashboard, Sales Reports, and Day-end Cash Reconciliation.
+- Phase 7: Security Audit, Performance Optimization, and Final Handover.
+
+--------------------------------------------------------------------------------
+6. COMPREHENSIVE PANEL-BY-PANEL ARCHITECTURE & OPERATIONAL WORKFLOWS
+--------------------------------------------------------------------------------
+This section provides an in-depth operational breakdown of all system panels, 
+their distinct authentication contexts, functional responsibilities, and 
+end-to-end user workflows.
+
+6.1 Master Panel Architecture & Authentication Contexts:
+    The application is engineered around 3 primary user portals/panels (independent auth contexts),
+    1 initial self-locking setup wizard, and 4 role-based access tiers:
+    - Panel 1: Admin & Staff Central Management Panel (Auth: `admin`, Table: `users`)
+    - Panel 2: Supplier Extranet Self-Service Portal (Auth: `supplier`, Table: `supplier_users`)
+    - Panel 3: Customer / Patient Self-Service Portal (Auth: `customer`, Table: `customers`)
+    - Panel 4: First-Run 4-Step Setup Wizard (`public/setup/wizard.php`)
+
+6.2 Panel 1: Admin & Staff Central Management Panel
+    Auth Context: `admin` | Users: Super Admin, Store Manager, Pharmacist, Cashier, Accountant
+    Primary Role: Central operations engine running checkout, inventory, procurement, 
+    CRM, regulatory compliance, financials, and administrative settings.
+
+    Sub-Module Workflows:
+    a) High-Speed POS Billing Terminal & Keyboard Engine:
+       - 100% Keyboard-Driven Workflow: Complete zero-mouse cashier billing operation (F2 Search,
+         F4 Pay, F7 Customer, F9 Discount, Enter Add, ESC Clear, Ctrl+P Print).
+       - Hardware Barcode & QR Scanner: Sub-100ms scan-to-cart using standard symbologies (EAN-13, Code 128).
+       - Intelligent Medicine Search & Visual Shelf HUD: Live search displaying exact shelf coordinates
+         ("Rack B -> Shelf 2 -> Bin 4").
+       - FEFO Batch Selector: Auto-recommends nearest expiring batch to prevent inventory waste.
+       - Pack to Loose Unit Conversion: Sells full strips/boxes or loose tablets with automated unit deduction.
+       - Split Multi-Tender Payments: Cash (change calculator), Dynamic UPI QR, Card auth, Cheque, Credit.
+       - Atomic Transaction Finalization: Validates stock & expiry inside DB transaction, hard-blocks expired
+         sales with red modal, deducts stock, writes `stock_adjustments` audit log.
+       - Dual Printing Engine: 80mm/58mm ESC/POS thermal receipts and legal A4 Tax Invoices with store DL & GSTIN.
+       - WhatsApp & SMS Digital Invoices: Dispatches direct digital receipt link to customer mobile.
+
+    b) Medicine Master & Multi-Batch Inventory:
+       - Catalog master: Brand name, Generic composition, Manufacturer, Dosage category, HSN, GST rate.
+       - Schedule H / H1 / Narcotics compliance: Mandates doctor name and prescription ID.
+       - 4-Tier color-coded expiry warnings: Red (Expired - locked), Orange (<30 days), Yellow (<90 days), Green (Safe).
+       - Bulk CSV/XLSX import with preview table, field mapping, and duplicate detection.
+       - Delete guard: Medicine deletion strictly blocked if active batches exist.
+
+    c) Purchase Orders (PO) & Goods Receipt Note (GRN):
+       - PO lifecycle: `pending` -> `price_updated` -> `confirmed` -> `shipped` -> `received` / `cancelled`.
+       - Smart auto-PO suggestions based on minimum safety thresholds.
+       - Rapid GRN Desk: Fast Tab/Enter keyboard inwarding of 50+ items with batch, expiry, MRP, and scheme bonuses.
+       - Auto batch merging and weighted average cost calculation.
+
+    d) Sales Returns, Restocking & Refund Engine:
+       - Invoice-linked returns enforcing: Return Qty <= Purchased Qty - Previously Returned Qty.
+       - Restock vs. Write-Off action: Add back to salable inventory or mark damaged write-off.
+       - Proportional discount refund calculation.
+
+    e) Customer CRM & Credit Ledger (Baki Khata):
+       - Customer directory, lifetime spend metrics, chronic refill reminders (Diabetes, Cardiac).
+       - Customer credit ledger with configurable credit limits and partial settlement tracking.
+
+    f) Financial Ledger, Day-End Cash Closing & Compliance:
+       - Income & expense ledger for operational overheads (Rent, Electricity, Salary).
+       - Day-End Cash Drawer Closing (Z-Report): Shift-closing currency denomination counter (₹500x10, ₹200x5),
+         comparing physical cash with software sales to identify cash surplus or shortage.
+       - Real-time Profit & Loss (P&L) based on true COGS (Cost of Goods Sold).
+       - GSTR-1 and GSTR-3B tax summaries formatted for GST filing.
+
+    g) Unified User & Access Management (RBAC):
+       - 3-tab unified screen: Staff Users | Supplier Portal Users | Patient Accounts.
+       - Last-admin protection & automated credential emails.
+
+    h) System Settings, Backup & Disaster Recovery:
+       - DL 20B/21B licensing, SMTP configuration & tester.
+       - 1-click full SQL database backup, safe SQL restore, and version ZIP updates.
+
+    i) Prescription Verification & Messaging Desk:
+       - Review uploaded patient prescriptions in slide-over inspector; 1-click push to POS billing cart.
+
+6.3 Panel 2: Supplier Self-Service Extranet Portal
+    Auth Context: `supplier` | Users: Wholesale Medicine Distributors & Pharma Vendors
+    Primary Role: Distributor portal for PO intake, price updates, shipment tracking, and messaging.
+
+    Workflows:
+    - Order Intake Desk: View and download official pharmacy POs in PDF format.
+    - Distributor Price Update Engine: Update unit rates on requested PO lines (sets status to `price_updated`).
+    - Order Confirmation: Mark order availability as `confirmed`.
+    - Logistics & Tracking: Mark order as `shipped`, enter courier name, docket number, and delivery date.
+    - Direct Messaging Channel: In-app chat directly with pharmacy purchase department.
+    - Accounts Payable Ledger: View pending bills, payment vouchers, and settlement history.
+
+6.4 Panel 3: Customer / Patient Self-Service Portal
+    Auth Context: `customer` | Users: Retail Pharmacy Customers & Regular Patients
+    Primary Role: Patient portal for prescription uploads, invoice downloads, and return requests.
+
+    Workflows:
+    - Email-Verified Patient Onboarding: Self-registration with email verification token & rate limiting.
+    - Secure Prescription Upload: Upload prescription photos/PDFs stored in non-public encrypted storage.
+    - Purchase History & Invoices: View past orders, 1-click download of legal A4 Tax Invoices and thermal slips.
+    - Online Return Requests: Submit return requests on purchased items with store review notification.
+    - Chronic Refill Tracking: Live countdown and alerts for recurring medication refills.
+    - Helpdesk Support: Direct authenticated messaging with pharmacy staff.
+
+6.5 Panel 4: First-Run 4-Step Setup Wizard
+    Location: `public/setup/wizard.php` | Users: Pharmacy Owner / Installer (Day 1 Only)
+    Primary Role: One-time guided configuration to initialize database, store profile, and seed master data.
+
+    Workflows:
+    - Step 1 Store Profile: Name, address, phone, official GSTIN, Drug License (DL 20B / 21B).
+    - Step 2 Super Admin: Master system administrator username, email, and Bcrypt password.
+    - Step 3 Database Engine: Relational database connection test (MySQL / PostgreSQL / SQLite).
+    - Step 4 Seeding & Permanent Lock: Seeds 20 standard dosage forms, sets `setup_done = 1`, and locks wizard.
+
+6.6 Internal Staff Role-Based Access Control (RBAC) Matrix:
+    - Super Admin: 100% system control, settings, backup/restore, software updates, P&L reports, user accounts.
+    - Pharmacist: POS billing, medicine/batch catalog, PO creation, GRN inwarding, prescription verification.
+    - Cashier: High-speed POS billing, medicine search, customer selection, thermal slip re-printing.
+    - Accountant: Financial ledger, day-end cash closing, P&L reports, GST tax summaries, customer credit ledger.
+
+6.7 End-to-End Operational Lifecycle Workflows:
+    - Workflow A (Counter Sale): Cashier scans/F2 -> FEFO batch selected -> Shelf HUD located -> Enter cart ->
+      F4 Tender -> Cash/UPI/Card/Credit -> Ctrl+P print thermal slip -> Drawer kicks open -> Stock deducted ->
+      Audit log recorded -> WhatsApp digital bill dispatched.
+    - Workflow B (Procurement): Low stock alert -> PO generated -> Supplier portal price update -> Admin confirms ->
+      Supplier dispatches with tracking -> GRN rapid inwarding -> Batches merged & stock updated.
+    - Workflow C (Digital Prescription): Patient uploads prescription -> Pharmacist inspects in slide-over ->
+      1-click pushes to POS cart -> Patient notified -> Order picked up/delivered.
+    - Workflow D (Sales Return): Customer presents bill / submits online request -> Invoice items validated ->
+      Restock or write-off decision -> Proportional refund calculated -> Inventory restored.
+
+--------------------------------------------------------------------------------
+7. HIGH-LEVEL PROJECT DIRECTORY & MODULE FOLDER STRUCTURE
+--------------------------------------------------------------------------------
+The project uses the unified Next.js App Router (TypeScript) architecture where
+backend Route Handlers live in `src/app/api/...` organized panel-wise, and each
+user panel and operational module occupies its own dedicated route folder.
+
+```
+medical-pos/
+├── prisma/
+│   ├── schema.prisma                  # 20 relational models & 39 indexes (from db_plan.txt)
+│   ├── migrations/                    # Automated Prisma schema migrations
+│   └── seed.ts                        # Master seed: 20 dosage forms & default admin
+│
+├── src/
+│   ├── app/                           # Next.js App Router
+│   │   ├── layout.tsx                 # Root layout (Fonts, design tokens, theme provider)
+│   │   ├── page.tsx                   # Landing page / Role-based portal redirector
+│   │   ├── globals.css                # Global design tokens, CSS variables (awesome-design-md)
+│   │   │
+│   │   ├── api/                       # 🚀 BACKEND API LAYER (Route Handlers)
+│   │   │   ├── auth/                  # NextAuth / JWT session & brute-force rate limiter
+│   │   │   │   ├── admin/             # POST /api/auth/admin/login
+│   │   │   │   ├── supplier/          # POST /api/auth/supplier/login
+│   │   │   │   └── customer/          # POST /api/auth/customer/login & email verification
+│   │   │   │
+│   │   │   ├── admin/                 # Admin & Staff Backend APIs
+│   │   │   │   ├── pos/               # POST /api/admin/pos/checkout (atomic ACID transaction)
+│   │   │   │   ├── medicines/         # GET/POST /api/admin/medicines (search, bulk import)
+│   │   │   │   ├── batches/           # GET /api/admin/batches (FEFO lookup, stock count)
+│   │   │   │   ├── purchases/         # GET/POST /api/admin/purchases (PO generation)
+│   │   │   │   ├── grn/               # POST /api/admin/grn (inwarding, batch merge)
+│   │   │   │   ├── returns/           # POST /api/admin/returns (process, restock, refund)
+│   │   │   │   ├── customers/         # GET/POST /api/admin/customers (CRM, credit ledger)
+│   │   │   │   ├── suppliers/         # GET/POST /api/admin/suppliers (vendor directory)
+│   │   │   │   ├── financials/        # GET/POST /api/admin/financials (ledger, Z-report closing)
+│   │   │   │   ├── reports/           # GET /api/admin/reports (GSTR-1, GSTR-3B, P&L, dead-stock)
+│   │   │   │   ├── users/             # GET/POST /api/admin/users (unified 3 tabs, RBAC)
+│   │   │   │   ├── settings/          # GET/PUT /api/admin/settings (DL/GSTIN, SMTP test)
+│   │   │   │   ├── backup/            # GET /api/admin/backup (export .sql) & POST (restore)
+│   │   │   │   └── messages/          # GET/POST /api/admin/messages (patient/supplier inboxes)
+│   │   │   │
+│   │   │   ├── supplier/              # Supplier Extranet Backend APIs
+│   │   │   │   ├── orders/            # GET /api/supplier/orders (view assigned POs)
+│   │   │   │   ├── price-update/      # POST /api/supplier/price-update (propose unit prices)
+│   │   │   │   ├── dispatch/          # POST /api/supplier/dispatch (mark shipped, tracking no)
+│   │   │   │   ├── ledger/            # GET /api/supplier/ledger (accounts payable history)
+│   │   │   │   └── messages/          # POST /api/supplier/messages (chat with purchase desk)
+│   │   │   │
+│   │   │   ├── customer/              # Customer / Patient Backend APIs
+│   │   │   │   ├── prescriptions/     # POST /api/customer/prescriptions (secure file upload)
+│   │   │   │   ├── invoices/          # GET /api/customer/invoices (download tax invoice PDF)
+│   │   │   │   ├── returns/           # POST /api/customer/returns (submit return request)
+│   │   │   │   ├── refills/           # GET /api/customer/refills (chronic reminder alerts)
+│   │   │   │   └── profile/           # PUT /api/customer/profile (password, address update)
+│   │   │   │
+│   │   │   └── setup/                 # POST /api/setup (4-step setup wizard initialization)
+│   │   │
+│   │   ├── (admin)/                   # 🖥️ PANEL 1: ADMIN & STAFF WORKSPACE
+│   │   │   ├── admin/
+│   │   │   │   ├── layout.tsx         # Admin sidebar, notification bell, user profile HUD
+│   │   │   │   ├── dashboard/         # Screen 2: Pharmacist Executive Dashboard (Bento grid)
+│   │   │   │   ├── pos/               # Screen 1: High-Speed POS Billing Terminal
+│   │   │   │   ├── medicines/         # Screen 3: Medicine & Multi-Batch Inventory Explorer
+│   │   │   │   ├── purchases/         # PO Lifecycle manager & reorder desk
+│   │   │   │   ├── grn/               # Screen 4: GRN Inward Desk (rapid keyboard entry)
+│   │   │   │   ├── returns/           # Sales Returns desk & restock/write-off manager
+│   │   │   │   ├── customers/         # Patient Directory & Credit Ledger (Baki Khata)
+│   │   │   │   ├── suppliers/         # Vendor Directory & Accounts Payable
+│   │   │   │   ├── financials/        # Income/Expense ledger & Day-End Cash Closing (Z-Report)
+│   │   │   │   ├── reports/           # GSTR-1, GSTR-3B, Profit & Loss, Dead-Stock Analytics
+│   │   │   │   ├── users/             # Screen 8: Unified User Management (Staff/Supplier/Patient)
+│   │   │   │   ├── messages/          # Screen 9: Message Inbox & Prescription Verification Desk
+│   │   │   │   ├── settings/          # Screen 7: Store Settings, DL/GSTIN, Backup & Restore
+│   │   │   │   └── login/             # Staff & Admin Login Page (Rate-limited)
+│   │   │
+│   │   ├── (supplier)/                # 🚚 PANEL 2: SUPPLIER EXTRANET PORTAL
+│   │   │   ├── supplier/
+│   │   │   │   ├── layout.tsx         # Supplier portal navigation layout
+│   │   │   │   ├── dashboard/         # Active POs, confirmation status cards
+│   │   │   │   ├── orders/            # PO list, line-item viewer, PDF download
+│   │   │   │   ├── price-update/      # Line-item price proposal interface
+│   │   │   │   ├── shipments/         # Tracking number & dispatch update desk
+│   │   │   │   ├── ledger/            # Vendor payment vouchers & balance summary
+│   │   │   │   ├── messages/          # Direct messaging with pharmacy purchase desk
+│   │   │   │   └── login/             # Supplier Portal Login Page
+│   │   │
+│   │   ├── (customer)/                # 🧑‍⚕️ PANEL 3: CUSTOMER / PATIENT PORTAL
+│   │   │   ├── customer/
+│   │   │   │   ├── layout.tsx         # Patient portal public-facing layout
+│   │   │   │   ├── dashboard/         # Health profile & purchase overview
+│   │   │   │   ├── prescriptions/     # Drag-and-drop prescription upload drop zone
+│   │   │   │   ├── invoices/          # Screen 5: Invoice archive, A4 download, thermal slip
+│   │   │   │   ├── returns/           # Online return request submission form
+│   │   │   │   ├── refills/           # Chronic medication countdown & refill tracker
+│   │   │   │   ├── messages/          # Patient helpdesk support chat thread
+│   │   │   │   ├── profile/           # Patient account & password change
+│   │   │   │   ├── login/             # Patient login with brute-force lockout
+│   │   │   │   └── register/          # Self-registration with email verification link
+│   │   │
+│   │   └── (setup)/                   # ⚙️ PANEL 4: FIRST-RUN SETUP WIZARD
+│   │       └── setup/
+│   │           └── wizard/            # Screen 6: 4-Step Stepper (Store -> Admin -> DB -> Confirm)
+│   │
+│   ├── components/                    # Reusable Component Layer
+│   │   ├── ui/                        # In-repo copy-paste components (react-bits / custom)
+│   │   │   ├── spotlight-card.tsx     # Cursor spotlight card for dashboard metrics
+│   │   │   ├── electric-border.tsx    # Focus ring highlight for POS search bar
+│   │   │   ├── counter.tsx            # Animated rolling digits for price totals
+│   │   │   ├── stepper.tsx            # 4-step wizard stepper component
+│   │   │   ├── animated-list.tsx      # Smooth recent-sales feed animation
+│   │   │   ├── glass-surface.tsx      # Glassmorphic panels on portal logins
+│   │   │   └── modal.tsx              # Accessible modal dialog with ESC/backdrop close
+│   │   ├── admin/                     # Specialized Admin components (POS Cart, Shelf Locator HUD)
+│   │   ├── supplier/                  # Supplier order tables, dispatch forms
+│   │   ├── customer/                  # Prescription drop zone, invoice viewer
+│   │   └── shared/                    # Navigation bars, data-tables, print wrappers
+│   │
+│   ├── lib/                           # Core utilities & Singletons
+│   │   ├── prisma.ts                  # Centralized Prisma Client singleton
+│   │   ├── auth.ts                    # Auth.js / JWT session guards & RBAC middleware
+│   │   ├── db-transactions.ts         # Atomic sales checkout, batch deduction transactions
+│   │   ├── email.ts                   # SMTP mailer (credentials, PO alerts, verify links)
+│   │   └── zod/                       # Shared Zod validation schemas
+│   │
+│   ├── stores/                        # Client-side State Stores (Zustand)
+│   │   ├── useCartStore.ts            # High-speed in-memory POS cart & discount store
+│   │   └── useKeyboardStore.ts        # Global shortcut HUD listener (F2, F4, Enter, ESC)
+│   │
+│   └── styles/                        # CSS Modules & Print Stylesheets
+│       ├── print-thermal.module.css   # 80mm / 58mm thermal receipt @media print CSS
+│       └── print-invoice.module.css   # Standard A4 Tax Invoice @media print CSS
+│
+├── storage/                           # Protected File Storage (Outside public web root)
+│   ├── prescriptions/                 # Patient uploaded prescription images/PDFs
+│   └── backups/                       # Timestamped .sql database backups
+│
+└── public/                            # Public Static Assets (Logos, icons, sound effects)
+```
+
+
+================================================================================
+================================================================================
+                           PART 2: BENGALI VERSION
+                         (বাংলা সংস্করণ - হুবহু অনুবাদ)
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+১. রেফারেন্স প্রজেক্ট পর্যালোচনা (REFERENCE PROJECT AUDIT - DRxStore v2.0.0)
+--------------------------------------------------------------------------------
+আমরা "referense project" ফোল্ডারে DRxStore v2.0.0 প্রজেক্টটি সফলভাবে ক্লোন এবং 
+প্রতিটি ফাইল ও ফিচার গভীরভাবে বিশ্লেষণ করেছি।
+
+প্রজেক্টের আর্কিটেকচার এবং বিদ্যমান বৈশিষ্ট্যসমূহ:
+--------------------------------------------------------------------------------
+১. রেফারেন্স প্রজেক্টের প্রযুক্তি (Legacy PHP Architecture):
+   - Backend: Core PHP (7.4+)
+   - Storage Engine: ডুয়াল মোড — ফ্ল্যাট JSON ডাটাবেস (JsonDB.php) অথবা MySQL (MySQLDB.php)
+   - Frontend: ভ্যানিলা জাভাস্ক্রিপ্ট, কাস্টম CSS, সার্ভার-সাইড রেন্ডারড (SSR) HTML
+   - Security: BCrypt পাসওয়ার্ড হ্যাশিং, CSRF টোকেন, ব্রুট-ফোর্স লগইন থ্রটলিং, সেশন এক্সপায়ারি
+
+২. নতুন সিস্টেমে আমরা যে প্রযুক্তি ব্যবহার করছি (Technology Stack We Use As Stack):
+   - ফুল-স্ট্যাক ফ্রেমওয়ার্ক: Next.js (App Router, React 19/18, TypeScript)
+   - ব্যাকএন্ড ORM: Prisma ORM (টাইপ-সেফ স্কিমা এবং prisma.$transaction দিয়ে সম্পূর্ণ ACID ট্রানজ্যাকশন)
+   - মূল রিলেশনাল ডাটাবেস: PostgreSQL / MySQL 8.0+ (InnoDB ইঞ্জিন, utf8mb4 ক্যারেক্টার সেট)
+   - ক্লায়েন্ট স্টেট ও ক্যাশিং: Zustand (জিরো-ল্যাগ POS কার্ট) + TanStack Query (রিয়েল-টাইম লাইভ স্টক ক্যাশ)
+   - UI ও ডিজাইন সিস্টেম: ভ্যানিলা CSS / আধুনিক CSS Modules এবং সেন্ট্রালাইজড ডিজাইন টোকেন, যা সম্পূর্ণভাবে "all text folder/ui_ux_design_plan.txt" মাস্টার প্ল্যান দ্বারা পরিচালিত (react-bits, emilkowalski/skills, dimensional-drawing, awesome-design-md, open-design, ui-ux-pro-max-skill এর সমন্বয়ে)
+   - ভ্যালিডেশন ও নিরাপত্তা: Zod স্কিমা + Auth.js (NextAuth) / BCrypt ও রোল-বেসড অ্যাক্সেস (RBAC)
+   - প্রিন্টিং ইঞ্জিন: ৮০ মিমি/৫৮ মিমি থার্মাল স্লিপ এবং স্ট্যান্ডার্ড A4 ট্যাক্স ইনভয়েসের জন্য @media print CSS
+
+৩. রেফারেন্স প্রজেক্টের বিদ্যমান মডিউল ও কার্যকারিতা:
+   - Admin Dashboard: দৈনিক/মাসিক বিক্রয়ের পরিসংখ্যান, ৭ দিনের রেভিনিউ চার্ট, লো-স্টক অ্যালার্ট, মেয়াদোত্তীর্ণের নোটিফিকেশন, সর্বাধিক বিক্রিত ওষুধ এবং সাম্প্রতিক বিক্রয়ের তালিকা।
+   - Medicine Management: ওষুধের ক্যাটালগ যাতে রয়েছে নাম, জেনেরিক নাম, প্রস্তুতকারক/ব্র্যান্ড, ক্যাটাগরি, HSN কোড, GST রেট (%), রেক/শেলফ লোকেশন এবং CSV ফাইলের মাধ্যমে একসাথে হাজারো ওষুধ আপলোড (Bulk Import)।
+   - Batch & Stock Tracking: প্রতিটি ওষুধের একাধিক ব্যাচ ম্যানেজমেন্ট, ব্যাচ নম্বর, উৎপাদন তারিখ (Mfg Date), মেয়াদোত্তীর্ণ তারিখ (Expiry Date), ক্রয়মূল্য, সর্বোচ্চ খুচরা মূল্য (MRP) এবং বর্তমান মজুদ সংখ্যা (Stock Qty)।
+   - Stock Adjustments: নষ্ট, মেয়াদোত্তীর্ণ বা হারানো ওষুধের স্টক সমন্বয়ের অডিট লগ (কারণ ও সময় সহ)।
+   - POS / Billing Terminal: কাস্টমার নির্বাচন (Walk-in বা রেজিস্টার্ড), ওষুধ সার্চ, লাইভ স্টক ও MRP সহ ডায়নামিক ব্যাচ সিলেক্টর, ডিসকাউন্ট প্রয়োগ (শতাংশ বা নির্দিষ্ট টাকা), ট্যাক্স হিসাব (GST) এবং পেমেন্ট মেথড (ক্যাশ, রেফারেন্স আইডি সহ UPI, কার্ড, চেক, ক্রেডিট/বাকি খাতা)।
+   - Invoicing & Printing: থার্মাল রিসিপ্ট প্রিন্ট এবং ড্রাগ লাইসেন্স (DL) ও GST নম্বর সম্বলিত স্ট্যান্ডার্ড A4 ট্যাক্স ইনভয়েস জেনারেশন।
+   - Purchase Orders (PO): সাপ্লায়ারদের কাছে পারচেজ অর্ডার তৈরি, স্বয়ংক্রিয় ইমেইল অ্যালার্ট এবং গুডস রিসিভিং (GRN) ওয়ার্কফ্লো।
+   - Returns Management: বিক্রিত ওষুধ ফেরত নেওয়া (Sales Return), স্টকে পুনরায় যুক্ত করা এবং রিফান্ড ট্র্যাকিং।
+   - Supplier Portal: সাপ্লায়ারদের জন্য আলাদা পোর্টাল যেখানে তারা পারচেজ অর্ডার দেখতে পারে, চালানের স্ট্যাটাস আপডেট করতে পারে (confirmed -> shipped -> received) এবং স্টোরের সাথে যোগাযোগ করতে পারে।
+   - Customer / Patient Portal: রোগীর রেজিস্ট্রেশন, ইমেইল ভেরিফিকেশন, ক্রয়ের ইতিহাস, ইনভয়েস ডাউনলোড এবং প্রেসক্রিপশনের ছবি আপলোড।
+   - Financial Ledger & Reports: আয়/ব্যয়/রিটার্ন এন্ট্রি, ১২ মাসের অ্যানালিটিক্স, টপ মেডিসিন, পেমেন্ট পদ্ধতির বিভাজন এবং মেয়াদভিত্তিক টায়ার রিপোর্ট (Expired, 30 days, 90 days, Good)।
+
+--------------------------------------------------------------------------------
+২. আধুনিক মেডিক্যাল POS-এর জন্য প্রয়োজনীয় আধুনিকীকরণ ও উন্নয়ন
+--------------------------------------------------------------------------------
+বিদ্যমান পিএইচপি প্রজেক্টটি সাধারণ কাজের জন্য উপযোগী হলেও একটি আধুনিক, ব্যস্ত ফার্মেসির 
+জন্য নিচের বিষয়গুলোতে বড় ধরনের উন্নয়ন আবশ্যক:
+1. UI/UX ও সিঙ্গেল পেজ স্পিড: পিএইচপিতে প্রতিটি ক্লিকে পেজ রিলোড হয়। একটি আধুনিক React / Vite সিঙ্গেল পেজ অ্যাপ্লিকেশনের (SPA) মাধ্যমে ১ সেকেন্ডেরও কম সময়ে সুপারফাস্ট বিলিং সম্ভব।
+2. কীবোর্ড চালিত দ্রুত বিলিং: ফার্মাসিস্টদের দ্রুত কাজের সুবিধার্থে মাউস ছাড়া সম্পূর্ণ কীবোর্ড শর্টকাট সাপোর্ট (যেমন F2=ওষুধ সার্চ, F4=পেমেন্ট, Enter=কার্টে যোগ, ESC=ক্লিয়ার)।
+3. বারকোড ও কিউআর কোড স্ক্যানার: ওষুধের গায়ে থাকা বারকোড স্ক্যান করলেই স্বয়ংক্রিয়ভাবে সঠিক ওষুধ ও ব্যাচ কার্টে যুক্ত হওয়ার সুবিধা।
+4. অফলাইন-ফার্স্ট আর্কিটেকচার (PWA / Local Storage): ইন্টারনেট সংযোগ সাময়িকভাবে বিচ্ছিন্ন থাকলেও বিলিং যেন নিরবচ্ছিন্নভাবে চলতে পারে।
+5. ড্রাগ ইন্টারঅ্যাকশন ও শিডিউল এইচ / এইচ১ কমপ্লায়েন্স: প্রেসক্রিপশন ড্রাগের ক্ষেত্রে চিকিৎসকের নাম ও প্রেসক্রিপশন ডেটা বাধ্যতামূলক করা।
+6. পুরো পাতা ও খুচরা ট্যাবলেট বিক্রির রূপান্তর (Pack to Loose Tablet): পুরো পাতা (Strip) বিক্রির পাশাপাশি খুচরা ট্যাবলেট/ক্যাপসুল বিক্রির হিসাব এবং স্বয়ংক্রিয় স্টক সমন্বয়।
+7. ডিজিটাল ইনভয়েস (হোয়াটসঅ্যাপ ও এসএমএস): কাগজের রসিদের পাশাপাশি কাস্টমারের মোবাইলে সাথে সাথে ডিজিটাল ইনভয়েসের লিংক পাঠানো।
+
+--------------------------------------------------------------------------------
+৩. প্রস্তাবিত আধুনিক প্রযুক্তি আর্কিটেকচার (PROPOSED MODERN TECHNOLOGY STACK)
+--------------------------------------------------------------------------------
+উচ্চ-গতির রিটেইল কাউন্টার চেকআউট, নির্ভরযোগ্য ACID ট্রানজ্যাকশন এবং db_plan.txt-এ বর্ণিত
+২০টি রিলেশনাল টেবিলের পূর্ণ সুরক্ষার জন্য আধুনিক প্রোডাকশন-গ্রেড টেক স্ট্যাক নির্ধারণ করা হয়েছে:
+
+১. ইউনিফাইড ফুল-স্ট্যাক ফ্রেমওয়ার্ক: Next.js (App Router, React 19/18, TypeScript)
+   - একক রিপোসিটরিতে ফ্রন্টএন্ড ও ব্যাকএন্ডের মধ্যে সম্পূর্ণ টাইপ-সেফ (TypeScript) আর্কিটেকচার।
+   - ড্যাশবোর্ড ও রিপোর্ট নিমেষে লোড করার জন্য হাই-স্পিড সার্ভার কম্পোনেন্টস ও স্ট্রিমিং SSR।
+   - কোনো ধরনের CORS জটিলতা ছাড়াই অতি-দ্রুত চেকআউটের জন্য Next.js Server Actions ও Route Handlers।
+
+২. ব্যাকএন্ড ORM ও ডাটাবেস লেয়ার: Prisma ORM
+   - কঠোর টাইপ-সেফটি: ২০টি রিলেশনাল টেবিলের জন্য স্বয়ংক্রিয় TypeScript মডেল টাইপ।
+   - ACID ট্রানজ্যাকশন গ্যারান্টি: বিক্রয় চূড়ান্তকরণে prisma.$transaction(async (tx) => { ... })
+     ব্যবহার, যা একইসাথে ব্যাচ স্টক হ্রাস, stock_adjustments অডিট লগ এবং কাস্টমার লগ সম্পন্ন করে;
+     যেকোনো ত্রুটিতে সম্পূর্ণ ট্রানজ্যাকশন স্বয়ংক্রিয় রোলব্যাক হয়।
+   - অটোমেটেড মাইগ্রেশন: prisma migrate এর মাধ্যমে স্কিমা পরিবর্তন এবং ৩৯টি পারফরম্যান্স ইনডেক্স
+     সহজেই ডাটাবেসে বাস্তবায়ন।
+   - ডাটাবেস ইঞ্জিন নমনীয়তা: PostgreSQL (উন্নত প্রোডাকশন ক্লাউড/অন-প্রিমিস), MySQL (রেফারেন্স DRxStore-এর
+     সরাসরি সামঞ্জস্য), বা SQLite (লোকাল অফলাইন মোড) সবগুলোর সাথেই নির্বিঘ্নে কাজ করে।
+
+৩. মূল রিলেশনাল ডাটাবেস ইঞ্জিন: PostgreSQL / MySQL 8.0+
+   - স্টোরেজ ইঞ্জিন: InnoDB, utf8mb4 ক্যারেক্টার সেট এবং utf8mb4_unicode_ci কোলেশন।
+   - ১,০০,০০০+ লেনদেনের রেকর্ডেও দ্রুত অনুসন্ধানের জন্য db_plan.txt-এর ৩৯টি ইনডেক্স অপ্টিমাইজেশন।
+
+৪. ক্লায়েন্ট স্টেট ও রিয়েল-টাইম POS ক্যাশিং:
+   - কার্ট ও কাউন্টার স্টেট: শূন্য ল্যাগ ও দ্রুতগতির ইন-মেমোরি অপারেশনের জন্য Zustand।
+   - সার্ভার স্টেট ক্যাশিং: পেজ রিলোড ছাড়া তাৎক্ষণিক স্টক আপডেট ও অপটিমিস্টিক UI-এর জন্য TanStack Query (React Query)।
+
+৫. UI, ডিজাইন সিস্টেম ও ভিজ্যুয়াল এক্সিলেন্স (ui_ux_design_plan.txt সম্পূর্ণ অনুসরণ করে):
+   - মাস্টার ব্লুপ্রিন্ট: ui_ux_design_plan.txt-এ উল্লেখিত ১০টি প্রধান স্ক্রিনের ব্লুপ্রিন্ট ও ২০-সারি কম্পোনেন্ট মেট্রিক্স সম্পূর্ণ কার্যকর করা।
+   - কোর স্টাইলিং: awesome-design-md থেকে গৃহীত ভ্যানিলা CSS / CSS Modules এবং সেন্ট্রালাইজড ডিজাইন টোকেন (CSS Variables)।
+   - react-bits এর ভেরিফাইড কম্পোনেন্টস: SpotlightCard, MagicBento, BorderGlow, ElectricBorder, StarBorder, Stepper, Counter, CountUp, AnimatedList, GlassSurface, Aurora, এবং ShinyText।
+   - emilkowalski/skills এর মাইক্রো-ইন্টারঅ্যাকশন ও স্প্রিং ফিজিক্স: ফ্লুইড কীবোর্ড নেভিগেশন, বোতামের স্পর্শানুভূতি প্রতিক্রিয়া, এবং নন-ব্লকিং নোটিফিকেশন।
+   - dimensional-drawing এর ৩D/২D আইসোমেট্রিক সেলফ লোকেটার: ফার্মেসির তাকে ওষুধের সুনির্দিষ্ট অবস্থান (র্যাক/শেলফ) চাক্ষুষভাবে খুঁজে পাওয়ার ড্রয়িং ম্যাপ।
+   - open-design এর এন্টারপ্রাইজ লেআউট: রেসপনসিভ স্প্লিট-ভিউ প্যান, স্লাইড-ওভার প্যানেল এবং ফার্মাসিস্টদের কোলাবোরেটিভ ওয়ার্কফ্লো।
+   - ui-ux-pro-max-skill এর ফার্মেসি আরগোনোমিক্স: মাউস ছাড়া দ্রুত বিলিং শর্টকাট, চোখের ক্লান্তিহীন কালার প্যালেট এবং অপ্টিমাইজড POS ইন্টারফেস।
+   - থিম সাপোর্ট: ফার্মেসির সকল ১০টি স্ক্রিনে হাই-কনট্রাস্ট লাইট ও ডার্ক মোডের পূর্ণ সুবিধা।
+
+৬. ভ্যালিডেশন ও নিরাপত্তা:
+   - ইনপুট ভ্যালিডেশন: ক্লায়েন্ট ফর্ম ও সার্ভার অ্যাকশন উভয় স্থানে Zod স্কিমা ভ্যালিডেশন।
+   - প্রমাণীকরণ ও RBAC: Auth.js (NextAuth) বা Argon2/BCrypt হ্যাশ ও JWT সেশন (Admin, Staff, Cashier, Supplier, Customer)।
+   - রেট লিমিটিং: ৫ বারের বেশি ব্যর্থ লগইনে ১৫ মিনিটের আইপি ভিত্তিক লকআউট (login_attempts টেবিল)।
+
+৭. প্রিন্টিং ও এক্সপোর্ট ইঞ্জিন:
+   - থার্মাল ও ট্যাক্স ইনভয়েস প্রিন্ট: ৮০ মিমি/৫৮ মিমি থার্মাল স্লিপ এবং স্ট্যান্ডার্ড A4 ট্যাক্স ইনভয়েসের
+     জন্য ব্রাউজার-নেটিভ @media print CSS ইঞ্জিন।
+   - ফাইল এক্সপোর্ট: ExcelJS ও UTF-8 BOM যুক্ত CSV স্ট্রিমিং এক্সপোর্ট।
+
+--------------------------------------------------------------------------------
+৪. প্রকল্পের কার্যপরিধি (SCOPE OF WORK - SOW) - বিস্তারিত মডিউলসমূহ
+--------------------------------------------------------------------------------
+
+মডিউল ১: আধুনিক ফ্রন্টএন্ড এবং UI/UX ডিজাইন সিস্টেম (ui_ux_design_plan.txt দ্বারা পরিচালিত)
+- মাস্টার UI/UX বাস্তবায়ন: ui_ux_design_plan.txt-এর ১০টি স্ক্রিন ব্লুপ্রিন্ট ও কম্পোনেন্ট ম্যাপিং অনুযায়ী সম্পূর্ণ ইন্টারফেস নির্মাণ।
+- awesome-design-md এর টোকেন ব্যবহারে প্রিমিয়াম, হাই-কনট্রাস্ট লাইট ও ডার্ক মোড সাপোর্ট।
+- ১০০% কীবোর্ড শর্টকাট (F1-F12) কভারেজ সহ ফার্মাসিস্টদের চোখের ক্লান্তিহীন ও দ্রুতগতির স্পেশালাইজড POS বিলিং টার্মিনাল।
+- emilkowalski/skills মাইক্রো-ইন্টারঅ্যাকশন: বোতামের স্পর্শানুভূতি ফিডব্যাক, স্মুথ স্প্রিং ড্রয়ার এবং নন-ব্লকিং অটো-ডিসমিস টোস্ট অ্যালার্ট।
+- dimensional-drawing ভিজ্যুয়াল র্যাক লোকেটার: মেডিসিন মাস্টার এবং POS বিলিংয়ে আইসোমেট্রিক শেলফ/র্যাক কোঅর্ডিনেট প্রদর্শন।
+- ডেস্কটপ, ট্যাবলেট এবং টাচ-স্ক্রিন POS মেশিনে সম্পূর্ণ রেসপন্সিভ লেআউট।
+- কাস্টম সার্চেবল সিলেক্ট (ডেস্কটপে অটো-ফ্লিপ ভাসমান প্যানেল এবং মোবাইলে ব্যাকড্রপসহ বটম-শিট)।
+- অ্যাক্সেসিবল মডাল ডায়ালগ (ESC বা বাইরে ক্লিকে বন্ধ), অটো-ক্লোজিং নোটিফিকেশন (~৪.৫ সেকেন্ড) এবং গুরুত্বপূর্ণ অ্যাকশনে কনফার্মেশন গার্ড।
+
+মডিউল ২: ওষুধ মাস্টার এবং ইনভেন্টরি ম্যানেজমেন্ট
+- বিস্তারিত মেডিসিন মাস্টার: ব্র্যান্ডের নাম, জেনেরিক উপাদান, প্রস্তুতকারক কোম্পানি, ক্যাটাগরি (ট্যাবলেট, সিরাপ, ইনজেকশন, অয়েন্টমেন্ট ইত্যাদি)।
+- কাস্টম "Other" ক্যাটাগরি সাপোর্ট (নতুন ক্যাটাগরি লিখে দিলে তা টেবিলে সেভ হয়ে পরবর্তীতে ব্যবহারের জন্য সংরক্ষিত থাকে)।
+- ডিলিট গার্ড: কোনো ওষুধের বিপরীতে ব্যাচ রেকর্ড থাকলে ওই ওষুধ সিস্টেমে ডিলিট করা সম্পূর্ণ ব্লক থাকবে।
+- রেক ও শেলফ লোকেশন ট্র্যাকিং: ফার্মাসির তাকে ওষুধ দ্রুত খুঁজে পেতে Rack/Shelf No প্রদর্শন।
+- প্যাকেজিং ও ইউনিট কনভার্সন: বক্স -> পাতা (Strip) -> খুচরা পিস (Loose Units) রূপান্তর ও নির্ভুল স্টক হিসাব।
+- বাল্ক ইমপোর্ট ও এক্সপোর্ট: মাল্টি-ফরম্যাট ইমপোর্ট (CSV, TXT, XLSX), প্রিভিউ-কনফার্ম ফ্লো, কেস-ইনসেনসিটিভ ডুপ্লিকেট স্কিপ, স্যাম্পল CSV ডাউনলোড এবং UTF-8 BOM যুক্ত Excel-সামঞ্জস্যপূর্ণ CSV এক্সপোর্ট।
+- পারফরম্যান্স আর্কিটেকচার: SQL LIMIT/OFFSET পেজিনেশন ও ইনডেক্সিং, যাতে ১ লক্ষ+ রেকর্ডেও সিস্টেম সুপার-ফাস্ট থাকে।
+
+মডিউল ৩: ব্যাচ ও মেয়াদোত্তীর্ণ ট্র্যাকিং
+- মাল্টি-ব্যাচ ট্র্যাকিং: একটি ওষুধের একাধিক ব্যাচ, ভিন্ন ভিন্ন ব্যাচ নম্বর, মেয়াদ, ক্রয়মূল্য এবং MRP।
+- FEFO / FIFO অ্যালগরিদম: বিলিংয়ের সময় যে ব্যাচের মেয়াদ আগে শেষ হবে (First Expiry, First Out), সেটি স্বয়ংক্রিয়ভাবে সাজেস্ট করা।
+- কালার-কোডেড এক্সপায়ারি অ্যালার্ট: মেয়াদোত্তীর্ণ (লাল), ৩০ দিনের মধ্যে শেষ হতে যাওয়া (কমলা), এবং ৯০ দিনের মধ্যে শেষ হতে যাওয়া (হলুদ) ওষুধের সতর্কতা।
+- স্টক সমন্বয়: ভাঙা, লিকেজ, নষ্ট বা অডিটের কারণে স্টক হ্রাস/বৃদ্ধির কারণ সহ হিসেব রাখা।
+
+মডিউল ৪: হাই-স্পিড পিওএস বিলিং টার্মিনাল
+- কীবোর্ড চালিত দ্রুত বিলিং এবং তাৎক্ষণিক সার্চ (ব্র্যান্ডের নাম, জেনেরিক নাম বা বারকোড দিয়ে)।
+- বারকোড এবং কিউআর কোড স্ক্যানার ইন্টিগ্রেশন।
+- ওয়ান-ক্লিকে সাধারণ (Walk-in) কাস্টমার বা মোবাইল নম্বর দিয়ে রোগী নির্বাচন।
+- বহুমুখী পেমেন্ট সুবিধা: ক্যাশ, ডায়নামিক UPI কিউআর ও রেফারেন্স, কার্ড, চেক (চেক নং, ব্যাংক, তারিখ) এবং কাস্টমার বাকি খাতা (Credit)।
+- স্বয়ংক্রিয় GST (CGST + SGST / IGST) এবং আইটেম/বিল পর্যায়ে ডিসকাউন্ট ক্যালকুলেশন (মাস্টার বা কাস্টম %)।
+- চেকআউটের ঠিক পূর্বে DB ট্রানজেকশনে অ্যাটমিক স্টক ও মেয়াদ পুনরায় যাচাই, যাতে মেয়াদোত্তীর্ণ ওষুধ বা অতিরিক্ত স্টক কোনোভাবেই বিক্রি না হয়।
+- মাল্টি-ফরম্যাট প্রিন্টিং: ২-ইঞ্চি ও ৩-ইঞ্চি (80mm) থার্মাল স্লিপ এবং স্টোর GSTIN ও DL নম্বরসহ লিগ্যাল TAX INVOICE A4 প্রিন্ট/PDF।
+- রিটার্ন ইঞ্জিন: ডিসকাউন্ট-আনুপাতিক রিফান্ড হিসাব, ডাবল-রিটার্ন প্রতিরোধ গার্ড এবং রিস্টক পছন্দ (স্টকে ফেরত যোগ বা রাইট-অফ)।
+- স্বয়ংক্রিয় কাস্টমার পারচেজ লগ এবং কাস্টমারের ইমেইলে ডিজিটাল রসিদ প্রেরণ।
+
+মডিউল ৫: কাস্টমার ও পেশেন্ট ম্যানেজমেন্ট (CRM)
+- রোগীর প্রোফাইল, অতীতের ক্রয়ের ইতিহাস এবং মোট খরচের পরিসংখ্যান।
+- ক্রনিক পেশেন্ট রিফিল রিমাইন্ডার: ডায়াবেটিস বা উচ্চ রক্তচাপের মতো নিয়মিত রোগীদের ওষুধের রিফিল অ্যালার্ট।
+- কাস্টমার বাকি খাতা (Credit Ledger): বাকি টাকার লিমিট, বকেয়া ব্যালেন্স এবং কিস্তিতে পরিশোধের রেকর্ড।
+
+মডিউল ৬: সাপ্লায়ার ও পারচেজ ম্যানেজমেন্ট
+- সাপ্লায়ারের তালিকা, ড্রাগ লাইসেন্স (DL), GSTIN এবং যোগাযোগের তথ্য।
+- পূর্ণাঙ্গ PO লাইফসাইকেল: স্ট্যাটাস মেশিন ট্র্যাকিং (pending -> price_updated -> confirmed -> shipped -> received, এবং cancelled)।
+- সাপ্লায়ারের দাম আপডেট সুবিধা এবং দাম ফিক্সড করতে শুধু অ্যাডমিন কনফার্মেশন।
+- রি-অর্ডার PO: এক ক্লিকে পূর্ববর্তী পারচেজ অর্ডার ক্লোন করে নতুন অর্ডারে রূপান্তর।
+- গুডস রিসিভ নোট (GRN): ব্যাচ নম্বর, মেয়াদ ও MRP সহ রিসিভ; মিলে যাওয়া ব্যাচ থাকলে স্বয়ংক্রিয় মার্জ এবং আংশিক ডেলিভারির জন্য received_qty ট্র্যাকিং।
+- PO তৈরি, কনফার্ম, বাতিল ও রিসিভ হলে সাপ্লায়ারকে স্বয়ংক্রিয় ইমেইল নোটিফিকেশন।
+- অ্যাডমিনকে দিনে সর্বোচ্চ একবার দৈনিক লো-স্টক ও মেয়াদোত্তীর্ণ সতর্কতা ইমেইল সারাংশ।
+
+মডিউল ৭: জিএসটি ও লিগ্যাল কমপ্লায়েন্স
+- সকল ইনভয়েসে ড্রাগ লাইসেন্স (DL) ও ফার্মাসিস্ট রেজিস্ট্রেশন নম্বর স্বয়ংক্রিয়ভাবে সংযোজন।
+- শিডিউল এইচ / এইচ১ ড্রাগ রেজিস্টার: চিকিৎসকের প্রেসক্রিপশন ড্রাগ বিক্রয়ের ডিজিটাল অডিট রেজিস্টার।
+- জিএসটি রিপোর্ট: GSTR-1 এবং GSTR-3B ফ্রেন্ডলি সেলস, পারচেজ ও ট্যাক্স সামারি রিপোর্ট।
+
+মডিউল ৮: ফিনান্সিয়াল লেজার, ক্লোজিং ও অ্যানালিটিক্স
+- এক্সিকিউটিভ ড্যাশবোর্ড: রিয়েল-টাইম আজ/মাস/মোট নিট আয় (বিক্রয় মাইনাস প্রসেসড রিফান্ড), PO খরচের হিসাব, ৭ দিনের সেলস চার্ট, সাম্প্রতিক বিক্রয় ফিড, টপ ৫ ওষুধ এবং বন্ধযোগ্য অ্যালার্ট ব্যানারসহ নোটিফিকেশন বেল।
+- ডে-এন্ড ক্যাশ কাউন্টার ক্লোজিং: দিনের শেষে ড্রয়ারের ক্যাশের সাথে সফটওয়্যারের ক্যাশ/UPI/কার্ড বিক্রয়ের রিকনসিলিয়েশন।
+- নির্ভুল লাভ ও ক্ষতির রিপোর্ট (P&L): সঠিক COGS-ভিত্তিক প্রফিট মার্জিন (বিক্রয় মূল্য মাইনাস ব্যাচের ক্রয় মূল্য)।
+- অ্যানালিটিক্যাল রিপোর্ট: মাসওয়ারি বৃদ্ধি %, দৈনিক গড়, ১২ মাসের সারাংশ টেবিল (বিক্রয় সংখ্যা, আয়, GST, ছাড়), টপ ১০ ওষুধ, টপ ৫ কাস্টমার, পেমেন্ট পদ্ধতি অনুযায়ী ভাগ এবং ১ লক্ষ+ রেকর্ডেও দ্রুত SQL-লেভেল অ্যাগ্রিগেশন।
+- এক্সপোর্ট সুবিধা: সকল রিপোর্টের জন্য এক ক্লিকে CSV (UTF-8 BOM) ও Microsoft Excel (.xls) এক্সপোর্ট।
+
+মডিউল ৯: ইউজার রোল, RBAC ও সিকিউরিটি
+- রোল-বেসড অ্যাক্সেস: Admin (পূর্ণ নিয়ন্ত্রণ), Pharmacist / Cashier (শুধুমাত্র বিলিং ও স্টক দেখা) এবং Accountant।
+- সিকিউর অডিট ট্রেইল: কোনো ওষুধের দাম পরিবর্তন, বিল বাতিল, রিটার্ন বা স্টক অ্যাডজাস্টমেন্ট কে কখন করেছে তার পূর্ণাঙ্গ লগ।
+
+মডিউল ১০: সিস্টেম অ্যাডমিনিস্ট্রেশন, মাল্টি-স্টোর সেটআপ ও ডেটা সুরক্ষা
+- প্রথমবার চালুর ৪ ধাপের সেটআপ উইজার্ড (স্টোর, অ্যাডমিন, স্টোরেজ, নিশ্চিতকরণ), ডুয়াল সেশন রিকভারি, সেন্ডগ্রিড OTP আনলক ও ডিফল্ট ডেটা (২০টি ডোজ ফর্ম + প্রাথমিক `MAIN` ব্রাঞ্চ)।
+- মাল্টি-আউটলেট ও মাল্টি-ব্রাঞ্চ স্টোর ম্যানেজমেন্ট (`branches` টেবিল): ১টি ল্যাপটপ বা ইনস্টলেশন থেকে একাধিক স্টোর/শাখা (Store 1, Store 2, OPD Counter) পরিচালনা; স্বতন্ত্র ব্রাঞ্চ কোড (`MAIN`, `BR-02`), আলাদা ড্রাগ লাইসেন্স (DL 20B/21B) ও GSTIN, শাখা-ভিত্তিক স্টক ব্যাচ (`[medicine_id, batch_no, branch_id]`) এবং ১-ক্লিক হেডার POS আউটলেট সুইচার — ২য় বা ৩য় স্টোরের জন্য পুনরায় সেটআপ উইজার্ড চালানোর প্রয়োজন নেই।
+- ডুয়াল ইমেইল গেটওয়ে ইন্টিগ্রেশন: SendGrid v3 REST API ও Custom SMTP (Nodemailer) এবং লাইভ হ্যান্ডশেক ডায়াগনস্টিক টেস্ট টুল।
+- এক ক্লিকে SQL ব্যাকআপ, SQL ফাইল থেকে রিস্টোর, JSON থেকে MySQL মাইগ্রেশন।
+- নিরাপত্তা যাচাইসহ ভার্সন ZIP থেকে শুধু অ্যাডমিনের জন্য সফটওয়্যার আপডেট।
+- ইউনিফাইড ইউজার ম্যানেজমেন্ট (স্টাফ, সাপ্লায়ার, পেশেন্ট ট্যাব), ব্রাঞ্চ অ্যাসাইনমেন্ট (`branch_id`), শেষ অ্যাডমিন সুরক্ষা, স্টাফের অনুমোদিত পেজ তালিকা, ক্রেডেনশিয়াল ইমেইল।
+
+মডিউল ১১: সাপ্লায়ার, কাস্টমার পোর্টাল ও মেসেজিং
+- সাপ্লায়ার পোর্টাল: ড্যাশবোর্ড, অর্ডার স্ট্যাটাস আপডেট, কন্টাক্ট ফর্ম, প্রোফাইল।
+- কাস্টমার পোর্টাল: ইমেইল-ভেরিফাইড রেজিস্ট্রেশন, ক্রয়ের ইতিহাস, রিটার্ন রিকোয়েস্ট, প্রেসক্রিপশন আপলোড, প্রোফাইল।
+- পেশেন্ট ও সাপ্লায়ার মেসেজ ইনবক্স এবং নিরাপদ প্রেসক্রিপশন ফাইল সরবরাহ।
+- লেজার CSV/Excel এক্সপোর্ট, ইনভয়েসে কথায় টাকা, GST-ইনক্লুসিভ MRP নিয়ম।
+
+--------------------------------------------------------------------------------
+৫. বাস্তবায়ন পর্যায়সমূহ (DEVELOPMENT PHASES & ROADMAP)
+--------------------------------------------------------------------------------
+- Phase 1: প্রজেক্ট আর্কিটেকচার সেটআপ, ডেটাবেস স্কিমা ডিজাইন এবং কোর ডিজাইন সিস্টেম তৈরি।
+- Phase 2: মেডিসিন মাস্টার, ব্যাচ ম্যানেজমেন্ট, সাপ্লায়ার এবং কাস্টমার মডিউল তৈরি।
+- Phase 3: আল্ট্রা-ফাস্ট পিওএস বিলিং ইঞ্জিন, বারকোড স্ক্যানার এবং থার্মাল প্রিন্টিং সিস্টেম তৈরি।
+- Phase 4: পারচেজ ম্যানেজমেন্ট (PO ও GRN), স্টক অ্যাডজাস্টমেন্ট এবং এক্সপায়ারি অ্যালার্ট ইঞ্জিন।
+- Phase 5: জিএসটি ট্যাক্স ক্যালকুলেশন, শিডিউল ড্রাগ কমপ্লায়েন্স এবং কাস্টমার বাকি খাতা।
+- Phase 6: অ্যানালিটিক্স ড্যাশবোর্ড, সেলস রিপোর্ট এবং ডে-এন্ড ক্যাশ রিকনসিলিয়েশন ফিচার।
+- Phase 7: সিকিউরিটি অডিট, পারফরম্যান্স অপ্টিমাইজেশন এবং ফাইনাল হ্যান্ডওভার।
+
+--------------------------------------------------------------------------------
+৬. প্যানেল অনুযায়ী পূর্ণাঙ্গ আর্কিটেকচার ও কাজের বিস্তারিত কার্যপ্রণালী
+--------------------------------------------------------------------------------
+এই অনুচ্ছেদে পুরো সিস্টেমের সকল প্যানেল, তাদের স্বতন্ত্র অথেনটিকেশন কনটেক্সট, 
+সুনির্দিষ্ট কাজের পরিধি এবং এন্ড-টু-এন্ড কার্যপ্রণালী বিস্তারিতভাবে লিপিবদ্ধ করা হলো।
+
+৬.১ মাস্টার প্যানেল আর্কিটেকচার ও অথেনটিকেশন কনটেক্সট:
+    পুরো সিস্টেমটি মূলত ৩টি প্রধান ইউজার পোর্টাল/প্যানেল (স্বতন্ত্র লগইন), ১টি প্রথমবার চালুর 
+    অনবোর্ডিং উইজার্ড এবং স্টাফদের জন্য ৪টি পদমর্যাদাভিত্তিক রোলের ওপর ভিত্তি করে তৈরি:
+    - প্যানেল ১: অ্যাডমিন ও স্টাফ সেন্ট্রাল ম্যানেজমেন্ট প্যানেল (লগইন: `admin`, টেবিল: `users`)
+    - প্যানেল ২: সাপ্লায়ার এক্সট্রানেট সেলফ-সার্ভিস পোর্টাল (লগইন: `supplier`, টেবিল: `supplier_users`)
+    - প্যানেল ৩: কাস্টমার ও পেশেন্ট সেলফ-সার্ভিস পোর্টাল (লগইন: `customer`, টেবিল: `customers`)
+    - প্যানেল ৪: প্রথমবার চালুর ৪-ধাপের সেটআপ উইজার্ড (`public/setup/wizard.php`)
+
+৬.২ প্যানেল ১: অ্যাডমিন ও স্টাফ সেন্ট্রাল ম্যানেজমেন্ট প্যানেল
+    অথেনটিকেশন কনটেক্সট: `admin` | ব্যবহারকারী: ফার্মেসির মালিক, ম্যানেজার, ফার্মাসিস্ট, ক্যাশিয়ার ও অ্যাকাউন্ট্যান্ট
+    মূল ভূমিকা: এটি ফার্মেসির কেন্দ্রীয় অপারেটিং ইঞ্জিন, যা কাউন্টার বিলিং, ওষুধ স্টক নিয়ন্ত্রণ, 
+    পাইকারি চালান, কাস্টমার CRM, আয়-ব্যয় হিসাব, ওষুধ আইন কমপ্লায়েন্স ও সিস্টেম সেটিংস পরিচালনা করে।
+
+    সাব-মডিউল ও কার্যপ্রণালী:
+    ক) হাই-স্পিড পিওএস বিলিং টার্মিনাল:
+       - ১০০% কীবোর্ড চালিত অপারেশন: মাউস ছাড়া শুধুমাত্র কীবোর্ড দিয়ে চোখের পলকে বিলিং (F2 সার্চ, F4 পেমেন্ট, 
+         F7 কাস্টমার, F9 ডিসকাউন্ট, Enter যোগ, ESC ক্লিয়ার, Ctrl+P প্রিন্ট)।
+       - বারকোড ও কিউআর কোড স্ক্যানার: ওষুধের প্যাকেটের বারকোড স্ক্যান করলেই ১০০ মিলিসেকেন্ডে কার্টে যোগ হওয়া।
+       - ড্রাগ সার্চ ও তাকের অবস্থান (Visual Shelf HUD): ওষুধ সার্চ করলেই স্ক্রিনে ভেসে উঠবে ওষুধটি দোকানের 
+         কোন র‌্যাকে ও তাকে রাখা আছে ("অবস্থান: Rack B -> Shelf 2 -> Bin 4")।
+       - FEFO ব্যাচ নির্বাচন অ্যালগরিদম: যে ব্যাচের মেয়াদ সবার আগে শেষ হবে, সিস্টেম স্বয়ংক্রিয়ভাবে সেটি বিক্রির পরামর্শ দেবে।
+       - পাতা থেকে খুচরা ট্যাবলেট বিক্রয়: পুরো পাতার পাশাপাশি খুচরা ট্যাবলেট/ক্যাপসুল বিক্রয় ও স্টকে আনুপাতিক বিয়োগ।
+       - বহুমুখী পেমেন্ট সুবিধা: ক্যাশ (ভাংতি টাকা ক্যালকুলেটর), ডায়নামিক UPI QR কোড (টাকার অঙ্কসহ), কার্ড, চেক ও বাকি খাতা।
+       - অ্যাটমিক ডাটাবেস ভ্যালিডেশন: বিল ফাইনাল করার সময় ট্রানজ্যাকশনে স্টক ও মেয়াদ যাচাই, মেয়াদোত্তীর্ণ ওষুধ বিক্রিতে লাল 
+         মডাল দিয়ে সম্পূর্ণ ব্লক, স্টক হ্রাস এবং `stock_adjustments` অডিট রো লেখা।
+       - ডুয়াল প্রিন্টিং ইঞ্জিন: ৮০ মিমি/৫৮ মিমি থার্মাল রিসিপ্ট প্রিন্ট এবং ড্রাগ লাইসেন্স ও GSTIN সহ লিগ্যাল A4 ট্যাক্স ইনভয়েস।
+       - হোয়াটসঅ্যাপ ও এসএমএস ডিজিটাল ইনভয়েস: কাস্টমারের মোবাইলে সাথে সাথে ডিজিটাল রসিদ প্রেরণ।
+
+    খ) মেডিসিন ক্যাটালগ ও মাল্টি-ব্যাচ ইনভেন্টরি:
+       - ওষুধের মাস্টার ডাটা: ব্র্যান্ড নাম, জেনেরিক API, প্রস্তুতকারক, ডোজ ফর্ম, HSN ও জিএসটি হার।
+       - শিডিউল এইচ / এইচ১ ড্রাগ কমপ্লায়েন্স: প্রেসক্রিপশন ড্রাগের ক্ষেত্রে ডাক্তারের নাম ও প্রেসক্রিপশন নম্বর বাধ্যতামূলক।
+       - ৪-স্তরের কালার-কোডেড মেয়াদ সতর্কতা: লাল (মেয়াদোত্তীর্ণ - লকড), কমলা (<৩০ দিন), হলুদ (<৯০ দিন), সবুজ (নিরাপদ)।
+       - বাল্ক CSV/XLSX ইমপোর্ট: প্রিভিউ ও ডুপ্লিকেট স্কিপ করে এক ক্লিকে হাজারো ওষুধ আপলোড।
+       - ডিলিট প্রটেকশন গার্ড: স্টকে সক্রিয় ব্যাচ থাকা অবস্থায় কোনো ওষুধ মুছে ফেলা সম্পূর্ণ নিষিদ্ধ।
+
+    গ) পারচেজ অর্ডার (PO) ও গুডস রিসিট নোট (GRN) ইনওয়ার্ড ডেস্ক:
+       - PO লাইফসাইকেল: `pending` -> `price_updated` -> `confirmed` -> `shipped` -> `received` / `cancelled`।
+       - স্মার্ট অটো-পিও জেনারেশন: স্টকের ঘাটতি ও বিক্রির গতি দেখে স্বয়ংক্রিয় পারচেজ অর্ডার তৈরি।
+       - দ্রুতগতির GRN ডেস্ক: মাউস ছাড়া Tab/Enter চেপে দ্রুত ৫০-১০০টি ওষুধের চালান, ব্যাচ, মেয়াদ ও দাম ইনপুট নেওয়া।
+       - অটো ব্যাচ মার্জিং ও গড় কেনা দাম হিসাব।
+
+    ঘ) সেলস রিটার্ন, রিস্টক ও রিফান্ড ইঞ্জিন:
+       - মূল ইনভয়েস ভ্যালিডেশন: ফেরত সংখ্যা <= পূর্বে কেনা সংখ্যা - ইতিমধ্যে ফেরত নেওয়া সংখ্যা।
+       - স্টকে ফেরত বনাম নষ্ট হিসেবে বাতিল: ভালো ওষুধ স্টকে যোগ করা বা নষ্ট ওষুধ ডিসকার্ড করা।
+       - ডিসকাউন্ট-আনুপাতিক রিফান্ড ক্যালকুলেশন।
+
+    ঙ) কাস্টমার CRM ও বাকি খাতা (Credit Ledger):
+       - রোগীর প্রোফাইল, প্রেসক্রিপশন হিস্ট্রি ও ডায়াবেটিস/হার্টের রোগীদের মাসিক ওষুধ রিফিল অ্যালার্ট।
+       - কাস্টমার বাকি খাতার নির্দিষ্ট ক্রেডিট লিমিট ও কিস্তি আদায়ের নিখুঁত ট্র্যাকিং।
+
+    চ) ফিনান্সিয়াল লেজার, ক্যাশ ক্লোজিং ও কমপ্লায়েন্স:
+       - আয়-ব্যয় খাতা: দোকান ভাড়া, কর্মচারীর বেতন, বিদ্যুৎ বিল ইত্যাদির খরচ সংরক্ষণ।
+       - দিন শেষের ক্যাশ ড্রয়ার ক্লোজিং (Z-Report): নগদ নোট গুনে এন্ট্রি (₹৫০০x১০, ₹১০০x২০); সিস্টেম বিক্রির সাথে মিলিয়ে 
+         ক্যাশ উদ্বৃত্ত বা শর্ট নির্ণয় করবে।
+       - লাভ-ক্ষতির হিসাব (P&L): প্রকৃত ক্রয়মূল্যের (COGS) ওপর ভিত্তি করে প্রতিদিন ও প্রতি মাসের খাঁটি নিট লাভ।
+       - জিএসটি ট্যাক্স রিপোর্ট: ট্যাক্স ফাইলিংয়ের জন্য GSTR-1 এবং GSTR-3B ফরম্যাট ফ্রেন্ডলি রিপোর্ট।
+
+    ছ) ইউনিফাইড ইউজার ও রোল ম্যানেজমেন্ট (RBAC):
+       - ৩টি আলাদা ট্যাব: Staff Users | Supplier Users | Patient Accounts।
+       - লাস্ট-অ্যাডমিন ডিমোট প্রোটেকশন ও স্বয়ংক্রিয় ক্রেডেনশিয়াল ইমেইল।
+
+    জ) সিস্টেম সেটিংস, ব্যাকআপ ও সফটওয়্যার আপডেট:
+       - ড্রাগ লাইসেন্স (DL 20B/21B), GSTIN ও SMTP ইমেইল সেটআপ।
+       - এক ক্লিকে সম্পূর্ণ ডাটাবেস ব্যাকআপ (.sql ফাইল) ডাউনলোড ও ফাইল থেকে রিস্টোর।
+       - ভার্সন ZIP ফাইল আপলোড করে নিরাপদ সফটওয়্যার আপডেট।
+
+    ঝ) প্রেসক্রিপশন ভেরিফিকেশন ও মেসেজিং ইনবক্স:
+       - রোগীর আপলোড করা প্রেসক্রিপশন স্লাইড-ওভার স্ক্রিনে দেখে ১-ক্লিকে কাউন্টার বিলিং কার্টে যুক্ত করার সুবিধা।
+
+৬.৩ প্যানেল ২: সাপ্লায়ার সেলফ-সার্ভিস এক্সট্রানেট পোর্টাল
+    অথেনটিকেশন কনটেক্সট: `supplier` | ব্যবহারকারী: ওষুধ পাইকারি ডিস্ট্রিবিউটর ও ভেন্ডর
+    মূল ভূমিকা: সরবরাহকারীদের নিজস্ব পোর্টাল—অর্ডার গ্রহণ, দাম আপডেট, চালান ট্র্যাকিং ও মেসেজিং।
+
+    কার্যপ্রণালী:
+    - অর্ডার ডেস্ক: ফার্মেসির পাঠানো অফিশিয়াল PO দেখা ও PDF ডাউনলোড।
+    - ডিস্ট্রিবিউটর প্রাইস আপডেট: ওষুধের দাম পরিবর্তন হলে নতুন রেট প্রস্তাব করা (স্ট্যাটাস `price_updated` হওয়া)।
+    - অর্ডার কনফার্মেশন: ওষুধের প্রাপ্যতা নিশ্চিত করে স্ট্যাটাস `confirmed` করা।
+    - চালান ও পরিবহন ট্র্যাকিং: ওষুধ পাঠানোর পর স্ট্যাটাস `shipped` করা এবং কুরিয়ার/গাড়ির ট্র্যাকিং নম্বর এন্ট্রি করা।
+    - সরাসরি ভেন্ডর চ্যাট: ফার্মেসির পারচেজ টিমের সাথে সরাসরি ইন-অ্যাপ মেসেজিং।
+    - সাপ্লায়ার লেজার: ফার্মেসির কাছে মোট বকেয়া ও পরিশোধিত বিলের হিসাব দেখা।
+
+৬.৪ প্যানেল ৩: কাস্টমার ও পেশেন্ট সেলফ-সার্ভিস পোর্টাল
+    অথেনটিকেশন কনটেক্সট: `customer` | ব্যবহারকারী: ফার্মেসির সাধারণ রোগী ও ক্রেতা
+    মূল ভূমিকা: রোগীদের নিজস্ব ডিজিটাল স্বাস্থ্য ও রসিদ সংগ্রহের সেলফ-সার্ভিস পোর্টাল।
+
+    কার্যপ্রণালী:
+    - ইমেইল ভেরিফাইড সেলফ-রেজিস্ট্রেশন: ইমেইল লিংকের মাধ্যমে নিরাপদ রোগীর একাউন্ট তৈরি ও ব্রুট-ফোর্স প্রটেকশন।
+    - নিরাপদ প্রেসক্রিপশন আপলোড: প্রেসক্রিপশনের ছবি/পিডিএফ আপলোড (সুরক্ষিত স্টোরেজে সংরক্ষিত থাকে)।
+    - ক্রয়ের ইতিহাস ও ইনভয়েস ডাউনলোড: অতীতে কেনা সব ওষুধের তালিকা ও ১-ক্লিকে A4 ট্যাক্স ইনভয়েস ডাউনলোড।
+    - অনলাইন রিটার্ন রিকোয়েস্ট: কেনা ওষুধ ফেরত দেওয়ার জন্য পোর্টাল থেকে আবেদন।
+    - ক্রনিক রিফিল রিমাইন্ডার: ডায়াবেটিস বা উচ্চ রক্তচাপের ওষুধ শেষ হওয়ার আগে রিফিল অ্যালার্ট।
+    - সরাসরি হেল্পডেস্ক চ্যাট: ওষুধের প্রাপ্যতা জানার জন্য ফার্মেসির সাথে চ্যাট।
+
+৬.৫ প্যানেল ৪: প্রথমবার চালুর ৪-ধাপের সেটআপ উইজার্ড
+    লোকেশন: `public/setup/wizard.php` | ব্যবহারকারী: ফার্মেসি মালিক / সফটওয়্যার ইনস্টলার (শুধু প্রথম দিন)
+    মূল ভূমিকা: সফটওয়্যারটি প্রথমবার ইন্সটল করার নির্দেশিত সেটআপ ও মাস্টার ডাটা সিডিং ইঞ্জিন।
+
+    কার্যপ্রণালী:
+    - ধাপ ১ স্টোর প্রোফাইল: স্টোরের নাম, ঠিকানা, ফোন, অফিসিয়াল GSTIN ও ড্রাগ লাইসেন্স (DL 20B/21B)।
+    - ধাপ ২ সুপার অ্যাডমিন: মূল সিস্টেম অ্যাডমিনের ইউজারনেম, ইমেইল ও পাসওয়ার্ড তৈরি।
+    - ধাপ ৩ ডাটাবেস ইঞ্জিন: রিলেশনাল ডাটাবেস (PostgreSQL / MySQL / SQLite) কানেকশন ও স্কিমা তৈরি।
+    - ধাপ ৪ সিডিং ও পার্মানেন্ট লক: প্রাথমিক ২০টি ওষুধের ক্যাটাগরি সিডিং, `setup_done = 1` সেট করা ও উইজার্ড স্থায়ী লক।
+
+৬.৬ অভ্যন্তরীণ স্টাফ প্যানেলের ৪টি পদের দায়িত্ব ভাগ (RBAC):
+    - সুপার অ্যাডমিন: পুরো সিস্টেমের ১০০% নিয়ন্ত্রণ, সেটিংস পরিবর্তন, ব্যাকআপ নেওয়া, লাভ-ক্ষতির রিপোর্ট ও ইউজার তৈরি।
+    - ফার্মাসিস্ট: পিওএস বিলিং, ওষুধ ও ব্যাচ স্টক নিয়ন্ত্রণ, পারচেজ অর্ডার তৈরি, চালান রিসিভ ও প্রেসক্রিপশন যাচাই।
+    - ক্যাশিয়ার: কাউন্টারে দ্রুত পিওএস বিলিং, ওষুধ সার্চ ও থার্মাল রসিদ প্রিন্ট।
+    - একাউন্ট্যান্ট: আয়-ব্যয় লেজার, দিন শেষের ক্যাশ ড্রয়ার ক্লোজিং, লাভ-ক্ষতির হিসাব ও জিএসটি ট্যাক্স রিপোর্ট।
+
+৬.৭ এন্ড-টু-এন্ড বাস্তব কাজের ধাপসমূহ (OPERATIONAL LIFECYCLES):
+    - কার্যপ্রণালী ক (কাউন্টার বিলিং): বারকোড স্ক্যান/F2 -> FEFO ব্যাচ নির্বাচন -> তাকের অবস্থান (HUD) -> Enter কার্ট ->
+      F4 টেন্ডার -> ক্যাশ/UPI/কার্ড/বাকি -> Ctrl+P প্রিন্ট -> ক্যাশ ড্রয়ার ওপেন -> স্টক হ্রাস -> হোয়াটসঅ্যাপে ই-বিল।
+    - কার্যপ্রণালী খ (পাইকারি ক্রয় ও চালান): লো-স্টক অ্যালার্ট -> PO তৈরি -> সাপ্লায়ার পোর্টাল প্রাইস আপডেট ->
+      অ্যাডমিন কনফার্মেশন -> সাপ্লায়ার কর্তৃক ডিসপ্যাচ ও ট্র্যাকিং -> কাউন্টারে GRN চালান রিসিভ -> স্টকে নতুন ওষুধ যোগ।
+    - কার্যপ্রণালী গ (ডিজিটাল প্রেসক্রিপশন): রোগী কর্তৃক প্রেসক্রিপশন আপলোড -> অ্যাডমিন স্লাইড-ওভার স্ক্রিনে প্রেসক্রিপশন যাচাই ->
+      ১-ক্লিকে POS কার্ট তৈরি -> কাস্টমার নোটিফিকেশন -> ওষুধ ডেলিভারি/পিকআপ।
+    - কার্যপ্রণালী ঘ (ওষুধ ফেরত): ইনভয়েস নম্বর যাচাই -> স্টকে ফেরত বা নষ্ট হিসেবে বাতিল নির্ধারণ ->
+      ডিসকাউন্ট সমন্বয়ের পর স্বয়ংক্রিয় রিফান্ড ক্যালকুলেশন -> ইনভেন্টরি পুনরুদ্ধার।
+
+--------------------------------------------------------------------------------
+৭. হাই-লেভেল প্রজেক্ট ডিরেক্টরি ও মডিউল ফোল্ডার কাঠামো (FOLDER STRUCTURE)
+--------------------------------------------------------------------------------
+প্রজেক্টটি আধুনিক Next.js App Router (TypeScript) আর্কিটেকচারে তৈরি, যেখানে সমস্ত 
+ব্যাকএন্ড Route Handlers `src/app/api/...`-তে প্যানেল অনুযায়ী বিভক্ত এবং প্রতিটি ইউজার 
+প্যানেল ও কার্যনির্বাহী মডিউলের জন্য রয়েছে নিজস্ব ডেডিকেটেড ফোল্ডার:
+
+```
+medical-pos/
+├── prisma/
+│   ├── schema.prisma                  # ২০টি রিলেশনাল টেবিল ও ৩৯টি ইনডেক্স (db_plan.txt অনুযায়ী)
+│   ├── migrations/                    # স্বয়ংক্রিয় প্রিজমা ডাটাবেস মাইগ্রেশন ফাইল
+│   └── seed.ts                        # মাস্টার সিড: ২০টি ডোজ ফর্ম ও ডিফল্ট অ্যাডমিন
+│
+├── src/
+│   ├── app/                           # Next.js App Router ফ্রন্টএন্ড ও ব্যাকএন্ড রুটস
+│   │   ├── layout.tsx                 # রুট লেআউট (ফন্ট, গ্লোবাল ডিজাইন টোকেন, থিম)
+│   │   ├── page.tsx                   # ল্যান্ডিং পেজ / ইউজার রোল অনুযায়ী পোর্টাল রিডাইরেক্টর
+│   │   ├── globals.css                # সেন্ট্রালাইজড সিএসএস ডিজাইন টোকেন (awesome-design-md)
+│   │   │
+│   │   ├── api/                       # 🚀 ব্যাকএন্ড এপিআই লেয়ার (Route Handlers)
+│   │   │   ├── auth/                  # অথেনটিকেশন, JWT ও লগইন রেট-লিমিটার
+│   │   │   │   ├── admin/             # POST /api/auth/admin/login (স্টাফ ও অ্যাডমিন লগইন)
+│   │   │   │   ├── supplier/          # POST /api/auth/supplier/login (সাপ্লায়ার লগইন)
+│   │   │   │   └── customer/          # POST /api/auth/customer/login ও ইমেইল ভেরিফিকেশন
+│   │   │   │
+│   │   │   ├── admin/                 # অ্যাডমিন ও স্টাফ প্যানেলের ব্যাকএন্ড এপিআই
+│   │   │   │   ├── pos/               # POST /api/admin/pos/checkout (অ্যাটমিক ACID সেলস ট্রানজ্যাকশন)
+│   │   │   │   ├── medicines/         # GET/POST /api/admin/medicines (ওষুধ সার্চ, বাল্ক ইমপোর্ট)
+│   │   │   │   ├── batches/           # GET /api/admin/batches (FEFO ব্যাচ কোয়েরি, লাইভ স্টক)
+│   │   │   │   ├── purchases/         # GET/POST /api/admin/purchases (PO তৈরি ও দাম অনুমোদন)
+│   │   │   │   ├── grn/               # POST /api/admin/grn (চালান ইনওয়ার্ড ও ব্যাচ স্টক মার্জ)
+│   │   │   │   ├── returns/           # POST /api/admin/returns (রিটার্ন প্রসেস, রিস্টক ও রিফান্ড)
+│   │   │   │   ├── customers/         # GET/POST /api/admin/customers (রোগীর তথ্য, বাকি খাতা)
+│   │   │   │   ├── suppliers/         # GET/POST /api/admin/suppliers (ডিস্ট্রিবিউটর তালিকা)
+│   │   │   │   ├── financials/        # GET/POST /api/admin/financials (লেজার, Z-Report ক্লোজিং)
+│   │   │   │   ├── reports/           # GET /api/admin/reports (GSTR-1, GSTR-3B, P&L নিট লাভ)
+│   │   │   │   ├── users/             # GET/POST /api/admin/users (ইউনিফাইড ৩-ট্যাব ইউজার RBAC)
+│   │   │   │   ├── settings/          # GET/PUT /api/admin/settings (DL/GSTIN, SMTP টেস্ট)
+│   │   │   │   ├── backup/            # GET /api/admin/backup (.sql এক্সপোর্ট) ও POST (রিস্টোর)
+│   │   │   │   └── messages/          # GET/POST /api/admin/messages (প্রেসক্রিপশন ও চ্যাট ইনবক্স)
+│   │   │   │
+│   │   │   ├── supplier/              # সাপ্লায়ার এক্সট্রানেট ব্যাকএন্ড এপিআই
+│   │   │   │   ├── orders/            # GET /api/supplier/orders (প্রাপ্ত পারচেজ অর্ডার দেখা)
+│   │   │   │   ├── price-update/      # POST /api/supplier/price-update (নতুন দাম প্রস্তাব করা)
+│   │   │   │   ├── dispatch/          # POST /api/supplier/dispatch (চালান পাঠানো ও ট্র্যাকিং নম্বর)
+│   │   │   │   ├── ledger/            # GET /api/supplier/ledger (পাওনা টাকা ও ভাউচার হিস্ট্রি)
+│   │   │   │   └── messages/          # POST /api/supplier/messages (পারচেজ টিমের সাথে চ্যাট)
+│   │   │   │
+│   │   │   ├── customer/              # কাস্টমার ও পেশেন্ট ব্যাকএন্ড এপিআই
+│   │   │   │   ├── prescriptions/     # POST /api/customer/prescriptions (প্রেসক্রিপশন আপলোড)
+│   │   │   │   ├── invoices/          # GET /api/customer/invoices (ট্যাক্স ইনভয়েস PDF ডাউনলোড)
+│   │   │   │   ├── returns/           # POST /api/customer/returns (অনলাইন রিটার্ন রিকোয়েস্ট)
+│   │   │   │   ├── refills/           # GET /api/customer/refills (ক্রনিক রিফিল অ্যালার্ট)
+│   │   │   │   └── profile/           # PUT /api/customer/profile (প্রোফাইল ও পাসওয়ার্ড আপডেট)
+│   │   │   │
+│   │   │   └── setup/                 # POST /api/setup (৪-ধাপের ইনিশিয়াল উইজার্ড সেটআপ)
+│   │   │
+│   │   ├── (admin)/                   # 🖥️ প্যানেল ১: অ্যাডমিন ও স্টাফ ম্যানেজমেন্ট ওয়ার্কস্পেস
+│   │   │   ├── admin/
+│   │   │   │   ├── layout.tsx         # অ্যাডমিন সাইডবার, নোটিফিকেশন বেল ও প্রোফাইল লেআউট
+│   │   │   │   ├── dashboard/         # স্ক্রিন ২: এক্সিকিউটিভ ড্যাশবোর্ড (বেন্টো গ্রিড ও চার্ট)
+│   │   │   │   ├── pos/               # স্ক্রিন ১: হাই-স্পিড পিওএস বিলিং টার্মিনাল
+│   │   │   │   ├── medicines/         # স্ক্রিন ৩: মেডিসিন ও মাল্টি-ব্যাচ ইনভেন্টরি এক্সপ্লোরার
+│   │   │   │   ├── purchases/         # PO লাইফসাইকেল ও রিরি-অর্ডার ম্যানেজমেন্ট
+│   │   │   │   ├── grn/               # স্ক্রিন ৪: চালান ইনওয়ার্ড ডেস্ক (দ্রুত কীবোর্ড এন্ট্রি)
+│   │   │   │   ├── returns/           # সেলস রিটার্ন ডেস্ক ও রিস্টক/বাতিল ব্যবস্থাপনা
+│   │   │   │   ├── customers/         # পেশেন্ট ডিরেক্টরি ও বাকি খাতা (Credit Ledger)
+│   │   │   │   ├── suppliers/         # ডিস্ট্রিবিউটর তালিকা ও বাকি পরিশোধ খাতা
+│   │   │   │   ├── financials/        # আয়-ব্যয় লেজার ও দিন শেষের ক্যাশ ক্লোজিং (Z-Report)
+│   │   │   │   ├── reports/           # GSTR-1, GSTR-3B, লাভ-ক্ষতির হিসাব ও ডেড-স্টক
+│   │   │   │   ├── users/             # স্ক্রিন ৮: ইউনিফাইড ইউজার ম্যানেজমেন্ট (৩টি ট্যাব)
+│   │   │   │   ├── messages/          # স্ক্রিন ৯: মেসেজ ইনবক্স ও প্রেসক্রিপশন ভেরিফিকেশন ডেস্ক
+│   │   │   │   ├── settings/          # স্ক্রিন ৭: স্টোর সেটিংস, DL/GSTIN, ব্যাকআপ ও রিস্টোর
+│   │   │   │   └── login/             # স্টাফ ও অ্যাডমিন লগইন পেজ (রেট-লিমিটেড)
+│   │   │
+│   │   ├── (supplier)/                # 🚚 প্যানেল ২: সাপ্লায়ার এক্সট্রানেট সেলফ-সার্ভিস পোর্টাল
+│   │   │   ├── supplier/
+│   │   │   │   ├── layout.tsx         # সাপ্লায়ার পোর্টাল সাইডবার ও ন্যাভিগেশন লেআউট
+│   │   │   │   ├── dashboard/         # সক্রিয় PO সারসংক্ষেপ ও স্ট্যাটাস কার্ডস
+│   │   │   │   ├── orders/            # PO তালিকা, আইটেম ভিউয়ার ও PDF ডাউনলোড
+│   │   │   │   ├── price-update/      # চালানের আইটেমওয়ারি নতুন দাম প্রস্তাব ইন্টারফেস
+│   │   │   │   ├── shipments/         # চালান পাঠানো ও কুরিয়ার ট্র্যাকিং নম্বর এন্ট্রি ডেস্ক
+│   │   │   │   ├── ledger/            # সরবরাহকারীর পাওনা টাকা ও পেমেন্ট ভাউচার হিস্ট্রি
+│   │   │   │   ├── messages/          # ফার্মেসির পারচেজ টিমের সাথে সরাসরি মেসেজিং
+│   │   │   │   └── login/             # সাপ্লায়ার লগইন পেজ
+│   │   │
+│   │   ├── (customer)/                # 🧑‍⚕️ প্যানেল ৩: কাস্টমার ও পেশেন্ট সেলফ-সার্ভিস পোর্টাল
+│   │   │   ├── customer/
+│   │   │   │   ├── layout.tsx         # পেশেন্ট পোর্টাল পাবলিক লেআউট
+│   │   │   │   ├── dashboard/         # ব্যক্তিগত স্বাস্থ্য ও ক্রয়ের সংক্ষিপ্ত ড্যাশবোর্ড
+│   │   │   │   ├── prescriptions/     # প্রেসক্রিপশন আপলোড করার ড্র্যাগ-ড্রপ জোন
+│   │   │   │   ├── invoices/          # স্ক্রিন ৫: বিল হিস্ট্রি, A4 ইনভয়েস ও রসিদ ডাউনলোড
+│   │   │   │   ├── returns/           # কেনা ওষুধ ফেরত দেওয়ার অনলাইন আবেদন ফর্ম
+│   │   │   │   ├── refills/           # ক্রনিক রোগীর ওষুধ শেষ হওয়ার কাউন্টডাউন ট্র্যাকার
+│   │   │   │   ├── messages/          # ফার্মেসির সাথে সরাসরি চ্যাট ও সাপোর্ট থ্রেড
+│   │   │   │   ├── profile/           # রোগীর প্রোফাইল ও পাসওয়ার্ড পরিবর্তন
+│   │   │   │   ├── login/             # পেশেন্ট লগইন পেজ (ব্রুট-ফোর্স লকআউটযুক্ত)
+│   │   │   │   └── register/          # ইমেইল ভেরিফিকেশন লিংকসহ সেলফ-রেজিস্ট্রেশন পেজ
+│   │   │
+│   │   └── (setup)/                   # ⚙️ প্যানেল ৪: প্রথমবার চালুর ৪-ধাপের সেটআপ উইজার্ড
+│   │       └── setup/
+│   │           └── wizard/            # স্ক্রিন ৬: ৪-ধাপের স্টেপার (স্টোর -> অ্যাডমিন -> DB -> শেষ)
+│   │
+│   ├── components/                    # পুনর্ব্যবহারযোগ্য UI কম্পোনেন্টস লেয়ার
+│   │   ├── ui/                        # ইন-রেপো নিজস্ব কম্পোনেন্টস (react-bits / কাস্টম)
+│   │   │   ├── spotlight-card.tsx     # ড্যাশবোর্ড মেট্রিক্সে কার্সর স্পটলাইট কার্ড
+│   │   │   ├── electric-border.tsx    # পিওএস সার্চ বারের সক্রিয় ফোকাস রিং
+│   │   │   ├── counter.tsx            # বিলের টাকা পরিবর্তনের রোলিং অ্যানিমেশন
+│   │   │   ├── stepper.tsx            # সেটআপ উইজার্ডের ৪-ধাপের স্মুথ স্টেপার
+│   │   │   ├── animated-list.tsx      # ড্যাশবোর্ডে সাম্প্রতিক বিক্রয়ের স্মুথ ফিড
+│   │   │   ├── glass-surface.tsx      # পোর্টাল লগইন স্ক্রিনের গ্লাস প্যানেল
+│   │   │   └── modal.tsx              # অ্যাক্সেসিবল মডাল ডায়ালগ (ESC ও ব্যাকড্রপ ক্লোজ)
+│   │   ├── admin/                     # অ্যাডমিন কম্পোনেন্ট (POS Cart, তাকের অবস্থান HUD)
+│   │   ├── supplier/                  # সাপ্লায়ার অর্ডার টেবিল, চালান ফর্ম
+│   │   ├── customer/                  # প্রেসক্রিপশন ড্রপ জোন, ইনভয়েস ভিউয়ার
+│   │   └── shared/                    # গ্লোবাল ন্যাভিগেশন, ডেটা-গ্রিড, প্রিন্ট র‍্যাপার
+│   │
+│   ├── lib/                           # কোর ইউটিলিটিস ও সিঙ্গেলটন সার্ভিসেস
+│   │   ├── prisma.ts                  # সেন্ট্রালাইজড প্রিজমা ক্লায়েন্ট ইনস্ট্যান্স
+│   │   ├── auth.ts                    # Auth.js / JWT সেশন গার্ড ও RBAC মিডলওয়্যার
+│   │   ├── db-transactions.ts         # অ্যাটমিক বিক্রয় চেকআউট ও স্টক হ্রাস ট্রানজ্যাকশন
+│   │   ├── email.ts                   # SMTP ইমেইল সেন্ডার (ক্রেডেনশিয়াল, PO নোটিফিকেশন)
+│   │   └── zod/                       # ফ্রন্টএন্ড ও ব্যাকএন্ডের যৌথ Zod ভ্যালিডেশন স্কিমা
+│   │
+│   ├── stores/                        # ক্লায়েন্ট স্টেট স্টোরস (Zustand)
+│   │   ├── useCartStore.ts            # দ্রুতগতির ইন-মেমোরি পিওএস কার্ট ও ডিসকাউন্ট স্টোর
+│   │   └── useKeyboardStore.ts        # গ্লোবাল কীবোর্ড শর্টকাট HUD লিসেনার (F2, F4, Enter, ESC)
+│   │
+│   └── styles/                        # সিএসএস মডিউলস ও প্রিন্টিং স্টাইলশিট
+│       ├── print-thermal.module.css   # ৮০মিমি / ৫৮মিমি থার্মাল রিসিপ্ট @media print CSS
+│       └── print-invoice.module.css   # লিগ্যাল A4 ট্যাক্স ইনভয়েস @media print CSS
+│
+├── storage/                           # সুরক্ষিত প্রাইভেট ফাইল স্টোরেজ (ওয়েব রুটের বাইরে)
+│   ├── prescriptions/                 # রোগীদের আপলোড করা প্রেসক্রিপশন ইমেজ ও পিডিএফ
+│   └── backups/                       # টাইমস্ট্যাম্পযুক্ত .sql ডাটাবেস ব্যাকআপ ফাইল
+│
+└── public/                            # পাবলিক স্ট্যাটিক ফাইলস (লোগো, আইকন, সাউন্ড এফেক্ট)
+```
+
+================================================================================
+ডকুমেন্ট স্ট্যাটাস: পর্যালোচিত ও চূড়ান্ত অনুমোদনের জন্য প্রস্তুত
+================================================================================

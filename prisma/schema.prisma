@@ -1,0 +1,586 @@
+// Prisma Schema for Medical POS & Pharmacy Management System
+// Clean Domain-Driven Relational Schema (22 Models, 49 Indexes)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// 1. STORE SETTINGS & CONFIGURATION
+// ============================================================================
+
+// Table: settings (Pharmacy Store Tenant Master: profile, licensing, tax defaults, and SMTP settings)
+model Settings {
+  id          Int      @id @default(autoincrement())
+  storeName   String   @default("") @map("store_name") @db.VarChar(255)
+  storeAddress String? @map("store_address") @db.Text
+  storePhone  String?  @map("store_phone") @db.VarChar(50)
+  storeEmail  String?  @map("store_email") @db.VarChar(255)
+  storeGst    String?  @map("store_gst") @db.VarChar(50)
+  storeDl     String?  @map("store_dl") @db.VarChar(50)
+  currency    String   @default("₹") @db.VarChar(20)
+  lowQty      Int      @default(10) @map("low_qty")
+  expiryDays  Int      @default(90) @map("expiry_days")
+  emailProvider String @default("sendgrid") @map("email_provider") @db.VarChar(20) // "sendgrid" | "smtp"
+  sendgridKey String?  @map("sendgrid_key") @db.VarChar(255)
+  smtpHost    String?  @map("smtp_host") @db.VarChar(255)
+  smtpPort    Int      @default(587) @map("smtp_port")
+  smtpUser    String?  @map("smtp_user") @db.VarChar(255)
+  smtpPass    String?  @map("smtp_pass") @db.VarChar(255)
+  smtpFrom    String?  @map("smtp_from") @db.VarChar(255)
+  smtpName    String?  @map("smtp_name") @db.VarChar(255)
+  smtpSecure  String   @default("tls") @map("smtp_secure") @db.VarChar(10)
+  setupDone   Boolean  @default(false) @map("setup_done")
+  setupStep   Int      @default(1) @map("setup_step")
+  setupToken  String?  @map("setup_token") @db.VarChar(100)
+  setupOtp    String?  @map("setup_otp") @db.VarChar(10)
+  setupOtpExp DateTime? @map("setup_otp_exp")
+  storage     String   @default("postgres") @db.VarChar(20)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  branches  Branch[]
+  users     User[]
+  auditLogs AuditLog[]
+
+  @@map("settings")
+}
+
+// Table: branches (Multi-outlet stores and pharmacy branches per Store Tenant)
+model Branch {
+  id        Int      @id @default(autoincrement())
+  storeId   Int?     @map("store_id") // Parent Pharmacy Store Tenant (Settings.id)
+  code      String   @db.VarChar(20) // e.g. MAIN, BR-02 (Unique within each Store Tenant)
+  name      String   @db.VarChar(255)
+  tagline   String?  @db.VarChar(255)
+  address   String?  @db.Text
+  phone     String?  @db.VarChar(50)
+  email     String?  @map("email") @db.VarChar(255)
+  gstNo     String?  @map("gst_no") @db.VarChar(50)
+  dlNo      String?  @map("dl_no") @db.VarChar(50)
+  isMain    Boolean  @default(false) @map("is_main")
+  active    Boolean  @default(true)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  store            Settings?         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  users            User[]
+  batches          Batch[]
+  purchaseOrders   PurchaseOrder[]
+  sales            Sale[]
+  returns          Return[]
+  stockAdjustments StockAdjustment[]
+  auditLogs        AuditLog[]
+
+  @@unique([storeId, code], name: "uk_store_branch_code")
+  @@index([storeId], name: "idx_branches_store")
+  @@index([code], name: "idx_branches_code")
+  @@index([isMain], name: "idx_branches_is_main")
+  @@map("branches")
+}
+
+// ============================================================================
+// 2. USER ACCOUNTS & ROLE-BASED ACCESS CONTROL (RBAC)
+// ============================================================================
+
+// Table: users (Staff, Pharmacist, Cashier, Admin accounts scoped to Store Tenant)
+model User {
+  id          Int       @id @default(autoincrement())
+  storeId     Int?      @map("store_id") // Parent Pharmacy Store Tenant (Settings.id)
+  name        String    @db.VarChar(255)
+  username    String    @unique @db.VarChar(100)
+  email       String    @unique @db.VarChar(255)
+  password    String    @db.VarChar(255)
+  role        String    @default("staff") @db.VarChar(50) // admin, staff, cashier, accountant
+  permissions String?   @db.Text
+  branchId    Int?      @map("branch_id") // NULL = All-Branch Access within storeId; Int = Assigned Branch
+  active      Boolean   @default(true)
+  lastLogin   DateTime? @map("last_login")
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  store              Settings?         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  branch             Branch?           @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  salesCreated       Sale[]
+  stockAdjustments   StockAdjustment[]
+  patientMessagesOut PatientMessage[]
+  auditLogs          AuditLog[]
+
+  @@index([storeId], name: "idx_users_store")
+  @@index([role], name: "idx_users_role")
+  @@index([active], name: "idx_users_active")
+  @@index([branchId], name: "idx_users_branch")
+  @@map("users")
+}
+
+// ============================================================================
+// 3. MEDICINE MASTER CATALOG & MULTI-BATCH INVENTORY
+// ============================================================================
+
+// Table: medicines (Master drug catalog, composition, schedule type, and rack locations)
+model Medicine {
+  id             Int       @id @default(autoincrement())
+  name           String    @db.VarChar(255)
+  genericName    String?   @map("generic_name") @db.VarChar(255)
+  company        String    @db.VarChar(255)
+  category       String    @db.VarChar(100)
+  customCategory String?   @map("custom_category") @db.VarChar(100)
+  hsnCode        String?   @map("hsn_code") @db.VarChar(50)
+  gstPercent     Decimal   @default(12.00) @map("gst_percent") @db.Decimal(5, 2)
+  description    String?   @db.Text
+  rackLocation   String?   @map("rack_location") @db.VarChar(100)
+  scheduleType   String    @default("normal") @map("schedule_type") @db.VarChar(20) // normal, schedule_h, schedule_h1
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  batches          Batch[]
+  saleItems        SaleItem[]
+  poItems          POItem[]
+  returnItems      ReturnItem[]
+  stockAdjustments StockAdjustment[]
+
+  @@index([name], name: "idx_medicines_name")
+  @@index([genericName], name: "idx_medicines_generic")
+  @@index([company], name: "idx_medicines_company")
+  @@index([category], name: "idx_medicines_category")
+  @@index([scheduleType], name: "idx_medicines_schedule")
+  @@map("medicines")
+}
+
+// Table: categories (Dosage forms: Tablet, Syrup, Injection, etc.)
+model Category {
+  id   Int    @id @default(autoincrement())
+  name String @unique @db.VarChar(100)
+  type String @default("dosage") @db.VarChar(50) // dosage or custom
+
+  @@map("categories")
+}
+
+// Table: batches (Individual manufactured batch records with FEFO expiry and MRP)
+model Batch {
+  id            Int       @id @default(autoincrement())
+  medicineId    Int       @map("medicine_id")
+  batchNo       String    @map("batch_no") @db.VarChar(100)
+  mfgDate       DateTime? @map("mfg_date") @db.Date
+  expiryDate    DateTime  @map("expiry_date") @db.Date
+  quantity      Int       @default(0)
+  purchasePrice Decimal   @default(0.00) @map("purchase_price") @db.Decimal(10, 2)
+  mrp           Decimal   @map("mrp") @db.Decimal(10, 2)
+  supplierId    Int?      @map("supplier_id")
+  branchId      Int?      @map("branch_id")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  medicine         Medicine          @relation(fields: [medicineId], references: [id], onDelete: Restrict)
+  supplier         Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  branch           Branch?           @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  saleItems        SaleItem[]
+  returnItems      ReturnItem[]
+  stockAdjustments StockAdjustment[]
+
+  @@unique([medicineId, batchNo, branchId], name: "uk_medicine_batch_branch")
+  @@index([medicineId], name: "idx_batches_medicine")
+  @@index([expiryDate], name: "idx_batches_expiry")
+  @@index([batchNo], name: "idx_batches_batch_no")
+  @@index([branchId], name: "idx_batches_branch")
+  @@map("batches")
+}
+
+// ============================================================================
+// 4. SUPPLIERS & PROCUREMENT
+// ============================================================================
+
+// Table: suppliers (Vendor & distributor directory)
+model Supplier {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(255)
+  contact   String?   @db.VarChar(255)
+  phone     String    @db.VarChar(50)
+  email     String?   @db.VarChar(255)
+  address   String?   @db.Text
+  gstNo     String?   @map("gst_no") @db.VarChar(50)
+  dlNo      String?   @map("dl_no") @db.VarChar(50)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  batches          Batch[]
+  purchaseOrders   PurchaseOrder[]
+  supplierUsers    SupplierUser[]
+  supplierMessages SupplierMessage[]
+
+  @@index([name], name: "idx_suppliers_name")
+  @@index([phone], name: "idx_suppliers_phone")
+  @@map("suppliers")
+}
+
+// Table: supplier_users (Supplier portal credentials)
+model SupplierUser {
+  id         Int       @id @default(autoincrement())
+  supplierId Int       @map("supplier_id")
+  name       String    @db.VarChar(255)
+  username   String    @unique @db.VarChar(100)
+  email      String    @unique @db.VarChar(255)
+  phone      String?   @db.VarChar(50)
+  password   String    @db.VarChar(255)
+  active     Boolean   @default(true)
+  verified   Boolean   @default(false)
+  lastLogin  DateTime? @map("last_login")
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId], name: "idx_supplier_users_supplier")
+  @@map("supplier_users")
+}
+
+// Table: purchase_orders (Vendor purchase order tracking)
+model PurchaseOrder {
+  id          Int       @id @default(autoincrement())
+  poNumber    String    @unique @map("po_number") @db.VarChar(50)
+  supplierId  Int       @map("supplier_id")
+  branchId    Int?      @map("branch_id")
+  poDate      DateTime  @default(now()) @map("po_date") @db.Date
+  status      String    @default("pending") @db.VarChar(50) // pending, price_updated, confirmed, shipped, received, cancelled
+  total       Decimal   @default(0.00) @db.Decimal(12, 2)
+  notes       String?   @db.Text
+  shippedAt   DateTime? @map("shipped_at")
+  receivedAt  DateTime? @map("received_at")
+  confirmedAt DateTime? @map("confirmed_at")
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  items    POItem[]
+
+  @@index([poNumber], name: "idx_po_number")
+  @@index([supplierId], name: "idx_po_supplier")
+  @@index([status], name: "idx_po_status")
+  @@index([branchId], name: "idx_po_branch")
+  @@map("purchase_orders")
+}
+
+// Table: po_items (Purchase order line items)
+model POItem {
+  id          Int      @id @default(autoincrement())
+  poId        Int      @map("po_id")
+  medicineId  Int      @map("medicine_id")
+  quantity    Int
+  price       Decimal  @db.Decimal(10, 2)
+  mrp         Decimal  @db.Decimal(10, 2)
+  receivedQty Int      @default(0) @map("received_qty")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  medicine      Medicine      @relation(fields: [medicineId], references: [id], onDelete: Restrict)
+
+  @@index([poId], name: "idx_po_items_po")
+  @@index([medicineId], name: "idx_po_items_medicine")
+  @@map("po_items")
+}
+
+// ============================================================================
+// 5. CUSTOMERS & PATIENTS REGISTRY
+// ============================================================================
+
+// Table: customers (Patient & customer registry with portal accounts)
+model Customer {
+  id           Int       @id @default(autoincrement())
+  name         String    @db.VarChar(255)
+  phone        String    @unique @db.VarChar(50)
+  email        String?   @unique @db.VarChar(255)
+  address      String?   @db.Text
+  dob          DateTime? @db.Date
+  password     String?   @db.VarChar(255) // Optional for portal self-service
+  active       Boolean   @default(true)
+  verified     Boolean   @default(false)
+  verifyToken  String?   @map("verify_token") @db.VarChar(100)
+  verifySentAt DateTime? @map("verify_sent_at")
+  verifiedAt   DateTime? @map("verified_at")
+  lastLogin    DateTime? @map("last_login")
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  sales               Sale[]
+  returns             Return[]
+  purchaseLogs        CustomerPurchaseLog[]
+  patientMessages     PatientMessage[]
+
+  @@index([phone], name: "idx_customers_phone")
+  @@index([email], name: "idx_customers_email")
+  @@map("customers")
+}
+
+// Table: customer_purchase_log (Patient purchase history summary)
+model CustomerPurchaseLog {
+  id         Int      @id @default(autoincrement())
+  customerId Int      @map("customer_id")
+  saleId     Int      @map("sale_id")
+  amount     Decimal  @db.Decimal(12, 2)
+  date       DateTime @db.Date
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale     Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([customerId], name: "idx_cpl_customer")
+  @@index([date], name: "idx_cpl_date")
+  @@map("customer_purchase_log")
+}
+
+// ============================================================================
+// 6. POS BILLING & SALES
+// ============================================================================
+
+// Table: sales (POS invoice master)
+model Sale {
+  id             Int       @id @default(autoincrement())
+  invoiceNo      String    @unique @map("invoice_no") @db.VarChar(50)
+  customerId     Int?      @map("customer_id")
+  saleDate       DateTime  @default(now()) @map("sale_date") @db.Date
+  totalAmount    Decimal   @map("total_amount") @db.Decimal(12, 2)
+  gstAmount      Decimal   @map("gst_amount") @db.Decimal(12, 2)
+  discountAmount Decimal   @default(0.00) @map("discount_amount") @db.Decimal(12, 2)
+  discountId     Int?      @map("discount_id")
+  grandTotal     Decimal   @map("grand_total") @db.Decimal(12, 2)
+  paymentMethod  String    @default("cash") @map("payment_method") @db.VarChar(50) // cash, upi, card, cheque, credit
+  upiRef         String?   @map("upi_ref") @db.VarChar(100)
+  chequeNo       String?   @map("cheque_no") @db.VarChar(100)
+  chequeBank     String?   @map("cheque_bank") @db.VarChar(100)
+  chequeDate     DateTime? @map("cheque_date") @db.Date
+  doctorName     String?   @map("doctor_name") @db.VarChar(255)
+  doctorRegNo    String?   @map("doctor_reg_no") @db.VarChar(100)
+  createdBy      Int?      @map("created_by")
+  branchId       Int?      @map("branch_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  customer     Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  creator      User?         @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  discount     Discount?     @relation(fields: [discountId], references: [id], onDelete: SetNull)
+  branch       Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  items        SaleItem[]
+  returns      Return[]
+  purchaseLogs CustomerPurchaseLog[]
+
+  @@index([invoiceNo], name: "idx_sales_invoice")
+  @@index([saleDate], name: "idx_sales_date")
+  @@index([customerId], name: "idx_sales_customer")
+  @@index([paymentMethod], name: "idx_sales_payment")
+  @@index([branchId], name: "idx_sales_branch")
+  @@map("sales")
+}
+
+// Table: sales_items (Invoice line items)
+model SaleItem {
+  id          Int      @id @default(autoincrement())
+  saleId      Int      @map("sale_id")
+  medicineId  Int      @map("medicine_id")
+  batchId     Int      @map("batch_id")
+  quantity    Int
+  mrp         Decimal  @db.Decimal(10, 2)
+  taxableBase Decimal  @map("taxable_base") @db.Decimal(10, 2)
+  gstPercent  Decimal  @map("gst_percent") @db.Decimal(5, 2)
+  gstAmount   Decimal  @map("gst_amount") @db.Decimal(10, 2)
+  price       Decimal  @db.Decimal(12, 2) // mrp * quantity
+
+  sale        Sale        @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  medicine    Medicine    @relation(fields: [medicineId], references: [id], onDelete: Restrict)
+  batch       Batch       @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  returnItems ReturnItem[]
+
+  @@index([saleId], name: "idx_sales_items_sale")
+  @@index([medicineId], name: "idx_sales_items_medicine")
+  @@index([batchId], name: "idx_sales_items_batch")
+  @@map("sales_items")
+}
+
+// ============================================================================
+// 7. SALES RETURNS & REFUNDS
+// ============================================================================
+
+// Table: returns (Sales returns and refunds)
+model Return {
+  id            Int       @id @default(autoincrement())
+  returnNumber  String    @unique @map("return_number") @db.VarChar(50)
+  saleId        Int       @map("sale_id")
+  customerId    Int?      @map("customer_id")
+  branchId      Int?      @map("branch_id")
+  reason        String    @db.Text
+  refundAmount  Decimal   @map("refund_amount") @db.Decimal(12, 2)
+  status        String    @default("pending") @db.VarChar(50) // pending, processed, rejected
+  stockAdjusted Boolean   @default(false) @map("stock_adjusted")
+  requestedBy   String    @default("staff") @map("requested_by") @db.VarChar(50) // staff, customer
+  createdBy     Int?      @map("created_by")
+  processedAt   DateTime? @map("processed_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  sale     Sale         @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  customer Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  branch   Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  items    ReturnItem[]
+
+  @@index([returnNumber], name: "idx_returns_number")
+  @@index([saleId], name: "idx_returns_sale")
+  @@index([status], name: "idx_returns_status")
+  @@index([branchId], name: "idx_returns_branch")
+  @@map("returns")
+}
+
+// Table: return_items (Line items of sales returns)
+model ReturnItem {
+  id            Int     @id @default(autoincrement())
+  returnId      Int     @map("return_id")
+  saleItemId    Int     @map("sale_item_id")
+  medicineId    Int?    @map("medicine_id")
+  batchId       Int?    @map("batch_id")
+  quantity      Int
+  price         Decimal @db.Decimal(12, 2)
+  restockAction String  @default("restock") @map("restock_action") @db.VarChar(20) // restock, damaged_write_off
+
+  returnReturn Return   @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItem     SaleItem @relation(fields: [saleItemId], references: [id], onDelete: Restrict)
+  medicine     Medicine? @relation(fields: [medicineId], references: [id], onDelete: SetNull)
+  batch        Batch?    @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([returnId], name: "idx_return_items_return")
+  @@index([saleItemId], name: "idx_return_items_sale_item")
+  @@map("return_items")
+}
+
+// ============================================================================
+// 8. DISCOUNTS & PROMOTIONS
+// ============================================================================
+
+// Table: discounts (Discount policies and promotional schemes)
+model Discount {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  type      String   @default("percent") @db.VarChar(20) // percent, flat
+  value     Decimal  @db.Decimal(10, 2)
+  minAmount Decimal  @default(0.00) @map("min_amount") @db.Decimal(10, 2)
+  active    Boolean  @default(true)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  sales Sale[]
+
+  @@map("discounts")
+}
+
+// ============================================================================
+// 9. AUDIT LOGS, STOCK ADJUSTMENTS & SECURITY RATE LIMITING
+// ============================================================================
+
+// Table: stock_adjustments (Permanent inventory adjustment and audit trail)
+model StockAdjustment {
+  id         Int      @id @default(autoincrement())
+  batchId    Int      @map("batch_id")
+  medicineId Int      @map("medicine_id")
+  branchId   Int?     @map("branch_id")
+  type       String   @db.VarChar(20) // add, remove, sale, return, transfer
+  quantity   Int
+  reason     String   @db.VarChar(255)
+  oldQty     Int      @map("old_qty")
+  newQty     Int      @map("new_qty")
+  userId     Int?     @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  batch    Batch    @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  medicine Medicine @relation(fields: [medicineId], references: [id], onDelete: Restrict)
+  branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([batchId], name: "idx_adj_batch")
+  @@index([medicineId], name: "idx_adj_medicine")
+  @@index([branchId], name: "idx_adj_branch")
+  @@index([createdAt], name: "idx_adj_created")
+  @@map("stock_adjustments")
+}
+
+// Table: login_attempts (Security brute-force rate limiter)
+model LoginAttempt {
+  id      Int      @id @default(autoincrement())
+  ip      String   @db.VarChar(45)
+  context String   @db.VarChar(50) // admin, supplier, customer
+  ts      DateTime @default(now())
+
+  @@index([ip, context], name: "idx_login_attempts_ip_context")
+  @@map("login_attempts")
+}
+
+// Table: audit_logs (System-wide tamper-proof activity audit trail scoped by Store Tenant)
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  storeId   Int?     @map("store_id")
+  userId    Int?     @map("user_id")
+  branchId  Int?     @map("branch_id")
+  action    String   @db.VarChar(100)
+  entity    String   @db.VarChar(100)
+  entityId  Int?     @map("entity_id")
+  details   String?  @db.Text
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  store  Settings? @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user   User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  branch Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([storeId], name: "idx_audit_logs_store")
+  @@index([action], name: "idx_audit_logs_action")
+  @@index([entity], name: "idx_audit_logs_entity")
+  @@index([branchId], name: "idx_audit_logs_branch")
+  @@index([createdAt], name: "idx_audit_logs_created_at")
+  @@map("audit_logs")
+}
+
+// ============================================================================
+// 10. COMMUNICATION INBOXES & PRESCRIPTION FILES
+// ============================================================================
+
+// Table: supplier_messages (Supplier extranet messaging channel)
+model SupplierMessage {
+  id           Int       @id @default(autoincrement())
+  supplierId   Int       @map("supplier_id")
+  supplierName String?   @map("supplier_name") @db.VarChar(255)
+  senderEmail  String?   @map("sender_email") @db.VarChar(255)
+  subject      String    @db.VarChar(255)
+  message      String    @db.Text
+  direction    String    @default("in") @db.VarChar(10) // in, out
+  reply        String?   @db.Text
+  repliedAt    DateTime? @map("replied_at")
+  status       String    @default("unread") @db.VarChar(20) // unread, read, replied
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId], name: "idx_sm_supplier")
+  @@index([status], name: "idx_sm_status")
+  @@map("supplier_messages")
+}
+
+// Table: patient_messages (Customer prescription uploads and inquiries)
+model PatientMessage {
+  id         Int      @id @default(autoincrement())
+  customerId Int      @map("customer_id")
+  direction  String   @default("in") @db.VarChar(10) // in, out
+  message    String?  @db.Text
+  filePath   String?  @map("file_path") @db.VarChar(500)
+  fileName   String?  @map("file_name") @db.VarChar(255)
+  fileType   String?  @map("file_type") @db.VarChar(50)
+  isRead     Boolean  @default(false) @map("is_read")
+  createdBy  Int?     @map("created_by") // Admin user ID if direction=out
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  creator  User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([customerId], name: "idx_pm_customer")
+  @@index([isRead], name: "idx_pm_is_read")
+  @@map("patient_messages")
+}

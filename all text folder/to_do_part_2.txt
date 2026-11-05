@@ -1,0 +1,691 @@
+================================================================================
+           MEDICAL POS & PHARMACY MANAGEMENT SYSTEM — MASTER PLAN
+               PART 2: POS BILLING, FINANCIALS, COMPLIANCE & PORTALS
+================================================================================
+Target File: all text folder/to_do_part_2.txt
+Reference: DRxStore v2.0.0 ("referense project")
+Format: English Version (Top) | Bengali Version (Bottom)
+Ordering: Strict Dependency-Driven Step-by-Step Build Sequence (Modules 2.1 -> 2.20)
+Status Tracking: Each actionable task is initialized with [STATUS: PENDING]
+
+================================================================================
+================================================================================
+                           PART 2: ENGLISH VERSION
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+MODULE 2.1: FRONTEND BEHAVIOURS & SHARED UI SHELL  (from ref: assets/js/app.js)
+--------------------------------------------------------------------------------
+2.1.1 [STATUS: PENDING] Searchable Select
+      - Desktop: floating panel with auto flip above/below. Mobile: bottom-sheet with backdrop.
+
+2.1.2 [STATUS: PENDING] Modal, Alerts & Confirm Helpers
+      - ESC and outside-click close; alerts auto-dismiss (~4.5 s); confirm prompt on 
+        destructive links.
+
+2.1.3 [STATUS: PENDING] Responsive Shell
+      - Mobile sidebar + overlay, active nav highlight, notification dropdown.
+
+2.1.4 [STATUS: PENDING] Payment-Method Dynamic Fields
+      - UPI ref / cheque details appear only for relevant payment methods.
+
+2.1.5 [STATUS: PENDING] Batch Auto-Load With Stock Cap
+      - Choosing a medicine loads its active branch batches (`branch_id`, stock + MRP) via fetch; quantity capped at stock.
+
+--------------------------------------------------------------------------------
+MODULE 2.2: HIGH-SPEED POS BILLING TERMINAL & KEYBOARD WORKFLOW
+--------------------------------------------------------------------------------
+2.2.1 [STATUS: PENDING] Single Page POS Billing Workspace
+      - Ultra-fast billing terminal running without full page reloads, synced with the Header Active Outlet Switcher (`branch_id`).
+      - Cart management holding medicine items, selected branch batches, quantities, 
+        unit prices, discounts, and real-time subtotal/tax calculations.
+
+2.2.2 [STATUS: PENDING] 100% Keyboard-Driven Workflow & Shortcuts
+      - Global shortcut mappings for zero-mouse cashier operations:
+        * F2: Search Medicine / Focus Search Bar
+        * F4: Proceed to Tender / Payment Modal
+        * F7: Toggle Customer Lookup / Walk-in
+        * F9: Apply Bill-Level Discount
+        * Enter: Add Item to Cart / Confirm
+        * ESC: Cancel / Clear Cart
+        * Ctrl+P: Instant Thermal Print & Complete
+
+2.2.3 [STATUS: PENDING] Intelligent Medicine & Composition Quick-Search
+      - Fast search engine searching simultaneously across Brand Name, Generic Chemical, 
+        and Barcode with fuzzy typo tolerance.
+      - Display live rack/shelf location on the search result row.
+
+2.2.4 [STATUS: PENDING] Dynamic Batch Picker with FEFO Priority
+      - Auto-suggest earliest expiring batch with live stock count and MRP.
+      - Dropdown/modal allowing pharmacist to override and pick an alternative batch if requested.
+
+--------------------------------------------------------------------------------
+MODULE 2.3: BARCODE & QR CODE SCANNING ENGINE
+--------------------------------------------------------------------------------
+2.3.1 [STATUS: PENDING] Hardware Barcode Scanner Listener
+      - High-speed USB/Bluetooth barcode scanner integration supporting standard 
+        symbologies (EAN-13, UPC, Code 128, GS1 Datamatrix).
+      - Instant auto-add to cart upon barcode trigger without requiring manual focus.
+
+2.3.2 [STATUS: PENDING] Barcode Label Generation & Printing
+      - Generate printable thermal barcode labels containing Medicine Name, Batch No, 
+        Expiry Date, MRP, and Store Name.
+
+--------------------------------------------------------------------------------
+MODULE 2.4: DISCOUNTS & PROMOTIONAL PRICING ENGINE
+--------------------------------------------------------------------------------
+2.4.1 [STATUS: PENDING] Configurable Discount Architecture
+      - Master discount policies (e.g., Senior Citizen 10%, Regular Customer 5%, Flat ₹50 off).
+      - Support percentage-based or flat currency discounts with minimum invoice thresholds.
+
+2.4.2 [STATUS: PENDING] Item-Level & Bill-Level Discount Application
+      - Allow staff to apply discount on individual medicines or globally on entire cart.
+      - Enforce manager approval if discount exceeds cashier maximum allowable percentage.
+
+--------------------------------------------------------------------------------
+MODULE 2.5: MULTI-TENDER PAYMENTS & CASH DRAWER INTEGRATION
+--------------------------------------------------------------------------------
+2.5.1 [STATUS: PENDING] Multi-Tender Payment Methods
+      - Support split payments across multiple methods for a single invoice:
+        * Cash: Record tender amount, automatically calculate change due.
+        * Dynamic UPI: Auto-generate on-screen UPI QR code with exact payable amount.
+        * Card: Record transaction reference / auth code.
+        * Cheque: Record Cheque Number, Bank Name, and Cheque Date.
+        * Store Credit: Record customer ledger debit for approved customers.
+
+2.5.2 [STATUS: PENDING] Electronic Cash Drawer Kick Trigger
+      - Send pulse signal to open hardware cash drawer on completing a cash sale.
+
+--------------------------------------------------------------------------------
+MODULE 2.6: SALE FINALIZATION RULES  (from ref: finalize_sale.php)
+--------------------------------------------------------------------------------
+2.6.1 [STATUS: PENDING] Atomic Checkout Validation
+      - Before commit re-check per line: batch exists in active `branch_id`, NOT expired, enough stock. 
+        Run inside a DB transaction; roll back everything on any failure.
+
+2.6.2 [STATUS: PENDING] Per-Batch Deduction + Audit Row
+      - Deduct stock from the selected batch and write a stock_adjustments entry with `branch_id` 
+        ("Sale: <invoice no>").
+
+2.6.3 [STATUS: PENDING] Payment Detail Capture
+      - Store UPI reference, cheque no / bank / date; discount is either a master discount 
+        (id) or custom %.
+
+2.6.4 [STATUS: PENDING] Customer Purchase Log & Emailed Receipt
+      - Write customer_purchase_log; email a purchase receipt to the customer (if email exists).
+
+2.6.5 [STATUS: PENDING] Totals Order-of-Calculation (Bug Avoidance)
+      - Compute inclusive totals BEFORE applying any discount (reference reads 
+        $inclTotal before defining it in the custom-% path). Add unit tests for both 
+        discount paths.
+
+--------------------------------------------------------------------------------
+MODULE 2.7: INVOICING, THERMAL PRINTING & TAX BREAKDOWN
+--------------------------------------------------------------------------------
+2.7.1 [STATUS: PENDING] ESC/POS Thermal Receipt Generation
+      - Formatted print slips for 2-inch (58mm) and 3-inch (80mm) thermal POS printers.
+      - Include branch-specific store header (name, address, phone, DL No, GSTIN from active `Branch`), itemized list, batch, expiry, 
+        tax summary, and return policy footer.
+
+2.7.2 [STATUS: PENDING] Standard A4 Tax Invoice Printing
+      - Full-page A4 PDF/Print layout for hospitals, institutional sales, and insurance claims.
+      - Detailed columns: S.No, Medicine Description, HSN Code, Batch No, Exp Date, 
+        Quantity, MRP, Unit Rate, CGST %, SGST %, and Total Amount.
+
+--------------------------------------------------------------------------------
+MODULE 2.8: INVOICE PRINT SPEC  (from ref: invoice.php)
+--------------------------------------------------------------------------------
+2.8.1 [STATUS: PENDING] Legal TAX INVOICE Layout
+      - Store/Branch header with GSTIN and Drug Licence no; Bill To (walk-in vs customer); 
+        payment details; PAID status.
+      - Item columns: HSN, generic name, batch, qty, MRP/unit, GST%, taxable, GST amt, amount.
+
+2.8.2 [STATUS: PENDING] Single-Page A4 Auto-Scale Print + Save PDF
+      - Print CSS scales long invoices to one A4 page; "Print / Save PDF" button.
+
+--------------------------------------------------------------------------------
+MODULE 2.9: SALES HISTORY, INVOICE ARCHIVE & DIGITAL SHARING
+--------------------------------------------------------------------------------
+2.9.1 [STATUS: PENDING] Comprehensive Sales History & Search
+      - Filter past invoices by Date Range, Store Branch (`branch_id`), Invoice Number, Customer Name/Phone, 
+        Payment Mode, or Cashier.
+      - Fast 1-click invoice reprint and PDF export.
+
+2.9.2 [STATUS: PENDING] Digital Invoice Delivery (WhatsApp & SMS)
+      - Instant sharing of invoice PDF or web link directly to customer's WhatsApp/SMS.
+
+--------------------------------------------------------------------------------
+MODULE 2.10: SALES RETURNS, RESTOCKING & REFUND MANAGEMENT
+--------------------------------------------------------------------------------
+2.10.1 [STATUS: PENDING] Invoice-Linked Returns Processing
+       - Lookup original sale via invoice barcode or number.
+       - Select returned items and return quantities (preventing return of more than purchased).
+
+2.10.2 [STATUS: PENDING] Restock vs. Discard Workflow
+       - Option to return goods to active batch inventory (salable condition) or 
+         mark as damaged/discarded.
+       - Automated refund calculation and credit note generation.
+
+--------------------------------------------------------------------------------
+MODULE 2.11: RETURNS PROCESSING RULES  (from ref: returns.php)
+--------------------------------------------------------------------------------
+2.11.1 [STATUS: PENDING] Return Status Flow
+       - Customer-requested returns arrive as pending; staff can process or reject.
+
+2.11.2 [STATUS: PENDING] Already-Returned Guard
+       - Per sale item, block returning more than purchased minus already returned.
+
+2.11.3 [STATUS: PENDING] Discount-Proportional Refund
+       - Refund = item total - (item total x sale discount ratio).
+
+2.11.4 [STATUS: PENDING] Restock Yes/No Choice
+       - Yes: add stock back + stock_adjustments row. No (damaged/expired): write off, 
+         no stock added.
+
+--------------------------------------------------------------------------------
+MODULE 2.12: FINANCIAL LEDGER & DAY-END CASH DRAWER CLOSING
+--------------------------------------------------------------------------------
+2.12.1 [STATUS: PENDING] General Income & Expense Ledger
+       - Record operational overheads (Electricity, Rent, Staff Salary, Tea/Misc Expenses).
+       - Category-based income and expense reporting.
+
+2.12.2 [STATUS: PENDING] Day-End Cash Drawer Reconciliation (Z-Report)
+       - End-of-shift register closing tool: Cashier counts and enters physical currency 
+         denominations (e.g., ₹500 x 10, ₹200 x 5, etc.).
+       - System compares physical cash against recorded sales and flags cash excess or shortage.
+
+--------------------------------------------------------------------------------
+MODULE 2.13: LEDGER EXPORT & INVOICE FORMATTING DETAILS  (from ref: ledger.php, invoice.php, functions.php)
+--------------------------------------------------------------------------------
+2.13.1 [STATUS: PENDING] Ledger With Party Filter & Export
+       - Entries for sale (credit), purchase (debit), return (debit) with date, ref, 
+         party, note; filter by date/customer/supplier; export CSV and Excel; totals.
+
+2.13.2 [STATUS: PENDING] Document Numbering & Amount In Words
+       - Invoice no. (PREFIX-YEAR-00001), PO no. (PO-00001), Return no. (RET-0001); 
+         grand total printed in words on invoice.
+
+2.13.3 [STATUS: PENDING] GST-Inclusive MRP Calculation Rule
+       - Taxable value = MRP / (1 + GST%); GST amount = MRP - taxable value, per-medicine GST rate; 
+         discount applies on the inclusive total; checkout stock revalidation per batch.
+
+--------------------------------------------------------------------------------
+MODULE 2.14: REGULATORY COMPLIANCE & GST REPORTING
+--------------------------------------------------------------------------------
+2.14.1 [STATUS: PENDING] Schedule H / H1 Prescription Drug Audit Register
+       - Dedicated government-compliance register showing: Date, Patient Name & Address, 
+         Prescribing Doctor Name & Reg No, Medicine Name, Batch No, Quantity Sold.
+
+2.14.2 [STATUS: PENDING] GST Outward & Inward Summary Reports (GSTR-1 & GSTR-3B)
+       - Monthly/Quarterly HSN-wise sales summary.
+       - Tax breakup reports: Total Taxable Value, CGST Amount, SGST Amount, and IGST Amount.
+
+--------------------------------------------------------------------------------
+MODULE 2.15: BUSINESS INTELLIGENCE, ANALYTICS & DEAD-STOCK REPORTS
+--------------------------------------------------------------------------------
+2.15.1 [STATUS: PENDING] Real-Time Performance Analytics Dashboard
+       - Live sales graphs (Today, This Week, This Month, Last 12 Months), filterable by Store Branch (`branch_id`) or Consolidated All-Stores view.
+       - Top 10 revenue-generating medicines and highest margin products.
+       - Payment mode breakdown pie-chart (Cash vs. UPI vs. Card vs. Credit).
+
+2.15.2 [STATUS: PENDING] Profit & Loss (P&L) Engine
+       - Calculate real-time gross margin (Selling Price - Purchase Cost) per invoice 
+         and overall net profitability after operating expenses.
+
+2.15.3 [STATUS: PENDING] Dead Stock & Slow-Moving Inventory Identification
+       - Identify medicines with zero sales in the past 60/90/180 days to prevent capital blockage.
+
+--------------------------------------------------------------------------------
+MODULE 2.16: DASHBOARD & REPORT DETAILS  (from ref: dashboard.php, reports.php)
+--------------------------------------------------------------------------------
+2.16.1 [STATUS: PENDING] Dashboard Widgets
+       - Today/Month/Total net revenue (sales - processed refunds), PO counts by status, 
+         7-day chart, top 5 medicines (30 days), recent 8 sales, time-based greeting.
+
+2.16.2 [STATUS: PENDING] Alert Banners & Notification Bell
+       - Dismissible expired / low-stock banners; bell dropdown listing alerts.
+
+2.16.3 [STATUS: PENDING] Profit Method Upgrade
+       - Reference uses revenue - received PO totals (crude). We use COGS-based profit 
+         (batch purchase price x qty sold).
+
+2.16.4 [STATUS: PENDING] Sales Report Metrics (Admin-Only)
+       - Month-over-month growth %, daily average, 12-month chart + summary table 
+         (sales count, revenue, GST, discount), top 10 medicines, top 5 customers, 
+         payment-method breakdown.
+
+2.16.5 [STATUS: PENDING] Report Export (CSV & Excel)
+       - CSV (UTF-8 BOM) and Excel export of reports.
+
+--------------------------------------------------------------------------------
+MODULE 2.17: SUPPLIER SELF-SERVICE PORTAL
+--------------------------------------------------------------------------------
+2.17.1 [STATUS: PENDING] Supplier Order Tracking Dashboard
+       - Portal for distributors to view active Purchase Orders issued to them.
+       - Ability to confirm orders, update dispatch details, and enter tracking numbers.
+
+2.17.2 [STATUS: PENDING] Supplier Two-Way Messaging Channel
+       - In-app communication channel between pharmacy purchase department and suppliers.
+
+--------------------------------------------------------------------------------
+MODULE 2.18: PATIENT & CUSTOMER PORTAL
+--------------------------------------------------------------------------------
+2.18.1 [STATUS: PENDING] Customer Account & Purchase Archive
+       - Secure portal for patients to view prescription records and download invoices.
+
+2.18.2 [STATUS: PENDING] Digital Prescription Upload & Order Request
+       - Patients can upload prescription photo/PDF; pharmacy receives notification 
+         in admin dashboard to verify and create cart.
+
+--------------------------------------------------------------------------------
+MODULE 2.19: CUSTOMER PORTAL ACCOUNT LIFECYCLE & RETURN REQUESTS  (from ref: public/customer/*)
+--------------------------------------------------------------------------------
+2.19.1 [STATUS: PENDING] Self-Registration With Mandatory Email Verification
+       - Register, receive verification link/token, Resend Verify option, unverified 
+         accounts cannot log in; separate login with brute-force lockout.
+
+2.19.2 [STATUS: PENDING] Customer Return Request From Portal
+       - Customer selects own invoice items and submits return request; store is 
+         notified by email; staff approves/rejects in Returns module (requested_by = customer).
+
+2.19.3 [STATUS: PENDING] Profile & Password Management
+       - Edit profile, change password; forgot-password directs to store contact email.
+
+--------------------------------------------------------------------------------
+MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_messages.php, serve_file.php, supplier contact.php)
+--------------------------------------------------------------------------------
+2.20.1 [STATUS: PENDING] Patient Message Inbox (Admin/Staff)
+       - Conversation per patient, reply (direction in/out), unread count, mark read, delete.
+
+2.20.2 [STATUS: PENDING] Supplier Message Inbox
+       - Supplier contact form -> admin inbox with unread status, reply, email notification.
+
+2.20.3 [STATUS: PENDING] Secure Prescription File Delivery
+       - Uploads (PDF/JPG/PNG/HEIC) stored outside public web path; served only through an 
+         authenticated endpoint; staff see all, a customer sees only their own files; 
+         sanitized file names.
+
+
+================================================================================
+================================================================================
+                           PART 2: BENGALI VERSION
+                (বাংলা সংস্করণ - পিওএস বিলিং, ফাইন্যান্স ও কমপ্লায়েন্স)
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+মডিউল ২.১: ফ্রন্টএন্ড আচরণ ও শেয়ার্ড UI শেল  (রেফারেন্স: assets/js/app.js)
+--------------------------------------------------------------------------------
+২.১.১ [অবস্থা: পেন্ডিং] সার্চেবল সিলেক্ট
+      - ডেস্কটপ: ভাসমান প্যানেল, উপর/নিচে অটো-ফ্লিপ। মোবাইল: ব্যাকড্রপসহ বটম-শিট।
+
+২.১.২ [অবস্থা: পেন্ডিং] মডাল, অ্যালার্ট ও কনফার্ম হেল্পার
+      - ESC ও বাইরে ক্লিকে বন্ধ; অ্যালার্ট ~৪.৫ সেকেন্ডে অটো-বন্ধ; বিপজ্জনক লিংকে কনফার্ম প্রম্পট।
+
+২.১.৩ [অবস্থা: পেন্ডিং] রেসপন্সিভ শেল
+      - মোবাইল সাইডবার + ওভারলে, সক্রিয় নেভ হাইলাইট, নোটিফিকেশন ড্রপডাউন।
+
+২.১.৪ [অবস্থা: পেন্ডিং] পেমেন্ট-পদ্ধতিভিত্তিক ডায়নামিক ফিল্ড
+      - UPI রেফ/চেক তথ্য শুধু প্রাসঙ্গিক পেমেন্ট পদ্ধতিতে দেখাবে।
+
+২.১.৫ [অবস্থা: পেন্ডিং] স্টক ক্যাপসহ ব্যাচ অটো-লোড
+      - ওষুধ বাছলে সক্রিয় স্টোর শাখার (`branch_id`) ব্যাচ (স্টক + MRP) লোড; পরিমাণ স্টকের বেশি হতে পারবে না।
+
+--------------------------------------------------------------------------------
+মডিউল ২.২: হাই-স্পিড পিওএস বিলিং টার্মিনাল ও কীবোর্ড শর্টকাট
+--------------------------------------------------------------------------------
+২.২.১ [অবস্থা: পেন্ডিং] সিঙ্গেল পেজ পিওএস বিলিং ওয়ার্কস্পেস
+      - পেজ রিলোড ছাড়াই চোখের পলকে কাজ করার মতো আল্ট্রা-ফাস্ট টার্মিনাল, যা হেডার আউটলেট সুইচারের (`branch_id`) সাথে সংযুক্ত।
+      - কার্ট ম্যানেজমেন্ট: ওষুধ, সক্রিয় শাখার নির্বাচিত ব্যাচ, পরিমাণ, ইউনিট মূল্য, ডিসকাউন্ট ও 
+        রিয়েল-টাইম ট্যাক্স হিসাব।
+
+২.২.২ [অবস্থা: পেন্ডিং] ১০০% কীবোর্ড চালিত দ্রুত বিলিং ওয়ার্কফ্লো
+      - মাউস ছাড়া দ্রুত ক্যাশিয়ার অপারেশনের জন্য গ্লোবাল শর্টকাট:
+        * F2: ওষুধ সার্চ / সার্চ বারে ফোকাস
+        * F4: পেমেন্ট মডালে যাওয়া
+        * F7: কাস্টমার সিলেকশন / সাধারণ কাস্টমার টগল
+        * F9: বিল-লেভেল ডিসকাউন্ট প্রদান
+        * Enter: কার্টে আইটেম যোগ / নিশ্চিতকরণ
+        * ESC: বাতিল / কার্ট ক্লিয়ার
+        * Ctrl+P: তাৎক্ষণিক থার্মাল প্রিন্ট ও সেল ফাইনাল
+
+২.২.৩ [অবস্থা: পেন্ডিং] ওষুধ ও কম্পোজিশন দ্রুত সার্চ ইঞ্জিন
+      - ব্র্যান্ডের নাম, জেনেরিক উপাদান বা বারকোড টাইপ করার সাথে সাথে দ্রুত ফলাফল পাওয়া।
+      - সার্চের ফলাফলেই ওষুধটি ফার্মাসির কোন রেকে ও তাকে আছে তা প্রদর্শন।
+
+২.২.৪ [অবস্থা: পেন্ডিং] FEFO অগ্রাধিকার সহ ডায়নামিক ব্যাচ সিলেক্টর
+      - যে ব্যাচের মেয়াদ আগে শেষ হবে, সেটি স্বয়ংক্রিয়ভাবে সাজেস্ট করা।
+      - ফার্মাসিস্ট চাইলে ড্রপডাউন থেকে অন্য কোনো ব্যাচও ম্যানুয়ালি বেছে নিতে পারবেন।
+
+--------------------------------------------------------------------------------
+মডিউল ২.৩: বারকোড ও কিউআর কোড স্ক্যানার ইঞ্জিন
+--------------------------------------------------------------------------------
+২.৩.১ [অবস্থা: পেন্ডিং] হার্ডওয়্যার বারকোড স্ক্যানার লিসেনার
+      - USB / ব্লুটুথ বারকোড স্ক্যানার সাপোর্ট (EAN-13, Code 128, GS1 Datamatrix)।
+      - বারকোড স্ক্যান করলেই কোনো বাড়তি ক্লিক ছাড়া কার্টে ওষুধ যুক্ত হওয়া।
+
+২.৩.২ [অবস্থা: পেন্ডিং] বারকোড লেবেল তৈরি ও প্রিন্ট
+      - ওষুধের নাম, ব্যাচ নম্বর, মেয়াদ, MRP ও স্টোরের নামসহ থার্মাল বারকোড স্টিকার প্রিন্ট।
+
+--------------------------------------------------------------------------------
+মডিউল ২.৪: ডিসকাউন্ট ও প্রোমোশনাল প্রাইসিং ইঞ্জিন
+--------------------------------------------------------------------------------
+২.৪.১ [অবস্থা: পেন্ডিং] ডিসকাউন্ট পলিসি কনফিগারেশন
+      - মাস্টার পলিসি (যেমন: সিনিয়ার সিটিজেন ১০%, রেগুলার গ্রাহক ৫%, ফ্ল্যাট ৫০ টাকা ছাড়)।
+      - শতকরা হারে অথবা নির্দিষ্ট টাকায় ডিসকাউন্ট নির্ধারণ।
+
+২.৪.২ [অবস্থা: পেন্ডিং] আইটেম-লেভেল ও বিল-লেভেল ডিসকাউন্ট
+      - নির্দিষ্ট কোনো ওষুধের ওপর কিংবা পুরো বিলের ওপর ডিসকাউন্ট দেওয়ার সুবিধা।
+      - ক্যাশিয়ারের সীমার বাইরে ডিসকাউন্ট হলে ম্যানেজারের পাসওয়ার্ড অনুমোদনের ব্যবস্থা।
+
+--------------------------------------------------------------------------------
+মডিউল ২.৫: মাল্টি-পেমেন্ট মেথড ও ক্যাশ ড্রয়ার ইন্টিগ্রেশন
+--------------------------------------------------------------------------------
+২.৫.১ [অবস্থা: পেন্ডিং] বিভিন্ন মাধ্যমে পেমেন্ট গ্রহণের সুবিধা
+      - একই বিলে একাধিক মাধ্যমে পেমেন্ট স্প্লিট করার সুবিধা:
+        * ক্যাশ: গ্রাহক কত টাকা দিলেন এন্ট্রি করলে স্বয়ংক্রিয়ভাবে ফেরত টাকার হিসাব।
+        * ডায়নামিক UPI: স্ক্রিনে নির্দিষ্ট বিলের টাকার জন্য অটোমেটিক UPI কিউআর কোড প্রদর্শন।
+        * কার্ড: কার্ড পেমেন্ট ট্রানজাকশন / অথরাইজেশন কোড রেকর্ড।
+        * চেক: চেক নম্বর, ব্যাংকের নাম ও চেকের তারিখ সংরক্ষণ।
+        * কাস্টমার ক্রেডিট: অনুমোদিত গ্রাহকদের জন্য বাকি খাতায় এন্ট্রি।
+
+২.৫.২ [অবস্থা: পেন্ডিং] ইলেকট্রনিক ক্যাশ ড্রয়ার খোলার ট্রিগার
+      - ক্যাশ পেমেন্ট কনফার্ম হওয়ামাত্র ক্যাশ ড্রয়ার স্বয়ংক্রিয়ভাবে খুলে যাওয়ার পালস সিগন্যাল।
+
+--------------------------------------------------------------------------------
+মডিউল ২.৬: সেল ফাইনালাইজেশন নিয়ম  (রেফারেন্স: finalize_sale.php)
+--------------------------------------------------------------------------------
+২.৬.১ [অবস্থা: পেন্ডিং] অ্যাটমিক চেকআউট ভ্যালিডেশন
+      - সেভের আগে প্রতি লাইনে যাচাই: সক্রিয় স্টোর শাখায় (`branch_id`) ব্যাচ আছে, মেয়াদোত্তীর্ণ নয়, স্টক যথেষ্ট। 
+        DB ট্রানজেকশনে চলবে; ব্যর্থ হলে সব রোলব্যাক।
+
+২.৬.২ [অবস্থা: পেন্ডিং] ব্যাচ অনুযায়ী স্টক কমানো + অডিট সারি
+      - নির্বাচিত ব্যাচ থেকে স্টক কমবে এবং `branch_id`-সহ stock_adjustments এন্ট্রি ("Sale: <ইনভয়েস নং>")।
+
+২.৬.৩ [অবস্থা: পেন্ডিং] পেমেন্ট তথ্য সংরক্ষণ
+      - UPI রেফারেন্স, চেক নং/ব্যাংক/তারিখ; ডিসকাউন্ট হয় মাস্টার ডিসকাউন্ট (id) অথবা কাস্টম %।
+
+২.৬.৪ [অবস্থা: পেন্ডিং] কাস্টমার পারচেজ লগ ও ইমেইল রসিদ
+      - customer_purchase_log লেখা; কাস্টমারের ইমেইল থাকলে ক্রয়ের রসিদ ইমেইল।
+
+২.৬.৫ [অবস্থা: পেন্ডিং] হিসাবের ক্রম (বাগ এড়ানো)
+      - ডিসকাউন্টের আগে ইনক্লুসিভ মোট হিসাব করতে হবে (রেফারেন্সে কাস্টম-% পথে $inclTotal 
+        সংজ্ঞার আগেই ব্যবহার হয়েছে)। দুই ডিসকাউন্ট পথের জন্যই ইউনিট টেস্ট।
+
+--------------------------------------------------------------------------------
+মডিউল ২.৭: ইনভয়েসিং, থার্মাল প্রিন্ট ও ট্যাক্স বিশ্লেষণ
+--------------------------------------------------------------------------------
+২.৭.১ [অবস্থা: পেন্ডিং] ESC/POS থার্মাল রিসিপ্ট প্রিন্ট
+      - ২-ইঞ্চি (58mm) এবং ৩-ইঞ্চি (80mm) থার্মাল প্রিন্টারের জন্য অপ্টিমাইজড রসিদ।
+      - সক্রিয় শাখার (Branch) নাম, ঠিকানা, ফোন, ড্রাগ লাইসেন্স, GSTIN, ওষুধের নাম, ব্যাচ, মেয়াদ ও ট্যাক্স সামারি।
+
+২.৭.২ [অবস্থা: পেন্ডিং] স্ট্যান্ডার্ড A4 ট্যাক্স ইনভয়েস প্রিন্ট
+      - হাসপাতাল, প্রাতিষ্ঠানিক সরবরাহ ও ইনস্যুরেন্স দাবির জন্য পূর্ণাঙ্গ A4 সাইজ ইনভয়েস।
+      - বিস্তারিত কলাম: ক্রমিক, বিবরণ, HSN কোড, ব্যাচ, মেয়াদ, সংখ্যা, MRP, রেট, CGST %, SGST % ও মোট টাকা।
+
+--------------------------------------------------------------------------------
+মডিউল ২.৮: ইনভয়েস প্রিন্ট স্পেক  (রেফারেন্স: invoice.php)
+--------------------------------------------------------------------------------
+২.৮.১ [অবস্থা: পেন্ডিং] আইনসম্মত TAX INVOICE লেআউট
+      - সক্রিয় স্টোর/শাখার GSTIN ও ড্রাগ লাইসেন্স নংসহ হেডার; Bill To (ওয়াক-ইন বনাম কাস্টমার); পেমেন্ট তথ্য; PAID স্ট্যাটাস।
+      - আইটেম কলাম: HSN, জেনেরিক নাম, ব্যাচ, পরিমাণ, MRP/ইউনিট, GST%, করযোগ্য মূল্য, GST পরিমাণ, মোট।
+
+২.৮.২ [অবস্থা: পেন্ডিং] এক A4 পেজে অটো-স্কেল প্রিন্ট + PDF সেভ
+      - প্রিন্ট CSS লম্বা ইনভয়েস এক A4 পেজে আনে; "Print / Save PDF" বোতাম।
+
+--------------------------------------------------------------------------------
+মডিউল ২.৯: বিক্রয়ের ইতিহাস, ইনভয়েস আর্কাইভ ও ডিজিটাল শেয়ারিং
+--------------------------------------------------------------------------------
+২.৯.১ [অবস্থা: পেন্ডিং] বিক্রয়ের ইতিহাস ও অ্যাডভান্সড সার্চ
+      - তারিখ, স্টোর ব্রাঞ্চ (`branch_id`), ইনভয়েস নম্বর, গ্রাহকের নাম/মোবাইল বা পেমেন্ট মেথড দিয়ে অতীতের বিল সার্চ।
+      - এক ক্লিকে যেকোনো পুরনো বিল রিপ্রিন্ট বা পিডিএফ ডাউনলোড।
+
+২.৯.২ [অবস্থা: পেন্ডিং] ডিজিটাল ইনভয়েস ডেলিভারি (WhatsApp ও SMS)
+      - প্রিন্ট রসিদের পাশাপাশি গ্রাহকের মোবাইলে সরাসরি WhatsApp/SMS-এ বিলের ডিজিটাল লিংক পাঠানো।
+
+--------------------------------------------------------------------------------
+মডিউল ২.১০: ওষুধ ফেরত (Sales Return), রিস্টকিং ও রিফান্ড
+--------------------------------------------------------------------------------
+২.১০.১ [অবস্থা: পেন্ডিং] ইনভয়েস-সংযুক্ত রিটার্ন প্রসেসিং
+       - পূর্বের ইনভয়েস নম্বর দিয়ে ওষুধ ফেচ করে ফেরত নেওয়ার ব্যবস্থা।
+       - ক্রয়ের অতিরিক্ত সংখ্যা ফেরত প্রতিরোধ করা।
+
+২.১০.২ [অবস্থা: পেন্ডিং] রিস্টক বনাম ড্যামেজড ওয়ার্কফ্লো
+       - ফেরত আসা ওষুধ ভালো থাকলে পুনরায় মূল স্টকে যুক্ত করা, নয়তো ড্যামেজড হিসেবে বাতিল করা।
+       - স্বয়ংক্রিয় রিফান্ড ক্যালকুলেশন ও ক্রেডিট নোট জেনারেশন।
+
+--------------------------------------------------------------------------------
+মডিউল ২.১১: রিটার্ন প্রসেসিং নিয়ম  (রেফারেন্স: returns.php)
+--------------------------------------------------------------------------------
+২.১১.১ [অবস্থা: পেন্ডিং] রিটার্ন স্ট্যাটাস ফ্লো
+       - কাস্টমারের রিটার্ন অনুরোধ pending হিসেবে আসে; স্টাফ process বা reject করবে।
+
+২.১১.২ [অবস্থা: পেন্ডিং] ইতিমধ্যে-রিটার্ন গার্ড
+       - প্রতি সেল আইটেমে কেনা পরিমাণ থেকে আগে ফেরত দেওয়া বাদে বেশি ফেরত নেওয়া যাবে না।
+
+২.১১.৩ [অবস্থা: পেন্ডিং] ডিসকাউন্ট-আনুপাতিক রিফান্ড
+       - রিফান্ড = আইটেম মোট - (আইটেম মোট x সেল ডিসকাউন্ট অনুপাত)।
+
+২.১১.৪ [অবস্থা: পেন্ডিং] রিস্টক হ্যাঁ/না পছন্দ
+       - হ্যাঁ: স্টক ফেরত + stock_adjustments সারি। না (নষ্ট/মেয়াদোত্তীর্ণ): রাইট-অফ, স্টক যোগ হবে না।
+
+--------------------------------------------------------------------------------
+মডিউল ২.১২: ফিনান্সিয়াল লেজার ও ডে-এন্ড ক্যাশ ক্লোজিং
+--------------------------------------------------------------------------------
+২.১২.১ [অবস্থা: পেন্ডিং] সাধারণ আয় ও ব্যয়ের লেজার
+       - ফার্মাসির দৈনন্দিন খরচ (বিদ্যুৎ বিল, দোকান ভাড়া, কর্মচারীর বেতন, চা-নাশতা ইত্যাদি) রেকর্ড।
+       - ক্যাটাগরি অনুযায়ী লাভ-ক্ষতি ও ব্যয়ের রিপোর্ট।
+
+২.১২.২ [অবস্থা: পেন্ডিং] ডে-এন্ড ক্যাশ ড্রয়ার রিকনসিলিয়েশন (Z-Report)
+       - দিনের শেষে শিফট ক্লোজিং: ক্যাশিয়ার ক্যাশ ড্রয়ারের নোট গুনে সফটওয়্যারে এন্ট্রি করবেন 
+         (যেমন: ৫০০ টাকার নোট ১০টি, ২০০ টাকার নোট ৫টি ইত্যাদি)।
+       - সফটওয়্যারের বিক্রয় হিসাবের সাথে আসল টাকার মিল বা গরমিল তাৎক্ষণিক রিপোর্ট আকারে দেখানো।
+
+--------------------------------------------------------------------------------
+মডিউল ২.১৩: লেজার এক্সপোর্ট ও ইনভয়েস ফরম্যাটিং বিবরণ  (রেফারেন্স: ledger.php, invoice.php, functions.php)
+--------------------------------------------------------------------------------
+২.১৩.১ [অবস্থা: পেন্ডিং] পার্টি ফিল্টারসহ লেজার ও এক্সপোর্ট
+       - বিক্রয় (ক্রেডিট), ক্রয় (ডেবিট), রিটার্ন (ডেবিট) এন্ট্রি; তারিখ/কাস্টমার/সাপ্লায়ার ফিল্টার; 
+         CSV ও Excel এক্সপোর্ট; মোট হিসাব।
+
+২.১৩.২ [অবস্থা: পেন্ডিং] ডকুমেন্ট নম্বরিং ও কথায় টাকার অঙ্ক
+       - ইনভয়েস নং (PREFIX-YEAR-00001), PO নং (PO-00001), রিটার্ন নং (RET-0001); 
+         ইনভয়েসে মোট টাকা কথায় লেখা।
+
+২.১৩.৩ [অবস্থা: পেন্ডিং] GST-ইনক্লুসিভ MRP হিসাবের নিয়ম
+       - করযোগ্য মূল্য = MRP / (1 + GST%); GST = MRP - করযোগ্য মূল্য, ওষুধভিত্তিক GST হার; 
+         ডিসকাউন্ট ইনক্লুসিভ মোট টাকার ওপর; চেকআউটে ব্যাচভিত্তিক স্টক পুনরায় যাচাই।
+
+--------------------------------------------------------------------------------
+মডিউল ২.১৪: রেগুলেটরি কমপ্লায়েন্স ও জিএসটি রিপোর্ট
+--------------------------------------------------------------------------------
+২.১৪.১ [অবস্থা: পেন্ডিং] শিডিউল এইচ / এইচ১ ড্রাগ অডিট রেজিস্টার
+       - সরকারি নিয়ম অনুযায়ী প্রেসক্রিপশন ড্রাগ রেজিস্টার: তারিখ, রোগীর নাম ও ঠিকানা, 
+         ডাক্তারের নাম ও রেজিস্ট্রেশন নম্বর, ওষুধের নাম, ব্যাচ ও বিক্রয় সংখ্যা।
+
+২.১৪.২ [অবস্থা: পেন্ডিং] জিএসটি সেলস ও পারচেজ সামারি (GSTR-1 ও GSTR-3B)
+       - মাসিক/ত্রৈমাসিক HSN-ভিত্তিক বিক্রয়ের বিবরণ।
+       - ট্যাক্স ব্রেকআপ: করযোগ্য মূল্য, CGST, SGST এবং IGST হিসাব।
+
+--------------------------------------------------------------------------------
+মডিউল ২.১৫: বিজনেস ইন্টেলিজেন্স, অ্যানালিটিক্স ও ডেড-স্টক রিপোর্ট
+--------------------------------------------------------------------------------
+২.১৫.১ [অবস্থা: পেন্ডিং] রিয়েল-টাইম পারফরম্যান্স অ্যানালিটিক্স ড্যাশবোর্ড
+       - লাইভ বিক্রয় গ্রাফ (আজ, এই সপ্তাহ, এই মাস, বিগত ১২ মাস), স্টোর ব্রাঞ্চ (`branch_id`) অনুযায়ী ফিল্টার বা সব স্টোরের সমন্বিত ভিউ সহ।
+       - সর্বাধিক বিক্রিত ১০টি ওষুধ ও সর্বাধিক লাভজনক আইটেম।
+       - পেমেন্ট মোড পাই-চার্ট (ক্যাশ বনাম UPI বনাম কার্ড বনাম বাকি)।
+
+২.১৫.২ [অবস্থা: পেন্ডিং] লাভ ও ক্ষতির হিসাব (Profit & Loss Engine)
+       - প্রতিটি বিলে কেনা দাম বনাম বিক্রয় দামের ওপর ভিত্তি করে রিয়েল-টাইম গ্রস ও নেট প্রফিট।
+
+২.১৫.৩ [অবস্থা: পেন্ডিং] ডেড-স্টক ও দীর্ঘদিনের অবিক্রীত ওষুধ শনাক্তকরণ
+       - বিগত ৬০/৯০/১৮০ দিনে যে ওষুধগুলোর একটিও বিক্রি হয়নি সেগুলো চিহ্নিত করে মূলধন আটকে থাকা রোধ।
+
+--------------------------------------------------------------------------------
+মডিউল ২.১৬: ড্যাশবোর্ড ও রিপোর্টের বিস্তারিত  (রেফারেন্স: dashboard.php, reports.php)
+--------------------------------------------------------------------------------
+২.১৬.১ [অবস্থা: পেন্ডিং] ড্যাশবোর্ড উইজেট
+       - আজ/মাস/মোট নিট আয় (বিক্রয় - প্রসেসড রিফান্ড), স্ট্যাটাস অনুযায়ী PO সংখ্যা, ৭-দিনের চার্ট, 
+         টপ ৫ ওষুধ (৩০ দিন), সাম্প্রতিক ৮ বিক্রয়, সময়ভিত্তিক শুভেচ্ছা।
+
+২.১৬.২ [অবস্থা: পেন্ডিং] অ্যালার্ট ব্যানার ও নোটিফিকেশন বেল
+       - বন্ধ করা যায় এমন মেয়াদোত্তীর্ণ/লো-স্টক ব্যানার; বেল ড্রপডাউনে অ্যালার্ট তালিকা।
+
+২.১৬.৩ [অবস্থা: পেন্ডিং] লাভের হিসাব উন্নয়ন
+       - রেফারেন্স আয় - গৃহীত PO মোট (মোটা হিসাব) ব্যবহার করে। আমরা COGS-ভিত্তিক লাভ (ব্যাচ ক্রয়মূল্য x বিক্রিত পরিমাণ) করব।
+
+২.১৬.৪ [অবস্থা: পেন্ডিং] সেলস রিপোর্ট মেট্রিক্স (শুধু অ্যাডমিন)
+       - মাসওয়ারি বৃদ্ধি %, দৈনিক গড়, ১২-মাসের চার্ট ও সারাংশ টেবিল (বিক্রয় সংখ্যা, আয়, GST, ডিসকাউন্ট), 
+         টপ ১০ ওষুধ, টপ ৫ কাস্টমার, পেমেন্ট-পদ্ধতি অনুযায়ী ভাগ।
+
+২.১৬.৫ [অবস্থা: পেন্ডিং] রিপোর্ট এক্সপোর্ট (CSV ও Excel)
+       - CSV (UTF-8 BOM) ও Excel এক্সপোর্ট।
+
+--------------------------------------------------------------------------------
+মডিউল ২.১৭: সাপ্লায়ার সেলফ-সার্ভিস পোর্টাল
+--------------------------------------------------------------------------------
+২.১৭.১ [অবস্থা: পেন্ডিং] সাপ্লায়ার অর্ডার ট্র্যাকিং ড্যাশবোর্ড
+       - পরিবেশকরা লগইন করে তাদের দেওয়া পারচেজ অর্ডার দেখতে পারবেন এবং চালানের স্ট্যাটাস আপডেট করবেন।
+
+২.১৭.২ [অবস্থা: পেন্ডিং] সাপ্লায়ার টু-ওয়ে মেসেজিং চ্যানেল
+       - ফার্মাসি ও সাপ্লায়ারদের মধ্যে সরাসরি অভ্যন্তরীণ বার্তা আদান-প্রদান।
+
+--------------------------------------------------------------------------------
+মডিউল ২.১৮: পেশেন্ট ও কাস্টমার পোর্টাল
+--------------------------------------------------------------------------------
+২.১৮.১ [অবস্থা: পেন্ডিং] রোগীর অ্যাকাউন্ট ও ক্রয়ের ইতিহাস
+       - রোগীরা তাদের অ্যাকাউন্টে লগইন করে পূর্ববর্তী ইনভয়েস ও প্রেসক্রিপশন দেখতে পারবেন।
+
+২.১৮.২ [অবস্থা: পেন্ডিং] প্রেসক্রিপশন আপলোড ও অর্ডার রিকোয়েস্ট
+       - প্রেসক্রিপশনের ছবি আপলোড করলে ফার্মাসিস্টের ড্যাশবোর্ডে নোটিফিকেশন আসা এবং বিল তৈরি করা।
+
+--------------------------------------------------------------------------------
+মডিউল ২.১৯: কাস্টমার পোর্টাল অ্যাকাউন্ট লাইফসাইকেল ও রিটার্ন রিকোয়েস্ট  (রেফারেন্স: public/customer/*)
+--------------------------------------------------------------------------------
+২.১৯.১ [অবস্থা: পেন্ডিং] ইমেইল ভেরিফিকেশন বাধ্যতামূলক সহ নিজে রেজিস্ট্রেশন
+       - রেজিস্টার, ভেরিফিকেশন লিংক/টোকেন, Resend Verify, ভেরিফাই ছাড়া লগইন নয়; 
+         ব্রুট-ফোর্স লকআউটসহ আলাদা লগইন।
+
+২.১৯.২ [অবস্থা: পেন্ডিং] পোর্টাল থেকে কাস্টমারের রিটার্ন রিকোয়েস্ট
+       - নিজের ইনভয়েসের আইটেম বেছে রিটার্ন অনুরোধ; স্টোরে ইমেইল নোটিফিকেশন; 
+         স্টাফ রিটার্ন মডিউলে অনুমোদন/বাতিল করবে।
+
+২.১৯.৩ [অবস্থা: পেন্ডিং] প্রোফাইল ও পাসওয়ার্ড ম্যানেজমেন্ট
+       - প্রোফাইল এডিট, পাসওয়ার্ড পরিবর্তন; পাসওয়ার্ড ভুলে গেলে স্টোরের ইমেইলে যোগাযোগ।
+
+--------------------------------------------------------------------------------
+মডিউল ২.২০: মেসেজ ইনবক্স ও নিরাপদ প্রেসক্রিপশন ফাইল  (রেফারেন্স: patient_messages.php, serve_file.php, supplier contact.php)
+--------------------------------------------------------------------------------
+২.২০.১ [অবস্থা: পেন্ডিং] পেশেন্ট মেসেজ ইনবক্স (অ্যাডমিন/স্টাফ)
+       - প্রতি রোগীর আলাদা কথোপকথন, রিপ্লাই, অপঠিত সংখ্যা, পঠিত চিহ্নিত করা, ডিলিট।
+
+২.২০.২ [অবস্থা: পেন্ডিং] সাপ্লায়ার মেসেজ ইনবক্স
+       - সাপ্লায়ারের কন্টাক্ট ফর্ম -> অ্যাডমিন ইনবক্সে অপঠিত স্ট্যাটাস, রিপ্লাই ও ইমেইল নোটিফিকেশন।
+
+২.২০.৩ [অবস্থা: পেন্ডিং] নিরাপদ প্রেসক্রিপশন ফাইল সরবরাহ
+       - আপলোড (PDF/JPG/PNG/HEIC) পাবলিক পাথের বাইরে সংরক্ষণ; শুধু অথেনটিকেটেড এন্ডপয়েন্ট দিয়ে 
+         সার্ভ; স্টাফ সব দেখবে, কাস্টমার শুধু নিজের ফাইল; ফাইলের নাম স্যানিটাইজ।
+
+================================================================================
+ডকুমেন্ট সমাপ্ত: Part 2 — পিওএস বিলিং, ফাইন্যান্স, কমপ্লায়েন্স ও পোর্টাল
+================================================================================
+
+
+
+
+
+
+
+rules
+
+CRITICAL QUALITY & TESTING MANDATE: ZERO-SHORTCUT POLICY
+
+Before writing or modifying any code, you MUST follow these non-negotiable engineering rules:
+
+1. ADVERSARIAL & EDGE-CASE-FIRST DEVELOPMENT:
+   - Do NOT just code for the "Happy Path". Explicitly test and handle boundary conditions:
+     * Truthy/Falsy bugs: Never use `value || default` where valid inputs can be `0`, `false`, or empty strings.
+     * Partial Updates (PUT/PATCH): Merging must preserve existing metadata, rack/shelf details, and packaging info.
+     * Case-insensitivity: Username, email, medicine name, and duplicate checks must be case-insensitive.
+     * Transaction safety: High-volume operations (e.g. bulk import) must use batched queries or `createMany`, never loose for-loops that risk DB timeout.
+
+2. MULTI-TENANT & ROLE-BASED ACCESS CONTROL (RBAC):
+   - Strict `storeId` & `branchId` Isolation: Every DB query (SELECT, COUNT, UPDATE, DELETE) MUST filter by `auth.session.storeId`. Never allow cross-store data leakage or IDOR.
+   - Privilege Escalation Guards: Non-admin users cannot grant admin roles, alter Super Admin credentials, or self-escalate permissions.
+   - Revocation Integrity: Unchecking a permission MUST actively send and enforce `revokedPermissions`, not just omit granted ones.
+
+3. UI & ERROR VISIBILITY STANDARDS:
+   - In-Modal Error Feedback: When an API error or validation fails, display the error alert INSIDE the open modal directly above the form fields—NEVER behind the modal backdrop.
+   - Form State Resilience: Dropdowns, sliders, and inputs must accept `0` (e.g. 0% GST, 0 min stock). Typing in numeric inputs must not trigger glitchy fallback jumps.
+   - Spec Completeness: Fully implement all specified formats (e.g. if `.xlsx`, drag-and-drop are in spec, they must be implemented, not skipped).
+
+4. STRICT INTEGRATION TESTING (NO FAKE / SYNTHETIC TESTS):
+   - Never write assert statements against static variables, hardcoded booleans, or mocks.
+   - All verification scripts MUST make actual HTTP requests against the live API routes and assert:
+     * HTTP Status Codes (200, 400, 403, 404, 409)
+     * Exact response JSON payloads
+     * Database state mutations after the HTTP call
+   - Test both success and failure cases (e.g. attempting to delete an item with linked batches MUST assert HTTP 400).
+
+5. COMPLETION GATE CHECKLIST:
+   Before declaring any task or module "COMPLETED", provide an explicit Proof of Verification:
+   [ ] Security & Multi-tenant check verified
+   [ ] Edge-case checklist tested
+   [ ] In-modal error handling verified
+   [ ] Real HTTP API test script output shown (0 fake asserts)
+   [ ] `npx tsc --noEmit` passes with 0 errors
+
+
+
+
+
+
+
+
+
+
+
+   ================================================================================
+UNIVERSAL SOFTWARE ENGINEERING PROTOCOL: ZERO-SHORTCUT & PRODUCTION-GRADE MANDATE
+================================================================================
+
+You are acting as a Principal Software Engineer. For every task, feature, or bug fix
+in this project, you must adhere strictly to the following 5 engineering pillars:
+
+1. ADVERSARIAL & EDGE-CASE-FIRST THINKING (NO HAPPY-PATH BIAS):
+   - Never write code that only works for perfect inputs.
+   - Actively identify and handle boundary/failure cases before writing business logic:
+     * Falsy vs. Valid Zero: Never use `value || fallback` when `0`, `false`, or `""` are valid values. Always use nullish coalescing (`??`) or explicit type checks.
+     * Partial Updates (PUT/PATCH): Merges must preserve unmentioned existing fields, nested metadata, and relations. Never wipe fields due to partial payloads.
+     * Idempotency & Concurrency: Protect against double-clicks, duplicate submissions, and race conditions. Use atomic transactions (`$transaction`, DB locks, or bulk queries).
+     * String & Search Sanitization: Normalize casing, trim whitespaces, escape regex characters, and handle multi-language/special characters.
+
+2. SPECIFICATION INTEGRITY & COMPLETENESS:
+   - Implement 100% of the requested feature specification. Never skip "hard" sub-tasks (e.g., file parsers, drag-and-drop, export formats) or replace them with simplified placeholders.
+   - If a specification is ambiguous, ask for clarification instead of making unverified assumptions.
+
+3. SECURITY, DATA ISOLATION & PERMISSION BOUNDARIES:
+   - Strict Ownership & Tenant Scoping: Every read, count, aggregate, update, and delete MUST enforce ownership/tenant boundaries (e.g., `tenantId`, `storeId`, `userId`). Never trust client-supplied IDs without session ownership verification (Zero IDOR).
+   - Privilege Escalation Prevention: Never allow lower-tier roles to self-assign elevated permissions, alter master admin records, or bypass access control matrices.
+   - Explicit Revocation: Permissions systems must support explicit revoking/denial, not just omitting granted flags.
+
+4. UI/UX RESILIENCE & ERROR TRANSPARENCY:
+   - Contextual Error Placement: When an action fails, display actionable error messages directly where the user is looking (inside the active modal, beneath the input, or via non-blocking toasts). Never render errors behind modal backdrops or overlays.
+   - Resilient Form Controls: Numeric inputs must not jump or glitch when deleting characters. Modals must be scrollable, fit within viewport boundaries (`max-h`), and handle `Escape` and backdrop clicks safely.
+   - Loading & Disabled States: Disable submit buttons and show spinners during active asynchronous requests to prevent accidental duplicate operations.
+
+5. ANTI-CHEAT TESTING & PROOF OF EXECUTION:
+   - ZERO FAKE TESTS: Never write asserts against hardcoded variables, static booleans (`assert(true)`), or mocks that bypass the actual logic.
+   - Real Integration Tests: Test through the actual consumer interface (execute real HTTP requests against API endpoints, run real CLI commands, or verify real DB mutations).
+   - Negative Testing Required: Tests MUST prove that invalid data, unauthorized requests, or illegal deletions actually fail with the correct HTTP status code and error payload.
+
+--------------------------------------------------------------------------------
+DEFINITION OF DONE (DoD) GATE:
+Before declaring any task or module "COMPLETED", you must provide an explicit checklist:
+[ ] 1. Edge-cases & boundary values tested (0, null, duplicates, special characters)
+[ ] 2. Security & tenant data isolation verified (no IDOR / cross-tenant leaks)
+[ ] 3. UI state & in-context error visibility confirmed
+[ ] 4. Automated test suite executed against live routes with REAL terminal output shown
+[ ] 5. Zero linter or type-checker errors (`tsc --noEmit` or equivalent passes cleanly)
+================================================================================
