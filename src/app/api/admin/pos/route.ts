@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma, runInTransaction } from "@/lib/db-transaction";
 
 export async function POST(request: Request) {
   try {
@@ -16,6 +16,14 @@ export async function POST(request: Request) {
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
         { error: "Cart items are required for checkout" },
+        { status: 400 }
+      );
+    }
+
+    const custId = customerId ? parseInt(customerId, 10) : null;
+    if (paymentMethod === "credit" && !custId) {
+      return NextResponse.json(
+        { error: "Customer selection is required for Credit / Baki Khata sales" },
         { status: 400 }
       );
     }
@@ -37,7 +45,7 @@ export async function POST(request: Request) {
     const invoiceNo = `${invoicePrefix}${String(nextNumber).padStart(5, "0")}`;
 
     // Execute atomic checkout transaction
-    const saleResult = await prisma.$transaction(async (tx) => {
+    const saleResult = await runInTransaction(async (tx) => {
       let subtotal = 0;
       let totalGst = 0;
 
@@ -111,6 +119,36 @@ export async function POST(request: Request) {
       }
 
       const grandTotal = Math.max(0, subtotal - Number(discountAmount));
+
+      // Enforce Baki Khata Credit Limit (Module 1.13.3)
+      if (paymentMethod === "credit" && custId) {
+        const cust = await tx.customer.findUnique({
+          where: { id: custId },
+          include: {
+            sales: { where: { paymentMethod: "credit" }, select: { grandTotal: true } },
+            payments: { select: { amount: true } },
+          },
+        });
+
+        if (!cust) {
+          throw new Error("Selected customer not found for credit sale");
+        }
+
+        const creditLimit = Number(cust.creditLimit);
+        if (creditLimit <= 0) {
+          throw new Error(`Customer '${cust.name}' has no approved credit limit. Credit billing cannot proceed.`);
+        }
+
+        const totalCreditSales = cust.sales.reduce((sum, s) => sum + Number(s.grandTotal), 0);
+        const totalPaid = cust.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+        const currentDue = Math.max(0, totalCreditSales - totalPaid);
+
+        if (currentDue + grandTotal > creditLimit) {
+          throw new Error(
+            `Credit limit exceeded for ${cust.name}: Approved limit is ₹${creditLimit.toFixed(2)}, current due is ₹${currentDue.toFixed(2)}. Adding ₹${grandTotal.toFixed(2)} exceeds limit.`
+          );
+        }
+      }
 
       // 2. Create Sale header & line items
       const newSale = await tx.sale.create({

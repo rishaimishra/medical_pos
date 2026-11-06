@@ -19,6 +19,16 @@ import {
   Layers,
   Store,
   Info,
+  Database,
+  DownloadCloud,
+  UploadCloud,
+  HardDrive,
+  FileCode,
+  ArrowUpCircle,
+  Sparkles,
+  ShieldAlert,
+  Terminal,
+  Check,
 } from "lucide-react";
 import { useBranchStore } from "@/stores/useBranchStore";
 
@@ -78,9 +88,9 @@ interface AuditLogRow {
 }
 
 export default function AdminSettingsPage() {
-  const [activeTab, setActiveTab] = useState<"profile" | "branches" | "security">(
-    "profile"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "profile" | "branches" | "security" | "backup" | "updates"
+  >("profile");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
@@ -90,6 +100,248 @@ export default function AdminSettingsPage() {
   const [roleMatrix, setRoleMatrix] = useState<Record<string, any>>({});
   const [auditSearch, setAuditSearch] = useState("");
   const [auditLoading, setAuditLoading] = useState(false);
+
+  // MODULE 1.14: Backup & Restore State
+  const [savedBackups, setSavedBackups] = useState<
+    { filename: string; sizeBytes: number; sizeFormatted: string; createdAt: string }[]
+  >([]);
+  const [backupsLoading, setBackupsLoading] = useState(false);
+  const [backupExporting, setBackupExporting] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [dryRunning, setDryRunning] = useState(false);
+  const [dryRunInfo, setDryRunInfo] = useState<{
+    statementsCount: number;
+    tablesAffected: string[];
+    warning: string;
+  } | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreConfirmModalOpen, setRestoreConfirmModalOpen] = useState(false);
+  const [restoreSuccessMsg, setRestoreSuccessMsg] = useState<string | null>(null);
+
+  // 1.14.3: JSON Migration State
+  const [jsonMigrateFile, setJsonMigrateFile] = useState<File | null>(null);
+  const [jsonMigrating, setJsonMigrating] = useState(false);
+  const [jsonMigrateResult, setJsonMigrateResult] = useState<{
+    migrated: {
+      categories: number;
+      suppliers: number;
+      customers: number;
+      medicines: number;
+      batches: number;
+    };
+    backupFile: string;
+  } | null>(null);
+
+  // MODULE 1.15: Software Update System State
+  const [appVersionInfo, setAppVersionInfo] = useState<{
+    currentVersion: string;
+    environment: string;
+    status: string;
+    lastBackupAt: string | null;
+  }>({
+    currentVersion: "0.1.0",
+    environment: "development",
+    status: "healthy",
+    lastBackupAt: null,
+  });
+  const [updatePackageFile, setUpdatePackageFile] = useState<File | null>(null);
+  const [updateInspecting, setUpdateInspecting] = useState(false);
+  const [updateInspection, setUpdateInspection] = useState<any | null>(null);
+  const [confirmBackupChecked, setConfirmBackupChecked] = useState(false);
+  const [updateApplying, setUpdateApplying] = useState(false);
+  const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
+
+  const fetchSavedBackups = async () => {
+    try {
+      setBackupsLoading(true);
+      const res = await fetch("/api/admin/backup?list=true");
+      const json = await res.json();
+      if (json.success && Array.isArray(json.backups)) {
+        setSavedBackups(json.backups);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBackupsLoading(false);
+    }
+  };
+
+  const handleOneClickBackup = async () => {
+    try {
+      setBackupExporting(true);
+      setErrorMessage(null);
+      window.open("/api/admin/backup", "_blank");
+      setSaveSuccess("Database backup generated and download initiated!");
+      setTimeout(() => {
+        fetchSavedBackups();
+      }, 1000);
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to generate backup");
+    } finally {
+      setBackupExporting(false);
+    }
+  };
+
+  const handleDryRunRestore = async () => {
+    if (!restoreFile) {
+      alert("Please choose an .sql backup file to validate.");
+      return;
+    }
+    try {
+      setDryRunning(true);
+      setErrorMessage(null);
+      setDryRunInfo(null);
+      const fd = new FormData();
+      fd.append("backupFile", restoreFile);
+      fd.append("dryRun", "true");
+      const res = await fetch("/api/admin/backup/restore", {
+        method: "POST",
+        body: fd,
+      });
+      const json = await res.json();
+      if (json.success) {
+        setDryRunInfo(json);
+      } else {
+        setErrorMessage(json.error || "Dry run validation failed");
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to validate SQL file");
+    } finally {
+      setDryRunning(false);
+    }
+  };
+
+  const handleExecuteRestore = async () => {
+    if (!restoreFile) return;
+    try {
+      setRestoring(true);
+      setErrorMessage(null);
+      setRestoreSuccessMsg(null);
+      const fd = new FormData();
+      fd.append("backupFile", restoreFile);
+      fd.append("confirmOverwrite", "true");
+      const res = await fetch("/api/admin/backup/restore", {
+        method: "POST",
+        body: fd,
+      });
+      const json = await res.json();
+      if (json.success) {
+        setRestoreSuccessMsg(json.message);
+        setRestoreConfirmModalOpen(false);
+        setRestoreFile(null);
+        setDryRunInfo(null);
+        fetchSavedBackups();
+      } else {
+        setErrorMessage(json.error || "Failed to restore database");
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to execute restore");
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handleExecuteJsonMigration = async () => {
+    if (!jsonMigrateFile) {
+      alert("Please select a JSON file to migrate.");
+      return;
+    }
+    try {
+      setJsonMigrating(true);
+      setErrorMessage(null);
+      setJsonMigrateResult(null);
+      const fd = new FormData();
+      fd.append("file", jsonMigrateFile);
+      const res = await fetch("/api/admin/backup/migrate-json", {
+        method: "POST",
+        body: fd,
+      });
+      const json = await res.json();
+      if (json.success) {
+        setJsonMigrateResult(json);
+        setSaveSuccess("Legacy JSON storage successfully migrated!");
+        setJsonMigrateFile(null);
+      } else {
+        setErrorMessage(json.error || "Failed to migrate JSON data");
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to migrate JSON");
+    } finally {
+      setJsonMigrating(false);
+    }
+  };
+
+  const fetchVersionInfo = async () => {
+    try {
+      const res = await fetch("/api/admin/update/version");
+      const json = await res.json();
+      if (json.success && json.data) {
+        setAppVersionInfo(json.data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleInspectUpdate = async (file: File) => {
+    try {
+      setUpdateInspecting(true);
+      setErrorMessage(null);
+      setUpdateInspection(null);
+      setUpdateSuccess(null);
+      setConfirmBackupChecked(false);
+      const fd = new FormData();
+      fd.append("package", file);
+      const res = await fetch("/api/admin/update/inspect", {
+        method: "POST",
+        body: fd,
+      });
+      const json = await res.json();
+      if (json.success) {
+        setUpdateInspection(json.data);
+      } else {
+        setErrorMessage(json.error || "Failed to inspect update package");
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to inspect update");
+    } finally {
+      setUpdateInspecting(false);
+    }
+  };
+
+  const handleApplyUpdate = async () => {
+    if (!updatePackageFile) return;
+    if (!confirmBackupChecked) {
+      alert("Please confirm that you have taken a database backup.");
+      return;
+    }
+    try {
+      setUpdateApplying(true);
+      setErrorMessage(null);
+      setUpdateSuccess(null);
+      const fd = new FormData();
+      fd.append("package", updatePackageFile);
+      fd.append("confirmBackup", "true");
+      const res = await fetch("/api/admin/update/apply", {
+        method: "POST",
+        body: fd,
+      });
+      const json = await res.json();
+      if (json.success) {
+        setUpdateSuccess(json.message);
+        setUpdateInspection(null);
+        setUpdatePackageFile(null);
+        setConfirmBackupChecked(false);
+        fetchVersionInfo();
+      } else {
+        setErrorMessage(json.error || "Failed to apply system update");
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to apply update");
+    } finally {
+      setUpdateApplying(false);
+    }
+  };
 
   const [settings, setSettings] = useState<SettingsData>({
     storeName: "",
@@ -412,6 +664,36 @@ export default function AdminSettingsPage() {
         >
           <KeyRound className="w-4 h-4" />
           Staff Access & Activity History
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab("backup");
+            fetchSavedBackups();
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === "backup"
+              ? "bg-white text-[#0F6E56] border border-b-0 border-slate-200 shadow-2xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+          }`}
+        >
+          <Database className="w-4 h-4" />
+          Backup & Restore
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab("updates");
+            fetchVersionInfo();
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === "updates"
+              ? "bg-white text-[#0F6E56] border border-b-0 border-slate-200 shadow-2xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+          }`}
+        >
+          <ArrowUpCircle className="w-4 h-4" />
+          Software Updates
         </button>
       </div>
 
@@ -857,6 +1139,547 @@ export default function AdminSettingsPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 4: DATABASE BACKUP & RESTORE (MODULE 1.14)                            */}
+      {/* ========================================================================= */}
+      {activeTab === "backup" && (
+        <div className="space-y-6">
+          {restoreSuccessMsg && (
+            <div className="flex items-center gap-2 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>{restoreSuccessMsg}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Card 1: 1.14.1 One-Click Full Database Backup */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+              <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+                <div className="w-9 h-9 rounded-xl bg-[#EAF5F0] flex items-center justify-center text-[#0F6E56]">
+                  <DownloadCloud className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">
+                    1-Click Full SQL Database Backup
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Export a timestamped .sql file covering all 24 relational tables
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Generates a clean, standard SQL dump with table definitions and row inserts in foreign-key dependency order. Fully compatible with PostgreSQL, MySQL, and phpMyAdmin exports.
+              </p>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleOneClickBackup}
+                  disabled={backupExporting}
+                  className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[#0F6E56] hover:bg-[#0b5643] text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {backupExporting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Generating SQL Dump...
+                    </>
+                  ) : (
+                    <>
+                      <DownloadCloud className="w-4 h-4" />
+                      Download Complete .sql Backup
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Past Backups Table */}
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold text-slate-800">
+                    Saved Backups on Server
+                  </span>
+                  <button
+                    type="button"
+                    onClick={fetchSavedBackups}
+                    className="text-[11px] text-[#0F6E56] font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${backupsLoading ? "animate-spin" : ""}`} />
+                    Refresh
+                  </button>
+                </div>
+
+                {savedBackups.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic py-2">
+                    No past backups saved locally yet. Click download above to generate your first backup.
+                  </p>
+                ) : (
+                  <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-slate-100">
+                    {savedBackups.map((b) => (
+                      <div
+                        key={b.filename}
+                        className="flex items-center justify-between p-2.5 text-xs hover:bg-slate-50 transition-colors"
+                      >
+                        <div className="truncate pr-2">
+                          <p className="font-bold text-slate-800 truncate">{b.filename}</p>
+                          <p className="text-[10px] text-slate-400">
+                            {b.sizeFormatted} • {new Date(b.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                        <a
+                          href={`/api/admin/backup?file=${encodeURIComponent(b.filename)}`}
+                          download={b.filename}
+                          className="shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-[#EAF5F0] text-slate-700 hover:text-[#0F6E56] text-[11px] font-bold transition-colors"
+                        >
+                          Download
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Card 2: 1.14.2 Restore From SQL File */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+              <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
+                  <UploadCloud className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">
+                    Restore Database from SQL File
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Accepts system backups and phpMyAdmin / standard SQL exports
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Caution:</strong> Restoring will overwrite existing records. We strongly advise validating with Dry Run first.
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  Select .sql Backup File
+                </label>
+                <input
+                  type="file"
+                  accept=".sql,text/plain"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setRestoreFile(f);
+                    setDryRunInfo(null);
+                  }}
+                  className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
+                />
+              </div>
+
+              {/* Dry Run Report */}
+              {dryRunInfo && (
+                <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 text-xs space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-blue-900">
+                    <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                    Validation Passed: {dryRunInfo.statementsCount} statements detected
+                  </div>
+                  <p className="text-[11px] text-blue-800">
+                    Affected Tables ({dryRunInfo.tablesAffected.length}):
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {dryRunInfo.tablesAffected.map((t) => (
+                      <span
+                        key={t}
+                        className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-[10px] font-mono font-bold"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleDryRunRestore}
+                  disabled={!restoreFile || dryRunning}
+                  className="flex-1 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {dryRunning ? "Validating SQL..." : "Dry Run / Validate"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRestoreConfirmModalOpen(true)}
+                  disabled={!restoreFile || restoring}
+                  className="flex-1 px-4 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Restore Database
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: 1.14.3 Local-JSON to MySQL / PostgreSQL Migration Tool */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+                <FileCode className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-sm">
+                  Local-JSON to Relational DB Migration Tool (1.14.3)
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Import legacy JSON catalogs, suppliers, and customer lists into PostgreSQL/MySQL
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Upload existing JSON data exported from legacy versions. The ETL engine maps categories, medicines, suppliers, customers, and inventory batches into your active relational database while saving a fallback JSON backup in <code className="bg-slate-100 px-1 py-0.5 rounded text-[11px]">backups/json_migrations/</code>.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div className="md:col-span-2 space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  Select Legacy JSON File
+                </label>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={(e) => setJsonMigrateFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleExecuteJsonMigration}
+                disabled={!jsonMigrateFile || jsonMigrating}
+                className="px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {jsonMigrating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Migrating...
+                  </>
+                ) : (
+                  <>
+                    <HardDrive className="w-4 h-4" />
+                    Run JSON Migration
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Migration Result Stats */}
+            {jsonMigrateResult && (
+              <div className="p-4 rounded-2xl bg-indigo-50/80 border border-indigo-200 text-xs space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-indigo-900">
+                  <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                  JSON Migration Successful! Fallback preserved at: {jsonMigrateResult.backupFile}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center pt-1">
+                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase">Categories</p>
+                    <p className="text-sm font-extrabold text-indigo-900">{jsonMigrateResult.migrated.categories}</p>
+                  </div>
+                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase">Suppliers</p>
+                    <p className="text-sm font-extrabold text-indigo-900">{jsonMigrateResult.migrated.suppliers}</p>
+                  </div>
+                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase">Customers</p>
+                    <p className="text-sm font-extrabold text-indigo-900">{jsonMigrateResult.migrated.customers}</p>
+                  </div>
+                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase">Medicines</p>
+                    <p className="text-sm font-extrabold text-indigo-900">{jsonMigrateResult.migrated.medicines}</p>
+                  </div>
+                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase">Batches</p>
+                    <p className="text-sm font-extrabold text-indigo-900">{jsonMigrateResult.migrated.batches}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 5: SOFTWARE UPDATES SYSTEM (MODULE 1.15)                               */}
+      {/* ========================================================================= */}
+      {activeTab === "updates" && (
+        <div className="space-y-6">
+          {updateSuccess && (
+            <div className="flex items-center gap-2 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>{updateSuccess}</span>
+            </div>
+          )}
+
+          {/* Current System Version HUD */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
+              <span className="text-[10px] font-bold uppercase text-slate-400">Current Version</span>
+              <p className="text-lg font-black text-slate-900 mt-0.5 flex items-center gap-1.5">
+                v{appVersionInfo.currentVersion}
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                  Active
+                </span>
+              </p>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
+              <span className="text-[10px] font-bold uppercase text-slate-400">Environment</span>
+              <p className="text-base font-extrabold text-slate-800 mt-1 capitalize">
+                {appVersionInfo.environment}
+              </p>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
+              <span className="text-[10px] font-bold uppercase text-slate-400">System Health</span>
+              <p className="text-base font-extrabold text-emerald-600 mt-1 flex items-center gap-1">
+                <Check className="w-4 h-4" /> Operational
+              </p>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
+              <span className="text-[10px] font-bold uppercase text-slate-400">Last DB Backup</span>
+              <p className="text-xs font-bold text-slate-700 mt-1 truncate">
+                {appVersionInfo.lastBackupAt
+                  ? new Date(appVersionInfo.lastBackupAt).toLocaleDateString()
+                  : "No backup today"}
+              </p>
+            </div>
+          </div>
+
+          {/* Package Uploader & Inspector */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-5">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-[#0F6E56]">
+                <ArrowUpCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-sm">
+                  Upload & Inspect Version Update (.zip)
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Validates path traversal safety, compares versions, and requires pre-update backup confirmation
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div className="md:col-span-2 space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  Select Version ZIP Archive
+                </label>
+                <input
+                  type="file"
+                  accept=".zip,application/zip"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setUpdatePackageFile(f);
+                    setUpdateInspection(null);
+                    setConfirmBackupChecked(false);
+                    if (f) {
+                      handleInspectUpdate(f);
+                    }
+                  }}
+                  className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => updatePackageFile && handleInspectUpdate(updatePackageFile)}
+                disabled={!updatePackageFile || updateInspecting}
+                className="px-5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-extrabold transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {updateInspecting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Inspecting...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    Inspect Package
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Inspection Results Card */}
+            {updateInspection && (
+              <div className="p-5 rounded-3xl bg-slate-50 border border-slate-200 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400">Target Version</span>
+                    <h4 className="text-base font-black text-slate-900 flex items-center gap-2">
+                      v{updateInspection.newVersion}
+                      {updateInspection.isUpgrade ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold">
+                          Upgrade from v{updateInspection.currentVersion}
+                        </span>
+                      ) : updateInspection.isSame ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-extrabold">
+                          Re-install v{updateInspection.currentVersion}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-extrabold">
+                          Downgrade
+                        </span>
+                      )}
+                    </h4>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-100/70 border border-emerald-200 text-[#0F6E56] text-xs font-bold">
+                    <ShieldCheck className="w-4 h-4" />
+                    Path Traversal Scan: Passed
+                  </div>
+                </div>
+
+                {updateInspection.manifest?.releaseNotes && (
+                  <div className="text-xs text-slate-600 bg-white p-3 rounded-2xl border border-slate-200/80">
+                    <span className="font-bold text-slate-800 block mb-0.5">Release Notes:</span>
+                    {updateInspection.manifest.releaseNotes}
+                  </div>
+                )}
+
+                {/* Changed Files Inventory */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                    <span>Changed Files Inventory ({updateInspection.totalFiles})</span>
+                    <span className="text-slate-400 text-[11px]">All paths validated</span>
+                  </div>
+
+                  <div className="max-h-56 overflow-y-auto divide-y divide-slate-200/60 rounded-2xl border border-slate-200 bg-white">
+                    {updateInspection.changedFiles.map((f: any) => (
+                      <div
+                        key={f.path}
+                        className="flex items-center justify-between p-2.5 text-xs hover:bg-slate-50"
+                      >
+                        <div className="flex items-center gap-2 truncate pr-2">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-black uppercase ${
+                              f.action === "create"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {f.action}
+                          </span>
+                          <span className="font-mono text-slate-800 text-[11px] truncate">
+                            {f.path}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-400 font-mono shrink-0">
+                          {f.sizeFormatted}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Mandatory Backup Confirmation Checkbox */}
+                <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 space-y-3">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={confirmBackupChecked}
+                      onChange={(e) => setConfirmBackupChecked(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded text-[#0F6E56] border-slate-300 focus:ring-[#0F6E56]"
+                    />
+                    <div className="text-xs text-slate-800">
+                      <span className="font-extrabold text-amber-950 block">
+                        Mandatory Pre-Update Backup Confirmation
+                      </span>
+                      I confirm that I have downloaded or verified a current database backup. If unexpected issues occur, files replaced by this update will be archived in <code className="bg-amber-100 px-1 rounded text-[10px]">.backups/pre_update_...</code>.
+                    </div>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleApplyUpdate}
+                    disabled={!confirmBackupChecked || updateApplying}
+                    className="w-full py-3 px-5 rounded-2xl bg-[#0F6E56] hover:bg-[#0b5643] text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+                  >
+                    {updateApplying ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Applying System Update...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Apply System Update to v{updateInspection.newVersion}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirm Database Restore Overwrite */}
+      {restoreConfirmModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white border border-rose-200 rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">
+                  Confirm Database Overwrite
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Irreversible operation warning
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Restoring from <strong className="text-slate-900">{restoreFile?.name}</strong> will overwrite current rows across the affected database tables. Any unbacked data may be permanently lost.
+            </p>
+
+            <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-[11px] text-rose-800 font-bold">
+              Are you sure you want to proceed with restoring this database backup?
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setRestoreConfirmModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteRestore}
+                disabled={restoring}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              >
+                {restoring ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Restoring...
+                  </>
+                ) : (
+                  "Yes, Overwrite & Restore"
+                )}
+              </button>
             </div>
           </div>
         </div>

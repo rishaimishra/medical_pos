@@ -17,7 +17,10 @@ export interface AppConfig {
   storage: string;
   defaultGstPercent: number;
   perPageDefault: number;
+  version?: string;
 }
+
+export const APP_VERSION = "0.1.0";
 
 export const DEFAULT_CONFIG: AppConfig = {
   storeName: "Medical POS Pharmacy",
@@ -35,6 +38,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   storage: "postgres",
   defaultGstPercent: 18.0,
   perPageDefault: 25,
+  version: APP_VERSION,
 };
 
 export const APP_CONFIG = {
