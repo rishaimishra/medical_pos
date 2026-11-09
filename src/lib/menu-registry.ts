@@ -122,7 +122,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     href: "/admin/purchases",
     icon: ShoppingCart,
     requiredPermission: "manage_purchases",
-    status: "in_development",
+    status: "ready",
     description: "Vendor PO lifecycle, price updates, GRN inward",
   },
   {
@@ -132,7 +132,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     icon: Truck,
     requiredPermission: "manage_purchases",
     adminOnly: true,
-    status: "in_development",
+    status: "ready",
     description: "Distributor master and ledger accounts",
   },
   {
@@ -141,7 +141,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     href: "/admin/customers",
     icon: HeartPulse,
     requiredPermission: "manage_customers",
-    status: "in_development",
+    status: "ready",
     description: "Customer credit limits, prescriptions, refills",
   },
   {

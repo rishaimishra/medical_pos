@@ -467,3 +467,330 @@ export async function sendAccountCredentialsEmail(options: AccountCredentialEmai
   });
 }
 
+export interface SupplierPoEmailOptions {
+  type: "created" | "price_updated" | "confirmed" | "cancelled" | "received";
+  poNumber: string;
+  supplierName: string;
+  supplierEmail: string;
+  totalAmount: number | string;
+  itemsCount: number;
+  storeName?: string;
+  branchName?: string;
+  notes?: string;
+}
+
+/**
+ * MODULE 1.12.5: Sends supplier transactional email alerts for PO lifecycle events
+ * (created, price_updated, confirmed, cancelled, received)
+ */
+export async function sendSupplierPoEmail(options: SupplierPoEmailOptions): Promise<EmailResult> {
+  const store = options.storeName || "Medical POS Pharmacy";
+  const formattedTotal = Number(options.totalAmount || 0).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  const eventConfigs: Record<
+    SupplierPoEmailOptions["type"],
+    { title: string; badgeColor: string; subject: string; intro: string }
+  > = {
+    created: {
+      title: "New Purchase Order Issued",
+      badgeColor: "#0284c7",
+      subject: `[New PO] Order ${options.poNumber} from ${store}`,
+      intro: `A new purchase order has been placed with your company. Please review the line items and confirm availability and pricing.`,
+    },
+    price_updated: {
+      title: "PO Pricing Update Logged",
+      badgeColor: "#d97706",
+      subject: `[Price Updated] Purchase Order ${options.poNumber}`,
+      intro: `Pricing updates for Purchase Order ${options.poNumber} have been submitted and are awaiting pharmacy admin confirmation.`,
+    },
+    confirmed: {
+      title: "Purchase Order Confirmed & Locked",
+      badgeColor: "#16a34a",
+      subject: `[Order Confirmed] PO ${options.poNumber} approved by ${store}`,
+      intro: `Purchase Order ${options.poNumber} has been officially approved and confirmed by pharmacy administration. Prices are locked and ready for shipment.`,
+    },
+    cancelled: {
+      title: "Purchase Order Cancelled",
+      badgeColor: "#dc2626",
+      subject: `[Cancelled] Purchase Order ${options.poNumber} Voided`,
+      intro: `Purchase Order ${options.poNumber} has been cancelled by ${store}. Please halt processing or dispatch for this order.`,
+    },
+    received: {
+      title: "Goods Receipt Note (GRN) Inwarded",
+      badgeColor: "#0d9488",
+      subject: `[GRN Inwarded] Delivery Accepted for PO ${options.poNumber}`,
+      intro: `Your shipment for Purchase Order ${options.poNumber} has been received, verified, and inwarded into the pharmacy inventory.`,
+    },
+  };
+
+  const config = eventConfigs[options.type] || eventConfigs.created;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head><meta charset="utf-8" /><title>${config.title}</title></head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #F1F5F9; color: #1e293b; padding: 40px 20px; margin: 0;">
+        <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border: 1px solid #E2E8F0; border-radius: 20px; padding: 36px; box-shadow: 0 10px 25px rgba(0,0,0,0.06);">
+          <div style="margin-bottom: 24px; text-align: center;">
+            <div style="display: inline-block; background-color: ${config.badgeColor}; color: #ffffff; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 16px; border-radius: 9999px;">
+              ${config.title}
+            </div>
+            <h2 style="color: #0f172a; font-size: 22px; font-weight: 800; margin: 18px 0 6px 0;">${store}</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 0;">Vendor Order & Logistics Notification</p>
+          </div>
+
+          <p style="font-size: 14px; color: #334155; line-height: 1.6; margin-bottom: 20px;">
+            Dear <strong>${options.supplierName}</strong>,<br/>
+            ${config.intro}
+          </p>
+
+          <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 20px; margin-bottom: 24px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <tr>
+                <td style="color: #64748b; padding: 8px 0; width: 40%;">PO Number:</td>
+                <td style="color: #0f172a; font-family: monospace; font-weight: 700; font-size: 14px; padding: 8px 0;">${options.poNumber}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; padding: 8px 0;">Total Amount:</td>
+                <td style="color: #0f172a; font-weight: 800; font-size: 15px; padding: 8px 0;">₹${formattedTotal}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; padding: 8px 0;">Line Items:</td>
+                <td style="color: #334155; font-weight: 600; padding: 8px 0;">${options.itemsCount} product(s)</td>
+              </tr>
+              ${options.branchName ? `
+              <tr>
+                <td style="color: #64748b; padding: 8px 0;">Destination Branch:</td>
+                <td style="color: #334155; font-weight: 600; padding: 8px 0;">${options.branchName}</td>
+              </tr>` : ""}
+              ${options.notes ? `
+              <tr>
+                <td style="color: #64748b; padding: 8px 0; vertical-align: top;">Notes:</td>
+                <td style="color: #475569; font-style: italic; padding: 8px 0;">${options.notes}</td>
+              </tr>` : ""}
+            </table>
+          </div>
+
+          <p style="font-size: 12px; color: #94a3b8; text-align: center; line-height: 1.5; margin: 0;">
+            This is an automated notification from ${store}. Please contact pharmacy purchasing for dispatch queries.
+          </p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to: options.supplierEmail,
+    subject: config.subject,
+    html,
+    text: `${config.title}\nPO: ${options.poNumber}\nTotal: ₹${formattedTotal}\nItems: ${options.itemsCount}\nStore: ${store}`,
+  });
+}
+
+export interface DailyStockAlertEmailOptions {
+  adminEmail: string;
+  storeName?: string;
+  lowStockItems: Array<{ name: string; stock: number; threshold: number; unit?: string }>;
+  expiringBatches: Array<{ name: string; batchNo: string; expiryDate: string; daysLeft: number; stock: number }>;
+}
+
+/**
+ * MODULE 1.12.6: Daily low-stock and batch expiry digest email to admin
+ */
+export async function sendDailyStockAlertEmail(options: DailyStockAlertEmailOptions): Promise<EmailResult> {
+  const store = options.storeName || "Medical POS Pharmacy";
+  const dateStr = new Date().toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  const lowStockRows = options.lowStockItems
+    .slice(0, 15)
+    .map(
+      (it) => `
+      <tr style="border-bottom: 1px solid #E2E8F0;">
+        <td style="padding: 8px 6px; font-weight: 600; color: #0f172a;">${it.name}</td>
+        <td style="padding: 8px 6px; text-align: center; font-weight: 700; color: #dc2626;">${it.stock}</td>
+        <td style="padding: 8px 6px; text-align: right; color: #64748b;">Min ${it.threshold}</td>
+      </tr>
+    `
+    )
+    .join("");
+
+  const expiringRows = options.expiringBatches
+    .slice(0, 15)
+    .map(
+      (b) => `
+      <tr style="border-bottom: 1px solid #E2E8F0;">
+        <td style="padding: 8px 6px; font-weight: 600; color: #0f172a;">${b.name}</td>
+        <td style="padding: 8px 6px; text-align: center; font-family: monospace; font-size: 12px; color: #475569;">${b.batchNo}</td>
+        <td style="padding: 8px 6px; text-align: center; color: #ea580c; font-weight: 700;">${b.daysLeft > 0 ? `${b.daysLeft}d left` : "Expired"}</td>
+        <td style="padding: 8px 6px; text-align: right; font-weight: 600; color: #0f172a;">${b.stock}</td>
+      </tr>
+    `
+    )
+    .join("");
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head><meta charset="utf-8" /><title>Daily Stock & Expiry Alert</title></head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #F8FAFC; color: #1e293b; padding: 40px 20px; margin: 0;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #E2E8F0; border-radius: 20px; padding: 36px; box-shadow: 0 10px 25px rgba(0,0,0,0.06);">
+          <div style="margin-bottom: 24px; text-align: center;">
+            <div style="display: inline-block; background-color: #dc2626; color: #ffffff; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 16px; border-radius: 9999px;">
+              Daily Inventory Alert Digest
+            </div>
+            <h2 style="color: #0f172a; font-size: 22px; font-weight: 800; margin: 18px 0 6px 0;">${store}</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 0;">Generated on ${dateStr}</p>
+          </div>
+
+          <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+            <div style="flex: 1; background-color: #FEF2F2; border: 1px solid #FCA5A5; border-radius: 12px; padding: 14px; text-align: center;">
+              <div style="font-size: 22px; font-weight: 800; color: #991B1B;">${options.lowStockItems.length}</div>
+              <div style="font-size: 12px; color: #B91C1C; font-weight: 600;">Low Stock Medicines</div>
+            </div>
+            <div style="flex: 1; background-color: #FFF7ED; border: 1px solid #FDBA74; border-radius: 12px; padding: 14px; text-align: center;">
+              <div style="font-size: 22px; font-weight: 800; color: #9A3412;">${options.expiringBatches.length}</div>
+              <div style="font-size: 12px; color: #C2410C; font-weight: 600;">Expiring Soon Batches</div>
+            </div>
+          </div>
+
+          ${
+            options.lowStockItems.length > 0
+              ? `
+            <div style="margin-bottom: 24px;">
+              <h3 style="font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 8px;">Top Low-Stock Items</h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <thead>
+                  <tr style="background-color: #F1F5F9; color: #475569; text-align: left;">
+                    <th style="padding: 8px 6px;">Medicine</th>
+                    <th style="padding: 8px 6px; text-align: center;">Current</th>
+                    <th style="padding: 8px 6px; text-align: right;">Threshold</th>
+                  </tr>
+                </thead>
+                <tbody>${lowStockRows}</tbody>
+              </table>
+            </div>
+          `
+              : `<p style="color: #16a34a; font-weight: 600; font-size: 13px; margin-bottom: 20px;">✔ All stock quantities are above minimum thresholds.</p>`
+          }
+
+          ${
+            options.expiringBatches.length > 0
+              ? `
+            <div style="margin-bottom: 24px;">
+              <h3 style="font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 8px;">Upcoming Expiring Batches</h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <thead>
+                  <tr style="background-color: #F1F5F9; color: #475569; text-align: left;">
+                    <th style="padding: 8px 6px;">Medicine</th>
+                    <th style="padding: 8px 6px; text-align: center;">Batch</th>
+                    <th style="padding: 8px 6px; text-align: center;">Expiry</th>
+                    <th style="padding: 8px 6px; text-align: right;">Units</th>
+                  </tr>
+                </thead>
+                <tbody>${expiringRows}</tbody>
+              </table>
+            </div>
+          `
+              : `<p style="color: #16a34a; font-weight: 600; font-size: 13px; margin-bottom: 20px;">✔ No batches expiring within the configured threshold.</p>`
+          }
+
+          <p style="font-size: 12px; color: #94a3b8; text-align: center; line-height: 1.5; margin: 0;">
+            This automated daily digest is dispatched at most once per 24 hours to the primary pharmacy administrator.
+          </p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to: options.adminEmail,
+    subject: `[Daily Stock Alert] ${options.lowStockItems.length} Low Stock, ${options.expiringBatches.length} Expiring - ${store}`,
+    html,
+    text: `Daily Inventory Alert for ${store}\nLow Stock Items: ${options.lowStockItems.length}\nExpiring Batches: ${options.expiringBatches.length}`,
+  });
+}
+
+export interface CustomerRefillAlertEmailOptions {
+  customerEmail: string;
+  customerName: string;
+  conditions?: string;
+  refillDays?: number;
+  nextRefillDate: string;
+  storeName?: string;
+  storePhone?: string;
+  storeAddress?: string;
+}
+
+/**
+ * MODULE 1.13.2: Sends chronic patient routine prescription refill reminder
+ */
+export async function sendCustomerRefillAlertEmail(options: CustomerRefillAlertEmailOptions): Promise<EmailResult> {
+  const store = options.storeName || "Medical POS Pharmacy";
+  const conditionsText = options.conditions ? ` (${options.conditions})` : "";
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head><meta charset="utf-8" /><title>Medicine Refill Reminder</title></head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #F0FDF4; color: #1e293b; padding: 40px 20px; margin: 0;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border: 1px solid #BBF7D0; border-radius: 20px; padding: 36px; box-shadow: 0 10px 25px rgba(22,101,52,0.06);">
+          <div style="margin-bottom: 24px; text-align: center;">
+            <div style="display: inline-block; background-color: #16a34a; color: #ffffff; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 16px; border-radius: 9999px;">
+              Health & Refill Care
+            </div>
+            <h2 style="color: #14532D; font-size: 22px; font-weight: 800; margin: 18px 0 6px 0;">${store}</h2>
+            <p style="color: #4b5563; font-size: 13px; margin: 0;">Routine Prescription Refill Notification</p>
+          </div>
+
+          <p style="font-size: 14px; color: #374151; line-height: 1.6; margin-bottom: 20px;">
+            Dear <strong>${options.customerName}</strong>,<br/>
+            According to your health profile${conditionsText}, your routine monthly prescription supply is scheduled for refill on or before <strong>${options.nextRefillDate}</strong>.
+          </p>
+
+          <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 20px; margin-bottom: 24px;">
+            <p style="margin: 0 0 10px 0; font-size: 13px; color: #475569;">
+              Maintaining continuity with chronic medications is vital for your health and treatment efficacy.
+            </p>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <tr>
+                <td style="color: #64748b; padding: 6px 0; width: 45%;">Target Refill Date:</td>
+                <td style="color: #15803d; font-weight: 700; padding: 6px 0;">${options.nextRefillDate}</td>
+              </tr>
+              ${options.refillDays ? `
+              <tr>
+                <td style="color: #64748b; padding: 6px 0;">Refill Cycle:</td>
+                <td style="color: #334155; font-weight: 600; padding: 6px 0;">Every ${options.refillDays} days</td>
+              </tr>` : ""}
+              ${options.storePhone ? `
+              <tr>
+                <td style="color: #64748b; padding: 6px 0;">Pharmacy Contact:</td>
+                <td style="color: #0f172a; font-weight: 700; padding: 6px 0;">${options.storePhone}</td>
+              </tr>` : ""}
+            </table>
+          </div>
+
+          <p style="font-size: 12px; color: #94a3b8; text-align: center; line-height: 1.5; margin: 0;">
+            Please visit our counter or contact us to prepare your refill package in advance.<br/>
+            ${options.storeAddress || ""}
+          </p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to: options.customerEmail,
+    subject: `[Refill Reminder] Your prescription refill is due - ${store}`,
+    html,
+    text: `Dear ${options.customerName}, your prescription refill is scheduled for ${options.nextRefillDate}.\nPharmacy: ${store}\nContact: ${options.storePhone || ""}`,
+  });
+}
+
+

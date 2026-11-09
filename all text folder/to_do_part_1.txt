@@ -347,98 +347,137 @@ MODULE 1.9: STOCK ADJUSTMENTS & PHYSICAL AUDIT RECONCILIATION
 --------------------------------------------------------------------------------
 MODULE 1.10: SUPPLIER DIRECTORY & VENDOR ACCOUNTS
 --------------------------------------------------------------------------------
-1.10.1 [STATUS: PENDING] Supplier / Distributor Profile Master
+1.10.1 [STATUS: COMPLETED] Supplier / Distributor Profile Master
        - Fields: Vendor Name, Contact Person, Phone, Email, Physical Address, 
          GSTIN, Drug License Number (DL No), and Payment Terms (Days).
+       * Implemented in `src/app/api/admin/suppliers/route.ts` & UI in `src/app/(admin)/admin/suppliers/page.tsx`.
+       * Unique validations on name, phone, GSTIN, and Drug License. Format validation for 15-character Indian GSTIN and phone digits.
+       * Delete safety check blocks deletion if batches or POs exist.
+       * Excel-ready CSV export with UTF-8 BOM in `src/app/api/admin/suppliers/export/route.ts` with error-guarded client handler.
 
-1.10.2 [STATUS: PENDING] Supplier Accounts Payable Ledger
+1.10.2 [STATUS: COMPLETED] Supplier Accounts Payable Ledger
        - Track purchases from suppliers, payments made (Cheque, NEFT/RTGS, UPI, Cash), 
          and outstanding vendor balance.
+       * Implemented in `src/app/api/admin/suppliers/[id]/payments/route.ts` & ledger modal in UI.
+       * Model `SupplierPayment` persists records with method, reference, and user tracking. Optional allocation to specific PO IDs.
+       * Real-time ledger calculates total purchased, total payments made, advance credit balances, and chronological running balance column.
 
-1.10.3 [STATUS: PENDING] Supplier User Account Generation
+1.10.3 [STATUS: COMPLETED] Supplier User Account Generation
        - Ability for admin to generate portal credentials for suppliers with automated 
          onboarding email notifications.
+       * Implemented in `src/app/api/admin/suppliers/[id]/portal-user/route.ts` & portal access dialog in UI.
+       * Generates username/password, hashes with BCrypt, links `supplierId` to `User` table.
+       * Supports admin suspension / reactivation via `PUT` endpoint and interactive status toggle in UI.
+       * Sends branded credentials notification email via `sendAccountCredentialsEmail()` in `src/lib/email.ts`.
 
 --------------------------------------------------------------------------------
 MODULE 1.11: PURCHASE ORDERS (PO) & GOODS RECEIPT NOTE (GRN)
 --------------------------------------------------------------------------------
-1.11.1 [STATUS: PENDING] Automated & Manual Purchase Order Generation
+1.11.1 [STATUS: COMPLETED] Automated & Manual Purchase Order Generation
        - Manual PO builder with vendor selection, target store branch (`branch_id`), and line-item order table.
        - Smart Auto-PO suggestion based on sales velocity and low-stock items.
+       * Manual PO builder in `src/app/api/admin/purchases/route.ts` with atomic, concurrency-safe sequential numbering (`PO-YYYY-00001`).
+       * Smart Auto-PO engine in `src/app/api/admin/purchases/suggestions/route.ts` calculating 30-day sales velocity and deducting incoming on-order stock.
+       * Full interactive interface in `src/app/(admin)/admin/purchases/page.tsx` with 1-click add to cart from suggestions.
 
-1.11.2 [STATUS: PENDING] Purchase Order Status Lifecycle Management
+1.11.2 [STATUS: COMPLETED] Purchase Order Status Lifecycle Management
        - Status workflow: Draft -> Sent/Pending -> Confirmed -> Shipped -> Received -> Cancelled.
        - Send official PO PDF to supplier via email/WhatsApp.
+       * Implemented lifecycle state machine in `src/app/api/admin/purchases/[id]/route.ts` with line-item edit locks on shipped/inwarded orders.
+       * 1-Click Reorder cloning in `src/app/api/admin/purchases/[id]/clone/route.ts`.
+       * Official printable Purchase Order modal in UI with 1-click WhatsApp & email dispatch and isolated `@media print` CSS styling.
 
-1.11.3 [STATUS: PENDING] Goods Receipt Note (GRN) & Inward Stock Ingestion
+1.11.3 [STATUS: COMPLETED] Goods Receipt Note (GRN) & Inward Stock Ingestion
        - Interface to receive physical goods against a PO into the designated store branch (`branch_id`).
        - Record actual received quantity, free bonus goods (Bonus/Scheme qty), 
          batch numbers, manufacturing/expiry dates, supplier invoice number, and trade discount.
        - Auto-update branch batch inventory and weighted average cost upon GRN approval.
+       * Inward stock ingestion backend in `src/app/api/admin/grn/route.ts` wrapped in atomic DB transaction.
+       * Handles partial deliveries, bonus scheme quantities, trade discount deductions, and weighted average cost recalculation on batch merges.
+       * Synchronizes PO actual total on complete delivery, with protection against accidental over-inwarding.
+       * Dedicated keyboard-friendly GRN desk UI in `src/app/(admin)/admin/grn/page.tsx` with Enter-key rapid row navigation.
+       * Verified via 43-point live integration test suite `scripts/test-real-api-modules-1-10-and-1-11.ts` (43/43 PASS).
 
 --------------------------------------------------------------------------------
 MODULE 1.12: PURCHASE ORDER LIFECYCLE  (from ref: purchase.php)
 --------------------------------------------------------------------------------
-1.12.1 [STATUS: PENDING] PO Status Machine
+1.12.1 [STATUS: COMPLETED] PO Status Machine
        - Statuses: pending -> price_updated -> confirmed -> shipped -> received, plus cancelled.
-       - Cancel allowed only from pending / confirmed / price_updated.
+       - Cancel allowed only from pending / confirmed / price_updated. Setting status directly to received without GRN inwarding is forbidden.
 
-1.12.2 [STATUS: PENDING] Supplier Price Update & Admin-Only Confirm
-       - Supplier may update item prices (status price_updated); only admin can confirm, 
-         which locks prices.
+1.12.2 [STATUS: COMPLETED] Supplier Price Update & Admin-Only Confirm
+       - Supplier may update item prices (status price_updated) via supplier extranet portal (/api/supplier/orders/[id]).
+       - Only admin can confirm, which permanently locks prices against subsequent edits.
 
-1.12.3 [STATUS: PENDING] Reorder From Existing PO
-       - One click creates a new pending PO copying items of an old PO.
+1.12.3 [STATUS: COMPLETED] Reorder From Existing PO
+       - One-click creates a new pending PO copying items of an old PO with sequential PO numbering and recalculated line totals.
 
-1.12.4 [STATUS: PENDING] Receive PO Validation & Batch Merge
+1.12.4 [STATUS: COMPLETED] Receive PO Validation & Batch Merge
        - Per item: batch no, expiry and MRP required; mfg date and purchase price optional; 
          batch no auto-generated if blank; track received_qty (partial receipts).
-       - Same medicine + same batch no + same branch_id => MERGE quantity and update MRP/price.
+       - Same medicine + same batch no + same branch_id => MERGE quantity and update MRP/price with weighted average cost.
        - Every receipt writes a stock_adjustments audit row with `branch_id`.
 
-1.12.5 [STATUS: PENDING] Supplier Email Notifications
-       - Email supplier on PO create, confirm, cancel and receive.
+1.12.5 [STATUS: COMPLETED] Supplier Email Notifications
+       - Automated transactional email dispatched to supplier on PO create, confirm, cancel, and receive via `sendSupplierPoEmail()`.
 
-1.12.6 [STATUS: PENDING] Daily Stock-Alert Email
-       - Low-stock/expiry alert email to admin, sent at most once per day.
+1.12.6 [STATUS: COMPLETED] Daily Stock-Alert Email
+       - Low-stock and batch expiry digest email to admin via `/api/admin/notifications/daily-stock-alert`, rate-limited to at most once per 24 hours.
 
-1.12.7 [STATUS: PENDING] PO Form UX
-       - Dynamic add/remove item rows, searchable medicine select, PO carries mrp per item.
+1.12.7 [STATUS: COMPLETED] PO Form UX
+       - Dynamic add/remove item rows, searchable medicine selector with live suggestions, per-item MRP, auto-PO suggestions modal, and instant daily stock alert trigger.
 
 --------------------------------------------------------------------------------
 MODULE 1.13: CUSTOMER / PATIENT DIRECTORY & HEALTH PROFILE
 --------------------------------------------------------------------------------
-1.13.1 [STATUS: PENDING] Customer Master Database
+1.13.1 [STATUS: COMPLETED] Customer Master Database
        - Master fields: Full Name, Mobile Phone, Email, Residential Address, 
          Date of Birth / Age, Gender, and Medical Notes.
+       - Duplicate phone validation, search, filter, active/verified toggle, and Excel CSV export with UTF-8 BOM.
+       - Delete protection preventing removal of customers with active sales or unsettled credit dues.
 
-1.13.2 [STATUS: PENDING] Chronic Patient Medicine Refill Tracker
-       - Tag chronic patients (e.g., Cardiac, Diabetes, Thyroid) with routine refill cycles.
-       - Automated reminder alerts when customer's monthly medicine supply is due to finish.
+1.13.2 [STATUS: COMPLETED] Chronic Patient Medicine Refill Tracker
+       - Tag chronic patients (e.g., Cardiac, Diabetes, Thyroid, Hypertension, Asthma) with routine refill cycles.
+       - Automated reminder alerts when customer's monthly medicine supply is due to finish (/api/admin/customers/refills).
+       - Email notifications via `sendCustomerRefillAlertEmail()` with 1-click cycle renewal.
 
-1.13.3 [STATUS: PENDING] Customer Credit Limit & Outstanding Balance Tracking
-       - Manage trusted customer credit (Baki Khata) with configurable credit limits 
-         and overdue payment tracking.
+1.13.3 [STATUS: COMPLETED] Customer Credit Limit & Outstanding Balance Tracking
+       - Manage trusted customer credit (Baki Khata) with configurable credit limits and overdue payment tracking.
+       - Chronological credit statement ledger with running balances, debt tracking, and payment settlements (/api/admin/customers/[id]/ledger).
+       - Real-time POS checkout credit limit enforcement blocking over-limit sales.
 
 --------------------------------------------------------------------------------
 MODULE 1.14: BACKUP, RESTORE & STORAGE MIGRATION  (from ref: settings.php)
 --------------------------------------------------------------------------------
-1.14.1 [STATUS: PENDING] One-Click Full Database Backup (.sql download)
-       - Timestamped file name, covers all tables.
+1.14.1 [STATUS: COMPLETED] One-Click Full Database Backup (.sql download)
+       - Timestamped file name (`medical_pos_backup_YYYY-MM-DD_HH-mm-ss.sql`), covers all 24 relational tables.
+       - Dependency-ordered table exports honoring foreign keys (Settings -> Branch -> User -> Master -> Batch -> PO -> Sale -> Audit).
+       - Standard SQL output with UTF-8 encoding, multi-tenant store scoping, single-quote escaping, and audit logging.
+       - Server-side backup archiving in `backups/` directory with listing endpoint (`?list=true`) and re-download capability.
 
-1.14.2 [STATUS: PENDING] Restore From SQL File
-       - Accept own backups and standard exports (phpMyAdmin); validate file content, 
-         warn that all current data will be overwritten.
+1.14.2 [STATUS: COMPLETED] Restore From SQL File
+       - Accepts system backups and standard exports (phpMyAdmin / pg_dump).
+       - Multi-stage safety pipeline: blocks prohibited system shell commands (`xp_cmdshell`, `DROP DATABASE`, external file read/write).
+       - Interactive dry run validation (`dryRun: true`) inspecting syntax, statement count, and detecting affected tables without data mutations.
+       - Prominent overwrite warning modal and mandatory confirmation flag (`confirmOverwrite: true`).
+       - MySQL / phpMyAdmin directive normalization (backticks `` `table` `` to `"table"`, stripping MySQL session configs and comments) with PostgreSQL auto-increment sequence resynchronization (`setval`).
 
-1.14.3 [STATUS: PENDING] Local-JSON to MySQL Migration Tool
-       - Migrate existing JSON data to MySQL and switch storage; keep JSON as fallback backup.
+1.14.3 [STATUS: COMPLETED] Local-JSON to Relational DB Migration Tool
+       - ETL engine importing legacy JSON files (categories, suppliers, customers, medicines, and inventory batches).
+       - Full ACID transaction safety ensuring complete rollback on unexpected exceptions.
+       - Preserves raw input JSON in `backups/json_migrations/legacy_migration_*.json` as an immutable fallback archive.
+       - Real-time migration statistics report and tamper-proof `AuditLog` entry.
 
 --------------------------------------------------------------------------------
 MODULE 1.15: SOFTWARE UPDATE SYSTEM  (from ref: software_update.php)
 --------------------------------------------------------------------------------
-1.15.1 [STATUS: PENDING] Admin-Only Update From Version ZIP
-       - Validate ZIP (reject path traversal), compare versions, show changed files, 
-         require backup confirmation before applying.
+1.15.1 [STATUS: COMPLETED] Admin-Only Update From Version ZIP
+       - Strict path traversal security scanner: rejects directory climbing (`../`, `..\`, `%2e%2e`), absolute paths, and protects core files (`.env`, `.git/`, `node_modules/`, `prisma/dev.db`).
+       - Semantic version comparison against installed `APP_VERSION`, extracting manifest release notes, and reporting upgrade/downgrade indicators.
+       - File diff inspection displaying changed files inventory with size and action badges (`create` vs `update`).
+       - Mandatory pre-update backup confirmation checkbox (`confirmBackup: true`), enforced on both frontend and backend.
+       - Automatic pre-update rollback snapshot archiving overwritten files to `.backups/pre_update_*` and generating an automatic database `.sql` snapshot before extraction.
+       - End-to-end integration test suite `scripts/test-real-api-modules-1-14-and-1-15.ts` passed 42/42 tests (100%).
 
 
 ================================================================================
@@ -769,90 +808,123 @@ MODULE 1.15: SOFTWARE UPDATE SYSTEM  (from ref: software_update.php)
 --------------------------------------------------------------------------------
 মডিউল ১.১০: সাপ্লায়ার ডিরেক্টরি ও ভেন্ডর লেজার
 --------------------------------------------------------------------------------
-১.১০.১ [অবস্থা: পেন্ডিং] সাপ্লায়ার / পরিবেশক প্রোফাইল
+১.১০.১ [অবস্থা: সম্পন্ন] সাপ্লায়ার / পরিবেশক প্রোফাইল
        - নাম, কন্টাক্ট পারসন, মোবাইল, ইমেইল, ঠিকানা, GSTIN, ড্রাগ লাইসেন্স (DL No) ও পেমেন্ট শর্ত।
+       * তৈরি করা হয়েছে `src/app/api/admin/suppliers/route.ts` এবং UI পেজ `src/app/(admin)/admin/suppliers/page.tsx`।
+       * ডুপ্লিকেট নাম, ফোন, ১৫-অক্ষরের ভারতীয় GSTIN ও DL নম্বর ভ্যালিডেশন এবং অ্যাক্টিভ ব্যাচ বা PO থাকলে ডিলিট সুরক্ষা।
+       * এক্সেল উপযোগী UTF-8 BOM যুক্ত CSV এক্সপোর্ট `src/app/api/admin/suppliers/export/route.ts` এবং নিরাপদ ক্লায়েন্ট ডাউনলোড হ্যান্ডলার।
 
-১.১০.২ [অবস্থা: পেন্ডিং] সাপ্লায়ার বাকি খাতা ও পেয়াবল লেজার
+১.১০.২ [অবস্থা: সম্পন্ন] সাপ্লায়ার বাকি খাতা ও পেয়াবল লেজার
        - সাপ্লায়ারদের থেকে মাল ক্রয়, পরিশোধিত টাকা (চেক, NEFT, UPI, ক্যাশ) এবং অবশিষ্ট দেনার হিসাব।
+       * তৈরি করা হয়েছে `src/app/api/admin/suppliers/[id]/payments/route.ts` ও লেজার মোডাল।
+       * `SupplierPayment` টেবিলে পেমেন্ট মেথড, রেফারেন্স নম্বর ও ইউজার আইডি সংরক্ষণ। নির্দিষ্ট PO-র সাথে পেমেন্ট বরাদ্দ।
+       * মোট ক্রয়, পরিশোধ, অ্যাডভান্স ক্রেডিট ব্যালেন্স এবং ক্রমানুসারিক রানিং ব্যালেন্স (Running Balance) কলাম ক্যালকুলেশন।
 
-১.১০.৩ [অবস্থা: পেন্ডিং] সাপ্লায়ার ইউজার অ্যাকাউন্ট তৈরি
+১.১০.৩ [অবস্থা: সম্পন্ন] সাপ্লায়ার ইউজার অ্যাকাউন্ট তৈরি
        - সাপ্লায়ারদের জন্য পোর্টাল লগইন আইডি ও পাসওয়ার্ড তৈরি এবং ইমেইলে পাঠিয়ে দেওয়া।
+       * তৈরি করা হয়েছে `src/app/api/admin/suppliers/[id]/portal-user/route.ts` ও পোর্টাল মোডাল।
+       * BCrypt হ্যাশিং সহ ইউজার তৈরি, `PUT` এন্ডপয়েন্টে অ্যাডমিন সাসপেন্ড/রি-অ্যাক্টিভেট করার সুবিধা এবং `sendAccountCredentialsEmail()` দিয়ে অফিশিয়াল ইমেইল পাঠানো।
 
 --------------------------------------------------------------------------------
 মডিউল ১.১১: পারচেজ অর্ডার (PO) এবং গুডস রিসিভ নোট (GRN)
 --------------------------------------------------------------------------------
-১.১১.১ [অবস্থা: পেন্ডিং] স্বয়ংক্রিয় ও ম্যানুয়াল পারচেজ অর্ডার জেনারেশন
+১.১১.১ [অবস্থা: সম্পন্ন] স্বয়ংক্রিয় ও ম্যানুয়াল পারচেজ অর্ডার জেনারেশন
        - সাপ্লায়ার ও নির্ধারিত স্টোর শাখা (`branch_id`) নির্বাচন করে ম্যানুয়াল PO তৈরি।
        - দ্রুত বিক্রি হওয়া ও লো-স্টক আইটেমের ভিত্তিতে স্বয়ংক্রিয় স্মার্ট PO পরামর্শ।
+       * কনকারেন্সি-সেফ ও ট্রানজ্যাকশন রিট্রাই সহ ক্রমানুযায়ী নম্বর (`PO-YYYY-00001`) জেনারেশন।
+       * ৩০ দিনের সেলস ভেলোসিটি এবং পাইপলাইনে থাকা অর্ডার হিসাব করে ডুপ্লিকেট রোধকারী স্মার্ট PO ইঞ্জিন `src/app/api/admin/purchases/suggestions/route.ts`।
 
-১.১১.২ [অবস্থা: পেন্ডিং] পারচেজ অর্ডারের স্ট্যাটাস লাইফসাইকেল
+১.১১.২ [অবস্থা: সম্পন্ন] পারচেজ অর্ডারের স্ট্যাটাস লাইফসাইকেল
        - পর্যায়: ড্রাফট -> পাঠানো হয়েছে -> কনফার্মড -> শিপমেন্ট -> রিসিভড -> বাতিল।
        - সাপ্লায়ারকে ইমেইল/হোয়াটসঅ্যাপে অফিশিয়াল PO পিডিএফ পাঠানো।
+       * লাইফসাইকেল স্টেট মেশিন API `src/app/api/admin/purchases/[id]/route.ts` এবং ১-ক্লিক রিঅর্ডার ক্লোনিং। শিপড/ইনওয়ার্ডেড PO এডিট লক সুরক্ষা।
+       * ১-ক্লিকে হোয়াটসঅ্যাপ ও ইমেইলে PO পাঠানোর লিঙ্ক এবং ক্লীন `@media print` আইসোলেশন প্রিভিউ মোডাল।
 
-১.১১.৩ [অবস্থা: পেন্ডিং] গুডস রিসিভ নোট (GRN) ও স্টক ইনওয়ার্ড
+১.১১.৩ [অবস্থা: সম্পন্ন] গুডস রিসিভ নোট (GRN) ও স্টক ইনওয়ার্ড
        - PO অনুযায়ী নির্দিষ্ট স্টোর শাখায় (`branch_id`) মাল হাতে পাওয়ার পর এন্ট্রি করা।
        - প্রাপ্ত আসল সংখ্যা, ফ্রি স্কিম সংখ্যা (Bonus Qty), ব্যাচ নম্বর, মেয়াদ, ইনভয়েস নম্বর এন্ট্রি।
        - GRN অনুমোদনের সাথে সাথে উক্ত শাখার স্টকে নতুন ব্যাচ ও দাম স্বয়ংক্রিয়ভাবে আপডেট হওয়া।
+       * ট্রেড ডিসকাউন্ট হিসাব এবং ব্যাচ মার্জিংয়ের ক্ষেত্রে ওয়েটেড এভারেজ কস্ট (Weighted Average Cost) ক্যালকুলেশন।
+       * সম্পূর্ণ ইনওয়ার্ড হলে PO টোটাল আপডেট এবং অতিরিক্ত ইনওয়ার্ডিং রোধক সুরক্ষা।
+       * কিবোর্ড-ফ্রেন্ডলি ফাস্ট GRN ডেস্কে Enter চাপলে পরবর্তী রো বা ঘরে যাওয়ার সুবিধা।
+       * ৪৩টি রিয়েল টেস্ট সমৃদ্ধ টেস্ট স্যুট `scripts/test-real-api-modules-1-10-and-1-11.ts`-এ ৪৩/৪৩ পাস (১০০%)।
 
 --------------------------------------------------------------------------------
 মডিউল ১.১২: পারচেজ অর্ডার লাইফসাইকেল  (রেফারেন্স: purchase.php)
 --------------------------------------------------------------------------------
-১.১২.১ [অবস্থা: পেন্ডিং] PO স্ট্যাটাস মেশিন
+১.১২.১ [অবস্থা: সম্পন্ন] PO স্ট্যাটাস মেশিন
        - স্ট্যাটাস: pending -> price_updated -> confirmed -> shipped -> received, এবং cancelled।
-       - বাতিল শুধু pending / confirmed / price_updated অবস্থা থেকে।
+       - বাতিল শুধু pending / confirmed / price_updated অবস্থা থেকে। GRN ছাড়া সরাসরি received স্ট্যাটাস দেওয়া নিষিদ্ধ।
 
-১.১২.২ [অবস্থা: পেন্ডিং] সাপ্লায়ারের দাম আপডেট ও শুধু অ্যাডমিন কনফার্ম
-       - সাপ্লায়ার আইটেমের দাম আপডেট করতে পারবে (price_updated); শুধু অ্যাডমিন কনফার্ম করলে দাম লক হবে।
+১.১২.২ [অবস্থা: সম্পন্ন] সাপ্লায়ারের দাম আপডেট ও শুধু অ্যাডমিন কনফার্ম
+       - সাপ্লায়ার পোর্টাল (/api/supplier/orders/[id]) থেকে দাম আপডেট করতে পারবে (price_updated); শুধু অ্যাডমিন কনফার্ম করলে দাম লক হবে।
 
-১.১২.৩ [অবস্থা: পেন্ডিং] পুরনো PO থেকে রিঅর্ডার
-       - এক ক্লিকে পুরনো PO-র আইটেম কপি করে নতুন pending PO তৈরি।
+১.১২.৩ [অবস্থা: সম্পন্ন] পুরনো PO থেকে রিঅর্ডার
+       - এক ক্লিকে পুরনো PO-র আইটেম কপি করে নতুন সিকোয়েনশিয়াল pending PO তৈরি ও লাইন টোটাল পুনঃগণনা।
 
-১.১২.৪ [অবস্থা: পেন্ডিং] PO রিসিভ ভ্যালিডেশন ও ব্যাচ মার্জ
+১.১২.৪ [অবস্থা: সম্পন্ন] PO রিসিভ ভ্যালিডেশন ও ব্যাচ মার্জ
        - প্রতি আইটেমে ব্যাচ নং, মেয়াদ ও MRP বাধ্যতামূলক; mfg তারিখ ও ক্রয়মূল্য ঐচ্ছিক; ব্যাচ নং ফাঁকা থাকলে অটো তৈরি; received_qty ট্র্যাক (আংশিক রিসিভ)।
-       - একই ওষুধ + একই ব্যাচ নং + একই `branch_id` হলে পরিমাণ মার্জ এবং MRP/দাম আপডেট।
+       - একই ওষুধ + একই ব্যাচ নং + একই `branch_id` হলে পরিমাণ মার্জ এবং ওয়েটেড এভারেজ কস্টে MRP/দাম আপডেট।
        - প্রতিটি রিসিভে `branch_id`-সহ stock_adjustments অডিট সারি লেখা হবে।
 
-১.১২.৫ [অবস্থা: পেন্ডিং] সাপ্লায়ার ইমেইল নোটিফিকেশন
-       - PO তৈরি, কনফার্ম, বাতিল ও রিসিভে সাপ্লায়ারকে ইমেইল।
+১.১২.৫ [অবস্থা: সম্পন্ন] সাপ্লায়ার ইমেইল নোটিফিকেশন
+       - PO তৈরি, কনফার্ম, বাতিল ও রিসিভে সাপ্লায়ারকে স্বয়ংক্রিয় ট্রানজ্যাকশনাল ইমেইল পাঠানো (`sendSupplierPoEmail()`)।
 
-১.১২.৬ [অবস্থা: পেন্ডিং] দৈনিক স্টক-অ্যালার্ট ইমেইল
-       - লো-স্টক/মেয়াদ অ্যালার্ট অ্যাডমিনকে দিনে সর্বোচ্চ একবার।
+১.১২.৬ [অবস্থা: সম্পন্ন] দৈনিক স্টক-অ্যালার্ট ইমেইল
+       - লো-স্টক/মেয়াদ উত্তীর্ণ ব্যাচের ডাইজেস্ট অ্যালার্ট অ্যাডমিনকে ২৪ ঘণ্টায় সর্বোচ্চ একবার পাঠানোর রেট-লিমিট ও ফোর্স ট্রিগার অপশন।
 
-১.১২.৭ [অবস্থা: পেন্ডিং] PO ফর্ম UX
-       - ডায়নামিক আইটেম সারি যোগ/বাদ, সার্চেবল ওষুধ সিলেক্ট, প্রতি আইটেমে mrp।
+১.১২.৭ [অবস্থা: সম্পন্ন] PO ফর্ম UX
+       - ডায়নামিক আইটেম সারি যোগ/বাদ, লাইভ সার্চেবল ওষুধ সিলেক্ট, প্রতি আইটেমে mrp, অটো-PO সাজেশন মডাল ও ওয়ান-ক্লিক দৈনিক স্টক অ্যালার্ট বাটন।
 
 --------------------------------------------------------------------------------
 মডিউল ১.১৩: কাস্টমার / পেশেন্ট ডিরেক্টরি ও প্রেসক্রিপশন প্রোফাইল
 --------------------------------------------------------------------------------
-১.১৩.১ [অবস্থা: পেন্ডিং] কাস্টমার মাস্টার ডেটাবেস
+১.১৩.১ [অবস্থা: সম্পন্ন] কাস্টমার মাস্টার ডেটাবেস
        - নাম, মোবাইল নম্বর, ইমেইল, ঠিকানা, বয়স/জন্মতারিখ, লিঙ্গ ও মেডিকেল নোট।
+       - ডুপ্লিকেট ফোন ভ্যালিডেশন, সার্চ, ফিল্টার, সক্রিয়/যাচাইকৃত স্ট্যাটাস এবং UTF-8 BOM সহ Excel CSV এক্সপোর্ট।
+       - সক্রিয় বিক্রয় বা অপরিশোধিত বাকি থাকা অবস্থায় কাস্টমার ডিলিট প্রোটেকশন গার্ড।
 
-১.১৩.২ [অবস্থা: পেন্ডিং] ক্রনিক পেশেন্ট রিফিল ট্র্যাকার
-       - ডায়াবেটিস, প্রেশার, থাইরয়েডের মতো নিয়মিত রোগীদের ট্যাগিং ও রিফিল সাইকেল ট্র্যাকিং।
-       - ওষুধ শেষের সম্ভাব্য সময়ে স্বয়ংক্রিয় রিমাইন্ডার তৈরি।
+১.১৩.২ [অবস্থা: সম্পন্ন] ক্রনিক পেশেন্ট রিফিল ট্র্যাকার
+       - ডায়াবেটিস, প্রেশার, থাইরয়েড, কার্ডিয়াক, অ্যাজমার মতো নিয়মিত রোগীদের ট্যাগিং ও রিফিল সাইকেল ট্র্যাকিং।
+       - ওষুধ শেষের সম্ভাব্য সময়ে স্বয়ংক্রিয় রিমাইন্ডার তালিকা ও ইমেইল অ্যালার্ট (`sendCustomerRefillAlertEmail()`), সাথে ১-ক্লিকে রিফিল সাইকেল রিনিউয়াল।
 
-১.১৩.৩ [অবস্থা: পেন্ডিং] কাস্টমার বাকি খাতা (Credit Limit & Due Tracker)
-       - বিশ্বস্ত কাস্টমারদের জন্য বাকি বিক্রয় ও ক্রেডিট লিমিট নির্ধারণ।
+১.১৩.৩ [অবস্থা: সম্পন্ন] কাস্টমার বাকি খাতা (Credit Limit & Due Tracker)
+       - বিশ্বস্ত কাস্টমারদের জন্য বাকি বিক্রয় ও ক্রেডিট লিমিট নির্ধারণ (বাকি খাতা)।
+       - রানিং ব্যালেন্স, দেনা ট্র্যাকিং ও পেমেন্ট সেটেলমেন্টের ক্রমানুসারে ক্রেডিট স্টেটমেন্ট লেজার (`/api/admin/customers/[id]/ledger`)।
+       - রিয়েল-টাইম POS চেকআউটে ক্রেডিট লিমিট এনফোর্সমেন্ট যাতে অনুমোদিত সীমার অতিরিক্ত বাকি বিক্রি রোধ করা যায়।
 
 --------------------------------------------------------------------------------
 মডিউল ১.১৪: ব্যাকআপ, রিস্টোর ও স্টোরেজ মাইগ্রেশন  (রেফারেন্স: settings.php)
 --------------------------------------------------------------------------------
-১.১৪.১ [অবস্থা: পেন্ডিং] এক ক্লিকে সম্পূর্ণ ডেটাবেস ব্যাকআপ (.sql ডাউনলোড)
-       - তারিখ-সময়সহ ফাইলের নাম, সব টেবিল অন্তর্ভুক্ত।
+১.১৪.১ [অবস্থা: সম্পন্ন] এক ক্লিকে সম্পূর্ণ ডেটাবেস ব্যাকআপ (.sql ডাউনলোড)
+       - তারিখ-সময়সহ ফাইলের নাম (`medical_pos_backup_YYYY-MM-DD_HH-mm-ss.sql`), সকল ২৪টি রিলেশনাল টেবিল অন্তর্ভুক্ত।
+       - ফরেন-কি ডিপেনডেন্সি অনুযায়ী টেবিল অর্ডার (Settings -> Branch -> User -> Master -> Batch -> PO -> Sale -> Audit)।
+       - UTF-8 এনকোডিং, মাল্টি-টেন্যান্ট স্টোর স্কোপিং, কোট এস্কেপিং ও অডিট ট্রেইল লগিং।
+       - সার্ভারের `backups/` ফোল্ডারে ব্যাকআপ সংরক্ষণ, তালিকা দেখা (`?list=true`) ও পুনরায় ডাউনলোডের সুবিধা।
 
-১.১৪.২ [অবস্থা: পেন্ডিং] SQL ফাইল থেকে রিস্টোর
-       - নিজস্ব ব্যাকআপ ও phpMyAdmin এক্সপোর্ট গ্রহণ, ফাইল যাচাই এবং বর্তমান সব ডেটা 
-         মুছে যাবে বলে সতর্কবার্তা।
+১.১৪.২ [অবস্থা: সম্পন্ন] SQL ফাইল থেকে রিস্টোর
+       - নিজস্ব ব্যাকআপ ও phpMyAdmin / pg_dump এক্সপোর্ট ফাইল গ্রহণ ও প্রসেসিং।
+       - বহুস্তরী নিরাপত্তা ফিল্টার: ক্ষতিকর কমান্ড (`xp_cmdshell`, `DROP DATABASE`, বাহ্যিক ফাইল রিড/রাইট) স্বয়ংক্রিয়ভাবে ব্লক করা।
+       - ইন্টারেক্টিভ ড্রাই রান ভ্যালিডেশন (`dryRun: true`) যা ডেটা পরিবর্তন না করেই মোট স্টেটমেন্ট ও ক্ষতিগ্রস্ত টেবিলের তালিকা প্রদর্শন করে।
+       - পূর্ববর্তী ডেটা মুছে যাওয়ার সুস্পষ্ট লাল সতর্কবার্তা এবং বাধ্যতামূলক কনফার্মেশন ফ্ল্যাগ (`confirmOverwrite: true`)।
+       - MySQL / phpMyAdmin ডিরেক্টিভ নরমালাইজেশন (ব্যাকটিক্স `` `table` `` কে `"table"`-এ রূপান্তর ও সেশন কনফিগ স্কিপ) এবং PostgreSQL অটো-ইনক্রিমেন্ট সিকোয়েন্স রিসিনক্রোনাইজেশন (`setval`)।
 
-১.১৪.৩ [অবস্থা: পেন্ডিং] JSON থেকে MySQL মাইগ্রেশন টুল
-       - বিদ্যমান JSON ডেটা MySQL-এ নিয়ে স্টোরেজ পরিবর্তন; JSON ফাইল ব্যাকআপ হিসেবে থাকবে।
+১.১৪.৩ [অবস্থা: সম্পন্ন] JSON থেকে MySQL / PostgreSQL মাইগ্রেশন টুল
+       - লেগ্যাসি JSON ফাইল (ক্যাটাগরি, সাপ্লায়ার, কাস্টমার, ওষুধ ও ইনভেন্টরি ব্যাচ) রিলেশনাল ডেটাবেসে ইমপোর্ট করার ETL ইঞ্জিন।
+       - পূর্ণাঙ্গ ACID ট্রানজ্যাকশন নিরাপত্তা যাতে অপ্রত্যাশিত ত্রুটিতে কোনো আংশিক ডেটা সংরক্ষিত না হয়ে সম্পূর্ণ রোলব্যাক হয়।
+       - মূল JSON ফাইলটি অপরিবর্তিত রেখে `backups/json_migrations/legacy_migration_*.json`-এ স্থায়ী ব্যাকআপ হিসেবে সংরক্ষণ।
+       - রিয়েল-টাইম মাইগ্রেশন স্ট্যাটিস্টিক্স রিপোর্ট এবং টেম্পার-প্রুফ `AuditLog` এন্ট্রি।
 
 --------------------------------------------------------------------------------
 মডিউল ১.১৫: সফটওয়্যার আপডেট সিস্টেম  (রেফারেন্স: software_update.php)
 --------------------------------------------------------------------------------
-১.১৫.১ [অবস্থা: পেন্ডিং] শুধু অ্যাডমিনের জন্য ভার্সন ZIP থেকে আপডেট
-       - ZIP যাচাই (অবৈধ পাথ বাতিল), ভার্সন তুলনা, পরিবর্তিত ফাইলের তালিকা এবং 
-         প্রয়োগের আগে ব্যাকআপ নিশ্চিতকরণ।
+১.১৫.১ [অবস্থা: সম্পন্ন] শুধু অ্যাডমিনের জন্য ভার্সন ZIP থেকে আপডেট
+       - কঠোর পাথ ট্রাভার্সাল সিকিউরিটি স্ক্যানার: ডিরেক্টরি ক্লাইম্বিং (`../`, `..\`, `%2e%2e`), অ্যাবসোলিউট পাথ ব্লক এবং কোর কনফিগারেশন (`.env`, `.git/`, `node_modules/`, `prisma/dev.db`) সুরক্ষা।
+       - ইনস্টলকৃত `APP_VERSION`-এর সাথে সেমান্টিক ভার্সন তুলনা, রিলিজ নোটস প্রদর্শন এবং আপগ্রেড/ডাউনগ্রেড ব্যাজ।
+       - পরিবর্তিত ফাইলের তালিকা (Diff Inspection) প্রদর্শন—ফাইলের আকার ও অ্যাকশন ব্যাজ (`create` বনাম `update`) সহ।
+       - বাধ্যতামূলক প্রি-আপডেট ব্যাকআপ কনফার্মেশন চেকবক্স (`confirmBackup: true`), যা ফ্রন্টএন্ড ও ব্যাকএন্ড উভয় স্থানে কঠোরভাবে যাচাইকৃত।
+       - আপডেট প্রয়োগের পূর্বে স্বয়ংক্রিয় সেফটি স্ন্যাপশট: প্রতিস্থাপিত ফাইলগুলো `.backups/pre_update_*` ফোল্ডারে ব্যাকআপ নেওয়া এবং স্বয়ংক্রিয়ভাবে ডাটাবেস `.sql` ব্যাকআপ তৈরি করা।
+       - `scripts/test-real-api-modules-1-14-and-1-15.ts` টেস্ট স্যুটে ৪২টি রিয়েল টেস্টের মধ্যে ৪২/৪২ পাস (১০০%)।
 
 ================================================================================
 ডকুমেন্ট সমাপ্ত: Part 1 — কোর ইঞ্জিন, ইনভেন্টরি ও পারচেজিং

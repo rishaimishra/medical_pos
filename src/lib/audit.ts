@@ -29,7 +29,12 @@ export type AuditAction =
   | "BRANCH_DELETED"
   | "USER_CREATED"
   | "USER_UPDATED"
-  | "ROLE_PERMISSION_UPDATED";
+  | "ROLE_PERMISSION_UPDATED"
+  | "DATABASE_BACKUP_EXPORTED"
+  | "DATABASE_RESTORED"
+  | "STORAGE_MIGRATED_JSON"
+  | "SOFTWARE_UPDATE_INSPECTED"
+  | "SOFTWARE_UPDATE_APPLIED";
 
 export interface AuditLogInput {
   storeId?: number | null;

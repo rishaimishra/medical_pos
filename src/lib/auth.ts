@@ -71,7 +71,12 @@ export async function verifyPassword(plainText: string, hash: string): Promise<b
  * Signs a session payload using HMAC-SHA256.
  */
 export function createSessionToken(payload: SessionPayload): string {
-  const dataB64 = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const fullPayload = {
+    ...payload,
+    issuedAt: payload.issuedAt || Date.now(),
+    lastActive: payload.lastActive || Date.now(),
+  };
+  const dataB64 = Buffer.from(JSON.stringify(fullPayload), "utf8").toString("base64url");
   const signature = crypto
     .createHmac("sha256", SESSION_SECRET)
     .update(dataB64)
@@ -422,14 +427,31 @@ export async function verifyAdminRequest(
     };
   }
 
-  const dbUser = await prisma.user.findUnique({
-    where: { id: tokenResult.session.userId },
-    include: {
-      branch: {
-        select: { id: true, storeId: true, code: true, name: true, active: true, isMain: true },
+  let dbUser: any = null;
+  try {
+    dbUser = await prisma.user.findUnique({
+      where: { id: tokenResult.session.userId },
+      include: {
+        branch: {
+          select: { id: true, storeId: true, code: true, name: true, active: true, isMain: true },
+        },
       },
-    },
-  });
+    });
+  } catch (err: any) {
+    if (err?.code === "P1017" || err?.message?.includes("closed the connection")) {
+      await prisma.$connect().catch(() => {});
+      dbUser = await prisma.user.findUnique({
+        where: { id: tokenResult.session.userId },
+        include: {
+          branch: {
+            select: { id: true, storeId: true, code: true, name: true, active: true, isMain: true },
+          },
+        },
+      });
+    } else {
+      throw err;
+    }
+  }
 
   if (!dbUser || !dbUser.active) {
     return {
@@ -508,3 +530,95 @@ export async function verifyAdminRequest(
     session: freshSession,
   };
 }
+
+export const SUPPLIER_COOKIE_NAME = "med_pos_supplier_session";
+export const CUSTOMER_COOKIE_NAME = "med_pos_customer_session";
+
+export interface SupplierSessionPayload {
+  supplierUserId: number;
+  supplierId: number;
+  name: string;
+  companyName: string;
+  username: string;
+  email: string;
+  phone: string | null;
+  issuedAt: number;
+}
+
+export interface CustomerSessionPayload {
+  customerId: number;
+  name: string;
+  phone: string;
+  email: string | null;
+  address: string | null;
+  issuedAt: number;
+}
+
+export function verifySupplierToken(token?: string | null): SupplierSessionPayload | null {
+  if (!token || !token.includes(".")) return null;
+  const [dataB64, sig] = token.split(".");
+  if (!dataB64 || !sig) return null;
+  const expected = crypto.createHmac("sha256", SESSION_SECRET).update(dataB64).digest("base64url");
+  const sigBuf = Buffer.from(sig);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+  try {
+    return JSON.parse(Buffer.from(dataB64, "base64url").toString("utf8")) as SupplierSessionPayload;
+  } catch {
+    return null;
+  }
+}
+
+export async function verifySupplierRequest(req: NextRequest): Promise<{
+  authorized: boolean;
+  status: number;
+  message?: string;
+  session: SupplierSessionPayload | null;
+}> {
+  const token = req.cookies.get(SUPPLIER_COOKIE_NAME)?.value;
+  const session = verifySupplierToken(token);
+  if (!session) {
+    return {
+      authorized: false,
+      status: 401,
+      message: "Unauthorized: Please log in to supplier portal",
+      session: null,
+    };
+  }
+  return { authorized: true, status: 200, session };
+}
+
+export function verifyCustomerToken(token?: string | null): CustomerSessionPayload | null {
+  if (!token || !token.includes(".")) return null;
+  const [dataB64, sig] = token.split(".");
+  if (!dataB64 || !sig) return null;
+  const expected = crypto.createHmac("sha256", SESSION_SECRET).update(dataB64).digest("base64url");
+  const sigBuf = Buffer.from(sig);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+  try {
+    return JSON.parse(Buffer.from(dataB64, "base64url").toString("utf8")) as CustomerSessionPayload;
+  } catch {
+    return null;
+  }
+}
+
+export async function verifyCustomerRequest(req: NextRequest): Promise<{
+  authorized: boolean;
+  status: number;
+  message?: string;
+  session: CustomerSessionPayload | null;
+}> {
+  const token = req.cookies.get(CUSTOMER_COOKIE_NAME)?.value;
+  const session = verifyCustomerToken(token);
+  if (!session) {
+    return {
+      authorized: false,
+      status: 401,
+      message: "Unauthorized: Please log in to patient portal",
+      session: null,
+    };
+  }
+  return { authorized: true, status: 200, session };
+}
+

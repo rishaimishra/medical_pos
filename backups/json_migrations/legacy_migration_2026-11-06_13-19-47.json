@@ -1,0 +1,48 @@
+{
+  "categories": [
+    {
+      "name": "Inhalers & Sprays",
+      "type": "dosage"
+    }
+  ],
+  "suppliers": [
+    {
+      "name": "Legacy Apex Pharma",
+      "phone": "9876500001",
+      "email": "apex@legacypharma.com",
+      "address": "77 Old Market Road",
+      "gstin": "19ABCDE1234F1Z5"
+    }
+  ],
+  "customers": [
+    {
+      "name": "Legacy Patient John",
+      "phone": "9876543299",
+      "email": "patient.john@example.com",
+      "gender": "male",
+      "medicalNotes": "Hypertensive since 2021",
+      "creditLimit": 5000
+    }
+  ],
+  "medicines": [
+    {
+      "name": "AsthmaCare Inhaler 50mcg",
+      "genericName": "Salbutamol",
+      "manufacturer": "Legacy Apex Pharma",
+      "dosageForm": "Inhaler",
+      "rackLocation": "RACK-IN-01",
+      "hsnCode": "30049099",
+      "gstPercent": 12
+    }
+  ],
+  "batches": [
+    {
+      "medicineName": "AsthmaCare Inhaler 50mcg",
+      "batchNo": "LEG-INH-2026",
+      "expiryDate": "2028-12-31",
+      "purchasePrice": 120,
+      "mrp": 180,
+      "quantity": 50
+    }
+  ]
+}

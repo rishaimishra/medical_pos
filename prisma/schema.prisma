@@ -16,33 +16,34 @@ datasource db {
 
 // Table: settings (Pharmacy Store Tenant Master: profile, licensing, tax defaults, and SMTP settings)
 model Settings {
-  id          Int      @id @default(autoincrement())
-  storeName   String   @default("") @map("store_name") @db.VarChar(255)
-  storeAddress String? @map("store_address") @db.Text
-  storePhone  String?  @map("store_phone") @db.VarChar(50)
-  storeEmail  String?  @map("store_email") @db.VarChar(255)
-  storeGst    String?  @map("store_gst") @db.VarChar(50)
-  storeDl     String?  @map("store_dl") @db.VarChar(50)
-  currency    String   @default("₹") @db.VarChar(20)
-  lowQty      Int      @default(10) @map("low_qty")
-  expiryDays  Int      @default(90) @map("expiry_days")
-  emailProvider String @default("sendgrid") @map("email_provider") @db.VarChar(20) // "sendgrid" | "smtp"
-  sendgridKey String?  @map("sendgrid_key") @db.VarChar(255)
-  smtpHost    String?  @map("smtp_host") @db.VarChar(255)
-  smtpPort    Int      @default(587) @map("smtp_port")
-  smtpUser    String?  @map("smtp_user") @db.VarChar(255)
-  smtpPass    String?  @map("smtp_pass") @db.VarChar(255)
-  smtpFrom    String?  @map("smtp_from") @db.VarChar(255)
-  smtpName    String?  @map("smtp_name") @db.VarChar(255)
-  smtpSecure  String   @default("tls") @map("smtp_secure") @db.VarChar(10)
-  setupDone   Boolean  @default(false) @map("setup_done")
-  setupStep   Int      @default(1) @map("setup_step")
-  setupToken  String?  @map("setup_token") @db.VarChar(100)
-  setupOtp    String?  @map("setup_otp") @db.VarChar(10)
-  setupOtpExp DateTime? @map("setup_otp_exp")
-  storage     String   @default("postgres") @db.VarChar(20)
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id                   Int       @id @default(autoincrement())
+  storeName            String    @default("") @map("store_name") @db.VarChar(255)
+  storeAddress         String?   @map("store_address") @db.Text
+  storePhone           String?   @map("store_phone") @db.VarChar(50)
+  storeEmail           String?   @map("store_email") @db.VarChar(255)
+  storeGst             String?   @map("store_gst") @db.VarChar(50)
+  storeDl              String?   @map("store_dl") @db.VarChar(50)
+  currency             String    @default("₹") @db.VarChar(20)
+  lowQty               Int       @default(10) @map("low_qty")
+  expiryDays           Int       @default(90) @map("expiry_days")
+  emailProvider        String    @default("sendgrid") @map("email_provider") @db.VarChar(20) // "sendgrid" | "smtp"
+  sendgridKey          String?   @map("sendgrid_key") @db.VarChar(255)
+  smtpHost             String?   @map("smtp_host") @db.VarChar(255)
+  smtpPort             Int       @default(587) @map("smtp_port")
+  smtpUser             String?   @map("smtp_user") @db.VarChar(255)
+  smtpPass             String?   @map("smtp_pass") @db.VarChar(255)
+  smtpFrom             String?   @map("smtp_from") @db.VarChar(255)
+  smtpName             String?   @map("smtp_name") @db.VarChar(255)
+  smtpSecure           String    @default("tls") @map("smtp_secure") @db.VarChar(10)
+  setupDone            Boolean   @default(false) @map("setup_done")
+  setupStep            Int       @default(1) @map("setup_step")
+  setupToken           String?   @map("setup_token") @db.VarChar(100)
+  setupOtp             String?   @map("setup_otp") @db.VarChar(10)
+  setupOtpExp          DateTime? @map("setup_otp_exp")
+  storage              String    @default("postgres") @db.VarChar(20)
+  lastStockAlertSentAt DateTime? @map("last_stock_alert_sent_at")
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
 
   branches  Branch[]
   users     User[]
@@ -72,9 +73,11 @@ model Branch {
   users            User[]
   batches          Batch[]
   purchaseOrders   PurchaseOrder[]
+  supplierPayments SupplierPayment[]
   sales            Sale[]
   returns          Return[]
   stockAdjustments StockAdjustment[]
+  customerPayments CustomerPayment[]
   auditLogs        AuditLog[]
 
   @@unique([storeId, code], name: "uk_store_branch_code")
@@ -104,12 +107,15 @@ model User {
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  store              Settings?         @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  branch             Branch?           @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  salesCreated       Sale[]
-  stockAdjustments   StockAdjustment[]
-  patientMessagesOut PatientMessage[]
-  auditLogs          AuditLog[]
+  store                 Settings?         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  branch                Branch?           @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  salesCreated          Sale[]
+  purchaseOrdersCreated PurchaseOrder[]   @relation("POCreator")
+  supplierPayments      SupplierPayment[]
+  customerPayments      CustomerPayment[] @relation("CustomerPaymentCreator")
+  stockAdjustments      StockAdjustment[]
+  patientMessagesOut    PatientMessage[]
+  auditLogs             AuditLog[]
 
   @@index([storeId], name: "idx_users_store")
   @@index([role], name: "idx_users_role")
@@ -124,19 +130,19 @@ model User {
 
 // Table: medicines (Master drug catalog, composition, schedule type, and rack locations)
 model Medicine {
-  id             Int       @id @default(autoincrement())
-  name           String    @db.VarChar(255)
-  genericName    String?   @map("generic_name") @db.VarChar(255)
-  company        String    @db.VarChar(255)
-  category       String    @db.VarChar(100)
-  customCategory String?   @map("custom_category") @db.VarChar(100)
-  hsnCode        String?   @map("hsn_code") @db.VarChar(50)
-  gstPercent     Decimal   @default(12.00) @map("gst_percent") @db.Decimal(5, 2)
-  description    String?   @db.Text
-  rackLocation   String?   @map("rack_location") @db.VarChar(100)
-  scheduleType   String    @default("normal") @map("schedule_type") @db.VarChar(20) // normal, schedule_h, schedule_h1
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
+  id             Int      @id @default(autoincrement())
+  name           String   @db.VarChar(255)
+  genericName    String?  @map("generic_name") @db.VarChar(255)
+  company        String   @db.VarChar(255)
+  category       String   @db.VarChar(100)
+  customCategory String?  @map("custom_category") @db.VarChar(100)
+  hsnCode        String?  @map("hsn_code") @db.VarChar(50)
+  gstPercent     Decimal  @default(12.00) @map("gst_percent") @db.Decimal(5, 2)
+  description    String?  @db.Text
+  rackLocation   String?  @map("rack_location") @db.VarChar(100)
+  scheduleType   String   @default("normal") @map("schedule_type") @db.VarChar(20) // normal, schedule_h, schedule_h1
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   batches          Batch[]
   saleItems        SaleItem[]
@@ -197,19 +203,21 @@ model Batch {
 
 // Table: suppliers (Vendor & distributor directory)
 model Supplier {
-  id        Int       @id @default(autoincrement())
-  name      String    @db.VarChar(255)
-  contact   String?   @db.VarChar(255)
-  phone     String    @db.VarChar(50)
-  email     String?   @db.VarChar(255)
-  address   String?   @db.Text
-  gstNo     String?   @map("gst_no") @db.VarChar(50)
-  dlNo      String?   @map("dl_no") @db.VarChar(50)
-  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(255)
+  contact      String?  @db.VarChar(255)
+  phone        String   @db.VarChar(50)
+  email        String?  @db.VarChar(255)
+  address      String?  @db.Text
+  gstNo        String?  @map("gst_no") @db.VarChar(50)
+  dlNo         String?  @map("dl_no") @db.VarChar(50)
+  paymentTerms Int      @default(30) @map("payment_terms") // Credit period in days
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   batches          Batch[]
   purchaseOrders   PurchaseOrder[]
+  payments         SupplierPayment[]
   supplierUsers    SupplierUser[]
   supplierMessages SupplierMessage[]
 
@@ -239,6 +247,29 @@ model SupplierUser {
   @@map("supplier_users")
 }
 
+// Table: supplier_payments (Accounts payable vendor payments)
+model SupplierPayment {
+  id            Int      @id @default(autoincrement())
+  supplierId    Int      @map("supplier_id")
+  branchId      Int?     @map("branch_id")
+  amount        Decimal  @db.Decimal(12, 2)
+  paymentDate   DateTime @default(now()) @map("payment_date") @db.Date
+  paymentMethod String   @default("bank_transfer") @map("payment_method") @db.VarChar(50) // cheque, neft_rtgs, upi, cash, bank_transfer
+  referenceNo   String?  @map("reference_no") @db.VarChar(100)
+  notes         String?  @db.Text
+  createdBy     Int?     @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  creator  User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([supplierId], name: "idx_sp_supplier")
+  @@index([paymentDate], name: "idx_sp_date")
+  @@index([branchId], name: "idx_sp_branch")
+  @@map("supplier_payments")
+}
+
 // Table: purchase_orders (Vendor purchase order tracking)
 model PurchaseOrder {
   id          Int       @id @default(autoincrement())
@@ -249,6 +280,9 @@ model PurchaseOrder {
   status      String    @default("pending") @db.VarChar(50) // pending, price_updated, confirmed, shipped, received, cancelled
   total       Decimal   @default(0.00) @db.Decimal(12, 2)
   notes       String?   @db.Text
+  invoiceNo   String?   @map("invoice_no") @db.VarChar(100) // Supplier invoice/challan number on GRN
+  paidAmount  Decimal   @default(0.00) @map("paid_amount") @db.Decimal(12, 2)
+  createdBy   Int?      @map("created_by")
   shippedAt   DateTime? @map("shipped_at")
   receivedAt  DateTime? @map("received_at")
   confirmedAt DateTime? @map("confirmed_at")
@@ -257,6 +291,7 @@ model PurchaseOrder {
 
   supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  creator  User?    @relation("POCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   items    POItem[]
 
   @@index([poNumber], name: "idx_po_number")
@@ -268,14 +303,17 @@ model PurchaseOrder {
 
 // Table: po_items (Purchase order line items)
 model POItem {
-  id          Int      @id @default(autoincrement())
-  poId        Int      @map("po_id")
-  medicineId  Int      @map("medicine_id")
+  id          Int       @id @default(autoincrement())
+  poId        Int       @map("po_id")
+  medicineId  Int       @map("medicine_id")
   quantity    Int
-  price       Decimal  @db.Decimal(10, 2)
-  mrp         Decimal  @db.Decimal(10, 2)
-  receivedQty Int      @default(0) @map("received_qty")
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+  price       Decimal   @db.Decimal(10, 2)
+  mrp         Decimal   @db.Decimal(10, 2)
+  receivedQty Int       @default(0) @map("received_qty")
+  bonusQty    Int       @default(0) @map("bonus_qty")
+  batchNo     String?   @map("batch_no") @db.VarChar(100)
+  expiryDate  DateTime? @map("expiry_date") @db.Date
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
 
   purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
   medicine      Medicine      @relation(fields: [medicineId], references: [id], onDelete: Restrict)
@@ -291,29 +329,40 @@ model POItem {
 
 // Table: customers (Patient & customer registry with portal accounts)
 model Customer {
-  id           Int       @id @default(autoincrement())
-  name         String    @db.VarChar(255)
-  phone        String    @unique @db.VarChar(50)
-  email        String?   @unique @db.VarChar(255)
-  address      String?   @db.Text
-  dob          DateTime? @db.Date
-  password     String?   @db.VarChar(255) // Optional for portal self-service
-  active       Boolean   @default(true)
-  verified     Boolean   @default(false)
-  verifyToken  String?   @map("verify_token") @db.VarChar(100)
-  verifySentAt DateTime? @map("verify_sent_at")
-  verifiedAt   DateTime? @map("verified_at")
-  lastLogin    DateTime? @map("last_login")
-  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id              Int       @id @default(autoincrement())
+  name            String    @db.VarChar(255)
+  phone           String    @unique @db.VarChar(50)
+  email           String?   @unique @db.VarChar(255)
+  address         String?   @db.Text
+  dob             DateTime? @db.Date
+  gender          String?   @db.VarChar(20) // male, female, other
+  medicalNotes    String?   @map("medical_notes") @db.Text
+  isChronic       Boolean   @default(false) @map("is_chronic")
+  chronicDiseases String?   @map("chronic_diseases") @db.VarChar(255) // e.g. "Diabetes, Hypertension"
+  refillDays      Int?      @map("refill_days") // e.g. 30
+  nextRefillDate  DateTime? @map("next_refill_date") @db.Date
+  lastRefillDate  DateTime? @map("last_refill_date") @db.Date
+  creditLimit     Decimal   @default(0.00) @map("credit_limit") @db.Decimal(10, 2)
+  password        String?   @db.VarChar(255) // Optional for portal self-service
+  active          Boolean   @default(true)
+  verified        Boolean   @default(false)
+  verifyToken     String?   @map("verify_token") @db.VarChar(100)
+  verifySentAt    DateTime? @map("verify_sent_at")
+  verifiedAt      DateTime? @map("verified_at")
+  lastLogin       DateTime? @map("last_login")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
 
-  sales               Sale[]
-  returns             Return[]
-  purchaseLogs        CustomerPurchaseLog[]
-  patientMessages     PatientMessage[]
+  sales           Sale[]
+  returns         Return[]
+  purchaseLogs    CustomerPurchaseLog[]
+  patientMessages PatientMessage[]
+  payments        CustomerPayment[]
 
   @@index([phone], name: "idx_customers_phone")
   @@index([email], name: "idx_customers_email")
+  @@index([isChronic], name: "idx_customers_chronic")
+  @@index([nextRefillDate], name: "idx_customers_refill")
   @@map("customers")
 }
 
@@ -331,6 +380,31 @@ model CustomerPurchaseLog {
   @@index([customerId], name: "idx_cpl_customer")
   @@index([date], name: "idx_cpl_date")
   @@map("customer_purchase_log")
+}
+
+// Table: customer_payments (Baki Khata customer credit settlements)
+model CustomerPayment {
+  id            Int      @id @default(autoincrement())
+  customerId    Int      @map("customer_id")
+  saleId        Int?     @map("sale_id")
+  amount        Decimal  @db.Decimal(10, 2)
+  paymentDate   DateTime @default(now()) @map("payment_date") @db.Date
+  paymentMethod String   @default("cash") @map("payment_method") @db.VarChar(50) // cash, upi, bank_transfer, cheque
+  referenceNo   String?  @map("reference_no") @db.VarChar(100)
+  notes         String?  @db.Text
+  branchId      Int?     @map("branch_id")
+  createdBy     Int?     @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale     Sale?    @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  creator  User?    @relation("CustomerPaymentCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([customerId], name: "idx_custpay_customer")
+  @@index([paymentDate], name: "idx_custpay_date")
+  @@index([branchId], name: "idx_custpay_branch")
+  @@map("customer_payments")
 }
 
 // ============================================================================
@@ -359,13 +433,14 @@ model Sale {
   branchId       Int?      @map("branch_id")
   createdAt      DateTime  @default(now()) @map("created_at")
 
-  customer     Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  creator      User?         @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-  discount     Discount?     @relation(fields: [discountId], references: [id], onDelete: SetNull)
-  branch       Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  items        SaleItem[]
-  returns      Return[]
-  purchaseLogs CustomerPurchaseLog[]
+  customer         Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  creator          User?                 @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  discount         Discount?             @relation(fields: [discountId], references: [id], onDelete: SetNull)
+  branch           Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  items            SaleItem[]
+  returns          Return[]
+  purchaseLogs     CustomerPurchaseLog[]
+  customerPayments CustomerPayment[]
 
   @@index([invoiceNo], name: "idx_sales_invoice")
   @@index([saleDate], name: "idx_sales_date")
@@ -377,20 +452,20 @@ model Sale {
 
 // Table: sales_items (Invoice line items)
 model SaleItem {
-  id          Int      @id @default(autoincrement())
-  saleId      Int      @map("sale_id")
-  medicineId  Int      @map("medicine_id")
-  batchId     Int      @map("batch_id")
+  id          Int     @id @default(autoincrement())
+  saleId      Int     @map("sale_id")
+  medicineId  Int     @map("medicine_id")
+  batchId     Int     @map("batch_id")
   quantity    Int
-  mrp         Decimal  @db.Decimal(10, 2)
-  taxableBase Decimal  @map("taxable_base") @db.Decimal(10, 2)
-  gstPercent  Decimal  @map("gst_percent") @db.Decimal(5, 2)
-  gstAmount   Decimal  @map("gst_amount") @db.Decimal(10, 2)
-  price       Decimal  @db.Decimal(12, 2) // mrp * quantity
+  mrp         Decimal @db.Decimal(10, 2)
+  taxableBase Decimal @map("taxable_base") @db.Decimal(10, 2)
+  gstPercent  Decimal @map("gst_percent") @db.Decimal(5, 2)
+  gstAmount   Decimal @map("gst_amount") @db.Decimal(10, 2)
+  price       Decimal @db.Decimal(12, 2) // mrp * quantity
 
-  sale        Sale        @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  medicine    Medicine    @relation(fields: [medicineId], references: [id], onDelete: Restrict)
-  batch       Batch       @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  sale        Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  medicine    Medicine     @relation(fields: [medicineId], references: [id], onDelete: Restrict)
+  batch       Batch        @relation(fields: [batchId], references: [id], onDelete: Restrict)
   returnItems ReturnItem[]
 
   @@index([saleId], name: "idx_sales_items_sale")
@@ -443,8 +518,8 @@ model ReturnItem {
   price         Decimal @db.Decimal(12, 2)
   restockAction String  @default("restock") @map("restock_action") @db.VarChar(20) // restock, damaged_write_off
 
-  returnReturn Return   @relation(fields: [returnId], references: [id], onDelete: Cascade)
-  saleItem     SaleItem @relation(fields: [saleItemId], references: [id], onDelete: Restrict)
+  returnReturn Return    @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItem     SaleItem  @relation(fields: [saleItemId], references: [id], onDelete: Restrict)
   medicine     Medicine? @relation(fields: [medicineId], references: [id], onDelete: SetNull)
   batch        Batch?    @relation(fields: [batchId], references: [id], onDelete: SetNull)
 
