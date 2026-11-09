@@ -185,9 +185,19 @@ export async function generateSqlDump(options?: {
         return `(${valSqls.join(", ")})`;
       });
 
-      lines.push(
-        `INSERT INTO "${entry.tableName}" (${columnNames.join(", ")}) VALUES\n  ${valuesList.join(",\n  ")};`
-      );
+      const hasIdField = scalarFields.some((f) => f.name === "id" || f.dbName === "id");
+      const nonIdColumns = scalarFields.filter((f) => f.name !== "id" && f.dbName !== "id");
+
+      if (hasIdField && nonIdColumns.length > 0) {
+        const updateClauses = nonIdColumns.map((f) => `"${f.dbName || f.name}" = EXCLUDED."${f.dbName || f.name}"`);
+        lines.push(
+          `INSERT INTO "${entry.tableName}" (${columnNames.join(", ")}) VALUES\n  ${valuesList.join(",\n  ")}\n  ON CONFLICT ("id") DO UPDATE SET\n    ${updateClauses.join(",\n    ")};`
+        );
+      } else {
+        lines.push(
+          `INSERT INTO "${entry.tableName}" (${columnNames.join(", ")}) VALUES\n  ${valuesList.join(",\n  ")}\n  ON CONFLICT DO NOTHING;`
+        );
+      }
     }
     lines.push("");
   }
@@ -379,7 +389,8 @@ export async function restoreSqlDump(
 
   let executed = 0;
 
-  // Execute statements sequentially
+  // Prepare clean executable statements
+  const executableStatements: string[] = [];
   for (const stmt of statements) {
     let cleanStmt = stmt.trim();
 
@@ -407,14 +418,26 @@ export async function restoreSqlDump(
       continue;
     }
 
-    try {
-      await prisma.$executeRawUnsafe(cleanStmt);
-      executed++;
-    } catch (err: any) {
-      console.error(`[Restore SQL Error on statement ${executed + 1}]:`, cleanStmt.slice(0, 100), err);
-      throw new Error(`Failed restoring SQL at statement ${executed + 1}: ${err?.message || err}`);
+    if (cleanStmt.length > 0) {
+      executableStatements.push(cleanStmt);
     }
   }
+
+  // Execute statements in an atomic database transaction
+  await prisma.$transaction(
+    async (tx) => {
+      for (const stmt of executableStatements) {
+        try {
+          await tx.$executeRawUnsafe(stmt);
+          executed++;
+        } catch (err: any) {
+          console.error(`[Restore SQL Error on statement ${executed + 1}]:`, stmt.slice(0, 100), err);
+          throw new Error(`Failed restoring SQL at statement ${executed + 1}: ${err?.message || err}`);
+        }
+      }
+    },
+    { timeout: 60000, maxWait: 10000 }
+  );
 
   // Resynchronize PostgreSQL serial sequences for affected tables so subsequent inserts don't collide
   for (const table of tablesAffected) {
@@ -539,7 +562,9 @@ export async function migrateJsonToDatabase(
       const name = String(cat.name || cat.categoryName || "").trim();
       if (!name) continue;
 
-      let existing = await tx.category.findUnique({ where: { name } });
+      let existing = await tx.category.findFirst({
+        where: { name: { equals: name, mode: "insensitive" } },
+      });
       if (!existing) {
         existing = await tx.category.create({
           data: {
@@ -558,7 +583,13 @@ export async function migrateJsonToDatabase(
       const name = String(sup.name || sup.supplierName || "").trim();
       if (!name) continue;
 
-      let existing = await tx.supplier.findFirst({ where: { name } });
+      let existing = await tx.supplier.findFirst({
+        where: { name: { equals: name, mode: "insensitive" } },
+      });
+      const paymentTerms = sup.paymentTerms !== undefined && sup.paymentTerms !== null && !isNaN(Number(sup.paymentTerms))
+        ? Number(sup.paymentTerms)
+        : 30;
+
       if (!existing) {
         existing = await tx.supplier.create({
           data: {
@@ -569,7 +600,7 @@ export async function migrateJsonToDatabase(
             address: sup.address ? String(sup.address) : null,
             gstNo: sup.gstin || sup.gstNo || sup.gst || null,
             dlNo: sup.dlNumber || sup.dlNo || sup.dl || null,
-            paymentTerms: sup.paymentTerms ? Number(sup.paymentTerms) : 30,
+            paymentTerms,
           },
         });
       }
@@ -583,6 +614,10 @@ export async function migrateJsonToDatabase(
       const phone = String(cust.phone || cust.mobile || "").trim();
       if (!name) continue;
 
+      const creditLimit = cust.creditLimit !== undefined && cust.creditLimit !== null && !isNaN(Number(cust.creditLimit))
+        ? Number(cust.creditLimit)
+        : 0;
+
       const custPhone = phone || `900000${String(counts.customers + 1).padStart(4, "0")}`;
       let existing = await tx.customer.findFirst({ where: { phone: custPhone } });
       if (!existing) {
@@ -594,7 +629,7 @@ export async function migrateJsonToDatabase(
             address: cust.address ? String(cust.address) : null,
             gender: cust.gender || null,
             medicalNotes: cust.medicalNotes || cust.notes || null,
-            creditLimit: cust.creditLimit ? Number(cust.creditLimit) : 0,
+            creditLimit,
           },
         });
       } else {
@@ -606,7 +641,7 @@ export async function migrateJsonToDatabase(
             address: cust.address ? String(cust.address) : existing.address,
             gender: cust.gender || existing.gender,
             medicalNotes: cust.medicalNotes || cust.notes || existing.medicalNotes,
-            creditLimit: cust.creditLimit ? Number(cust.creditLimit) : existing.creditLimit,
+            creditLimit,
           },
         });
       }
@@ -625,7 +660,13 @@ export async function migrateJsonToDatabase(
       const name = String(med.name || med.medicineName || "").trim();
       if (!name) continue;
 
-      let existing = await tx.medicine.findFirst({ where: { name } });
+      let existing = await tx.medicine.findFirst({
+        where: { name: { equals: name, mode: "insensitive" } },
+      });
+      const gstPercent = med.gstPercent !== undefined && med.gstPercent !== null && !isNaN(Number(med.gstPercent))
+        ? Number(med.gstPercent)
+        : 12.0;
+
       if (!existing) {
         existing = await tx.medicine.create({
           data: {
@@ -635,7 +676,7 @@ export async function migrateJsonToDatabase(
             category: med.category || med.dosageForm || "Tablet",
             rackLocation: med.rackLocation || med.rack_location || null,
             hsnCode: med.hsnCode || med.hsn || null,
-            gstPercent: med.gstPercent ? Number(med.gstPercent) : 12.0,
+            gstPercent,
             description: med.description || null,
           },
         });
@@ -657,7 +698,10 @@ export async function migrateJsonToDatabase(
       const branchId = b.branchId ? Number(b.branchId) : defaultBranch ? defaultBranch.id : null;
       const expiryDate = b.expiryDate ? new Date(b.expiryDate) : new Date(Date.now() + 365 * 24 * 3600 * 1000);
       const mrp = Number(b.mrp || 100);
-      const purchasePrice = Number(b.purchasePrice || b.purchase_price || mrp * 0.7);
+      const rawPurchasePrice = b.purchasePrice !== undefined && b.purchasePrice !== null && !isNaN(Number(b.purchasePrice))
+        ? Number(b.purchasePrice)
+        : (b.purchase_price !== undefined && b.purchase_price !== null && !isNaN(Number(b.purchase_price)) ? Number(b.purchase_price) : mrp * 0.7);
+      const purchasePrice = rawPurchasePrice;
       const quantity = Number(b.quantity || b.stock || 0);
 
       // Upsert batch

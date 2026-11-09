@@ -56,8 +56,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Purchase Order not found" }, { status: 404 });
     }
 
-    if (po.status === "cancelled") {
-      return NextResponse.json({ success: false, message: "Cannot receive goods for a cancelled Purchase Order" }, { status: 400 });
+    if (po.status === "cancelled" || po.status === "draft" || po.status === "received") {
+      return NextResponse.json(
+        { success: false, message: `Cannot receive goods for Purchase Order with status '${po.status}'` },
+        { status: 400 }
+      );
     }
 
     const branchId = po.branchId || body.branchId || auth.session.branchId || null;
@@ -67,8 +70,13 @@ export async function POST(req: NextRequest) {
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       const poItemId = parseInt(it.poItemId, 10);
-      const receivedQty = parseInt(it.receivedQty, 10) || 0;
-      const bonusQty = parseInt(it.bonusQty, 10) || 0;
+      const rawReceived = parseInt(it.receivedQty, 10);
+      const rawBonus = parseInt(it.bonusQty, 10);
+      if ((!isNaN(rawReceived) && rawReceived < 0) || (!isNaN(rawBonus) && rawBonus < 0)) {
+        return NextResponse.json({ success: false, message: `Item #${i + 1}: Received and bonus quantities cannot be negative` }, { status: 400 });
+      }
+      const receivedQty = isNaN(rawReceived) ? 0 : rawReceived;
+      const bonusQty = isNaN(rawBonus) ? 0 : rawBonus;
 
       // Skip lines with zero inward
       if (receivedQty <= 0 && bonusQty <= 0) continue;
@@ -78,7 +86,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, message: `Item #${i + 1}: Line item ID ${poItemId} does not belong to this PO` }, { status: 400 });
       }
 
-      let batchNo = (it.batchNo || "").trim();
+      let batchNo = (it.batchNo || "").trim().toUpperCase();
       if (!batchNo) {
         const datePrefix = new Date().toISOString().slice(2, 10).replace(/-/g, "");
         batchNo = `B-${datePrefix}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
@@ -98,7 +106,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, message: `Item '${poItem.medicine.name}': Mfg date cannot be later than expiry date` }, { status: 400 });
       }
 
-      const purchasePrice = parseFloat(it.purchasePrice) || Number(poItem.price);
+      const parsedPrice = parseFloat(it.purchasePrice);
+      const purchasePrice = (!isNaN(parsedPrice) && parsedPrice >= 0) ? parsedPrice : Number(poItem.price);
       const mrp = parseFloat(it.mrp) || Number(poItem.mrp);
       const tradeDiscount = Math.max(0, Math.min(100, parseFloat(it.tradeDiscount) || 0));
       const effectiveUnitCost = tradeDiscount > 0 ? purchasePrice * (1 - tradeDiscount / 100) : purchasePrice;
@@ -107,10 +116,18 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, message: `Item '${poItem.medicine.name}': MRP must be greater than zero` }, { status: 400 });
       }
 
-      // Over-inwarding protection: prevent accidental order of more than 3x remaining quantity
+      // Over-inwarding protection: prevent accidental order of more than 3x quantity (factoring in prior receipts)
+      const previouslyReceived = poItem.receivedQty || 0;
+      const totalInwardForLine = previouslyReceived + receivedQty;
       const maxAllowed = Math.max(poItem.quantity * 3, 50);
-      if (receivedQty > maxAllowed) {
-        return NextResponse.json({ success: false, message: `Item '${poItem.medicine.name}': Received quantity (${receivedQty}) exceeds maximum allowable threshold (${maxAllowed})` }, { status: 400 });
+      if (totalInwardForLine > maxAllowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `Item '${poItem.medicine.name}': Cumulative received quantity (${totalInwardForLine}) exceeds maximum allowable threshold (${maxAllowed})`,
+          },
+          { status: 400 }
+        );
       }
 
       validLines.push({
@@ -146,7 +163,7 @@ export async function POST(req: NextRequest) {
         const existingBatch = await tx.batch.findFirst({
           where: {
             medicineId: line.medicineId,
-            batchNo: line.batchNo,
+            batchNo: { equals: line.batchNo, mode: "insensitive" },
             branchId: branchId,
           },
         });

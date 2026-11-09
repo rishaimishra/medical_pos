@@ -140,7 +140,7 @@ export async function PUT(
       }
 
       // 4. Admin-only confirmation lock (Module 1.12.2)
-      if (newStatus === "confirmed" && auth.session.role !== "admin" && !hasPermission(auth.session, "manage_purchases")) {
+      if (newStatus === "confirmed" && auth.session.role !== "admin") {
         return NextResponse.json({ success: false, message: "Forbidden: Only administrator can confirm Purchase Orders and lock prices" }, { status: 403 });
       }
 

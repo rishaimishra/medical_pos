@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest, hashPassword } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { sendAccountCredentialsEmail } from "@/lib/email";
+import { hasPermission } from "@/lib/rbac";
 import crypto from "crypto";
 
 /**
@@ -21,6 +22,15 @@ export async function GET(
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
+  }
+
+  // Permission Check: Requires manage_purchases or admin/manager role
+  if (
+    auth.session.role !== "admin" &&
+    auth.session.role !== "manager" &&
+    !hasPermission(auth.session, "manage_purchases")
+  ) {
+    return NextResponse.json({ success: false, message: "Forbidden: Insufficient privileges to view supplier portal credentials" }, { status: 403 });
   }
 
   const { id: rawId } = await params;
@@ -59,6 +69,15 @@ export async function POST(
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
+  }
+
+  // Permission Check: Requires manage_purchases or admin/manager role
+  if (
+    auth.session.role !== "admin" &&
+    auth.session.role !== "manager" &&
+    !hasPermission(auth.session, "manage_purchases")
+  ) {
+    return NextResponse.json({ success: false, message: "Forbidden: Insufficient privileges to view supplier portal credentials" }, { status: 403 });
   }
 
   // Admin or Manager only
@@ -176,7 +195,7 @@ export async function POST(
 
     if (sendEmail && email) {
       try {
-        const storeSettings = await prisma.settings.findFirst();
+        const storeSettings = await prisma.settings.findFirst({ orderBy: { id: "asc" } });
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
         const emailRes = await sendAccountCredentialsEmail({
           name: supplier.contact || supplier.name,
@@ -228,6 +247,15 @@ export async function PUT(
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
+  }
+
+  // Permission Check: Requires manage_purchases or admin/manager role
+  if (
+    auth.session.role !== "admin" &&
+    auth.session.role !== "manager" &&
+    !hasPermission(auth.session, "manage_purchases")
+  ) {
+    return NextResponse.json({ success: false, message: "Forbidden: Insufficient privileges to view supplier portal credentials" }, { status: 403 });
   }
 
   if (auth.session.role !== "admin" && auth.session.role !== "manager") {

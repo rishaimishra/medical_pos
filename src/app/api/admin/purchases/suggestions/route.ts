@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { APP_CONFIG } from "@/lib/config";
+import { hasPermission, canAccessBranch } from "@/lib/rbac";
 
 /**
  * MODULE 1.11.1: SMART AUTO-PO SUGGESTION ENGINE
@@ -18,9 +19,23 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const branchIdParam = searchParams.get("branchId");
-  const branchId = branchIdParam && branchIdParam !== "all"
-    ? parseInt(branchIdParam, 10)
-    : (auth.session.branchId || undefined);
+  let branchId: number | undefined;
+  if (branchIdParam && branchIdParam !== "all") {
+    const parsed = parseInt(branchIdParam, 10);
+    if (!isNaN(parsed)) {
+      if (!canAccessBranch(auth.session, parsed)) {
+        return NextResponse.json({ success: false, message: "Forbidden: Cannot access requested branch" }, { status: 403 });
+      }
+      branchId = parsed;
+    }
+  } else if (auth.session.role !== "admin" && auth.session.branchId) {
+    branchId = auth.session.branchId;
+  }
+
+  const canViewCost =
+    auth.session.role === "admin" ||
+    auth.session.role === "manager" ||
+    hasPermission(auth.session, "view_cost_price");
 
   try {
     // 1. Fetch store threshold
@@ -29,11 +44,11 @@ export async function GET(req: NextRequest) {
     });
     const lowStockThreshold = settings?.lowQty ?? APP_CONFIG.lowQtyThreshold;
 
-    // 2. Fetch pending on-order quantities (pending, confirmed, shipped) to prevent duplicate ordering
+    // 2. Fetch pending on-order quantities (pending, price_updated, confirmed, shipped) to prevent duplicate ordering
     const pendingPOItems = await prisma.pOItem.findMany({
       where: {
         purchaseOrder: {
-          status: { in: ["pending", "confirmed", "shipped"] },
+          status: { in: ["pending", "price_updated", "confirmed", "shipped"] },
           branchId: branchId ? branchId : undefined,
         },
       },
@@ -145,9 +160,9 @@ export async function GET(req: NextRequest) {
           dailyVelocity,
           threshold: lowStockThreshold,
           suggestedQuantity,
-          purchasePrice,
+          purchasePrice: canViewCost ? purchasePrice : null,
           mrp,
-          lineTotal: Math.round(lineTotal * 100) / 100,
+          lineTotal: canViewCost ? Math.round(lineTotal * 100) / 100 : null,
           urgency,
           preferredSupplier: supplier,
         };
@@ -174,7 +189,7 @@ export async function GET(req: NextRequest) {
       suggestions,
       groupedBySupplier: Object.values(groupedBySupplier).map((g) => ({
         ...g,
-        estimatedTotal: Math.round(g.estimatedTotal * 100) / 100,
+        estimatedTotal: canViewCost ? Math.round(g.estimatedTotal * 100) / 100 : null,
       })),
     });
   } catch (error: any) {

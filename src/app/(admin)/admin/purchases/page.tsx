@@ -142,6 +142,13 @@ export default function PurchaseOrdersPage() {
   // Status Action Loader
   const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
   const [sendingAlert, setSendingAlert] = useState(false);
+  const [toastNotification, setToastNotification] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
+
+  const showToast = (text: string, type: "success" | "error" = "success") => {
+    setToastNotification({ type, text });
+    setTimeout(() => setToastNotification(null), 4000);
+  };
 
   const handleTriggerStockAlert = async () => {
     setSendingAlert(true);
@@ -149,12 +156,12 @@ export default function PurchaseOrdersPage() {
       const res = await fetch("/api/admin/notifications/daily-stock-alert?force=true", { method: "POST" });
       const json = await res.json();
       if (json.success) {
-        alert(json.message || "Daily stock alert email sent successfully!");
+        showToast(json.message || "Daily stock alert email sent successfully!", "success");
       } else {
-        alert(json.message || "Failed to dispatch stock alert.");
+        showToast(json.message || "Failed to dispatch stock alert.", "error");
       }
     } catch (err: any) {
-      alert("Error triggering stock alert: " + err.message);
+      showToast("Error triggering stock alert: " + err.message, "error");
     } finally {
       setSendingAlert(false);
     }
@@ -351,19 +358,25 @@ export default function PurchaseOrdersPage() {
   };
 
   // 1-Click Reorder PO
-  const handleReorder = async (po: PurchaseOrderRecord) => {
-    if (!confirm(`Reorder all items from ${po.poNumber} into a new Purchase Order?`)) return;
-    try {
-      const res = await fetch(`/api/admin/purchases/${po.id}/clone`, { method: "POST" });
-      const json = await res.json();
-      if (json.success) {
-        fetchPurchaseOrders();
-      } else {
-        alert(json.message || "Failed to clone PO");
-      }
-    } catch (err) {
-      console.error("Clone error:", err);
-    }
+  const handleReorder = (po: PurchaseOrderRecord) => {
+    setConfirmModal({
+      title: "Reorder Purchase Order",
+      message: `Reorder all items from ${po.poNumber} into a new Purchase Order?`,
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/admin/purchases/${po.id}/clone`, { method: "POST" });
+          const json = await res.json();
+          if (json.success) {
+            showToast(`New PO cloned from ${po.poNumber}`, "success");
+            fetchPurchaseOrders();
+          } else {
+            showToast(json.message || "Failed to clone PO", "error");
+          }
+        } catch (err: any) {
+          showToast("Clone error: " + err.message, "error");
+        }
+      },
+    });
   };
 
   // Update Status
@@ -377,35 +390,114 @@ export default function PurchaseOrdersPage() {
       });
       const json = await res.json();
       if (json.success) {
+        showToast(`PO status updated to ${status}`, "success");
         fetchPurchaseOrders();
       } else {
-        alert(json.message || "Status change failed");
+        showToast(json.message || "Status change failed", "error");
       }
-    } catch (err) {
-      console.error("Status update error:", err);
+    } catch (err: any) {
+      showToast("Status update error: " + err.message, "error");
     } finally {
       setUpdatingStatusId(null);
     }
   };
 
-  // Filter Medicines for search box
+  // Filter Medicines for search box with debounced server search
   useEffect(() => {
     if (!medicineSearch.trim()) {
       setFilteredMedicines([]);
-    } else {
-      const q = medicineSearch.toLowerCase();
-      setFilteredMedicines(
-        medicinesList
-          .filter((m) => m.name.toLowerCase().includes(q) || (m.genericName || "").toLowerCase().includes(q))
-          .slice(0, 8)
-      );
+      return;
     }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/medicines?search=${encodeURIComponent(medicineSearch.trim())}&limit=20`);
+        const json = await res.json();
+        if (json.success && Array.isArray(json.medicines) && json.medicines.length > 0) {
+          setFilteredMedicines(json.medicines);
+        } else {
+          const q = medicineSearch.toLowerCase();
+          setFilteredMedicines(
+            medicinesList
+              .filter((m) => m.name.toLowerCase().includes(q) || (m.genericName || "").toLowerCase().includes(q))
+              .slice(0, 8)
+          );
+        }
+      } catch {
+        const q = medicineSearch.toLowerCase();
+        setFilteredMedicines(
+          medicinesList
+            .filter((m) => m.name.toLowerCase().includes(q) || (m.genericName || "").toLowerCase().includes(q))
+            .slice(0, 8)
+        );
+      }
+    }, 250);
+    return () => clearTimeout(timer);
   }, [medicineSearch, medicinesList]);
 
   const grandTotal = poForm.items.reduce((sum, it) => sum + it.price * it.quantity, 0);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
+      {/* Toast Notification Banner */}
+      {toastNotification && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-2.5 text-xs font-bold transition-all animate-in fade-in slide-in-from-top-2 ${
+            toastNotification.type === "success"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
+          }`}
+        >
+          {toastNotification.type === "success" ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+          )}
+          <span>{toastNotification.text}</span>
+          <button
+            onClick={() => setToastNotification(null)}
+            className="ml-2 p-1 rounded-lg hover:bg-black/5 text-slate-500"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">{confirmModal.title}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{confirmModal.message}</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs"
+              >
+                No, Keep
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cb = confirmModal.onConfirm;
+                  setConfirmModal(null);
+                  cb();
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs"
+              >
+                Yes, Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 1. Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs">
         <div className="flex items-center gap-3.5">
@@ -748,13 +840,15 @@ export default function PurchaseOrdersPage() {
                             <Copy className="w-3.5 h-3.5" />
                           </button>
 
-                          {/* Cancel (if unreceived) */}
-                          {po.status !== "received" && po.status !== "cancelled" && (
+                          {/* Cancel (if unreceived and unshipped) */}
+                          {po.status !== "received" && po.status !== "shipped" && po.status !== "cancelled" && (
                             <button
                               onClick={() => {
-                                if (confirm(`Cancel Purchase Order ${po.poNumber}?`)) {
-                                  handleUpdateStatus(po.id, "cancelled");
-                                }
+                                setConfirmModal({
+                                  title: "Cancel Purchase Order",
+                                  message: `Cancel Purchase Order ${po.poNumber}?`,
+                                  onConfirm: () => handleUpdateStatus(po.id, "cancelled"),
+                                });
                               }}
                               title="Cancel Purchase Order"
                               className="p-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 transition-colors"

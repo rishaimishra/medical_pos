@@ -67,6 +67,12 @@ export default function SuppliersPage() {
     activePortalUsers: 0,
   });
 
+  const [toastNotification, setToastNotification] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const showToast = (text: string, type: "success" | "error" = "success") => {
+    setToastNotification({ type, text });
+    setTimeout(() => setToastNotification(null), 4000);
+  };
+
   // Modal States
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<SupplierRecord | null>(null);
@@ -178,7 +184,7 @@ export default function SuppliersPage() {
       address: sup.address || "",
       gstNo: sup.gstNo || "",
       dlNo: sup.dlNo || "",
-      paymentTerms: sup.paymentTerms || 30,
+      paymentTerms: sup.paymentTerms !== undefined && sup.paymentTerms !== null ? sup.paymentTerms : 30,
     });
     setFormError(null);
     setShowSupplierModal(true);
@@ -345,7 +351,7 @@ export default function SuppliersPage() {
     try {
       const res = await fetch("/api/admin/suppliers/export");
       if (!res.ok) {
-        alert("Failed to export suppliers. Please ensure you have sufficient permissions.");
+        showToast("Failed to export suppliers. Please ensure you have sufficient permissions.", "error");
         return;
       }
       const blob = await res.blob();
@@ -357,8 +363,9 @@ export default function SuppliersPage() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      showToast("Suppliers directory CSV downloaded successfully", "success");
     } catch (err: any) {
-      alert("Error exporting CSV: " + (err?.message || "Network error"));
+      showToast("Error exporting CSV: " + (err?.message || "Network error"), "error");
     } finally {
       setDownloadingCSV(false);
     }
@@ -417,6 +424,29 @@ export default function SuppliersPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
+      {/* Toast Notification Banner */}
+      {toastNotification && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-2.5 text-xs font-bold transition-all animate-in fade-in slide-in-from-top-2 ${
+            toastNotification.type === "success"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
+          }`}
+        >
+          {toastNotification.type === "success" ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+          )}
+          <span>{toastNotification.text}</span>
+          <button
+            onClick={() => setToastNotification(null)}
+            className="ml-2 p-1 rounded-lg hover:bg-black/5 text-slate-500"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       {/* 1. Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs">
         <div className="flex items-center gap-3.5">

@@ -4,6 +4,11 @@ import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
 
+function isValidPhone(phone: string): boolean {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15;
+}
+
 /**
  * MODULE 1.13.1 & 1.13.3: CUSTOMER PROFILE & CRUD
  * 
@@ -155,6 +160,10 @@ export async function PUT(
       return NextResponse.json({ success: false, message: "Phone number cannot be empty" }, { status: 400 });
     }
 
+    if (!isValidPhone(phone)) {
+      return NextResponse.json({ success: false, message: "Customer phone number must contain between 10 and 15 digits" }, { status: 400 });
+    }
+
     // Check unique phone collision
     if (phone !== existing.phone) {
       const phoneTaken = await prisma.customer.findUnique({ where: { phone } });
@@ -256,7 +265,7 @@ export async function DELETE(
     const customer = await prisma.customer.findUnique({
       where: { id },
       include: {
-        _count: { select: { sales: true } },
+        _count: { select: { sales: true, payments: true, patientMessages: true } },
         sales: {
           where: { paymentMethod: "credit" },
           select: { grandTotal: true },
@@ -269,12 +278,32 @@ export async function DELETE(
       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
     }
 
-    // Delete Guard: Cannot delete if sales exist or has unpaid credit balance
+    // Delete Guard: Cannot delete if sales, payments, or patient messages exist or has unpaid credit balance
     if (customer._count.sales > 0) {
       return NextResponse.json(
         {
           success: false,
           message: `Cannot delete patient '${customer.name}' because they have ${customer._count.sales} historical sales/invoice records. You can deactivate the customer instead.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (customer._count.payments > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Cannot delete patient '${customer.name}' because they have ${customer._count.payments} historical payment/ledger settlement records.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (customer._count.patientMessages > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Cannot delete patient '${customer.name}' because they have ${customer._count.patientMessages} health communication/prescription records.`,
         },
         { status: 400 }
       );

@@ -167,9 +167,6 @@ export async function GET(req: NextRequest) {
         payments: {
           select: { amount: true, paymentDate: true },
         },
-        _count: {
-          select: { supplierUsers: true },
-        },
       },
     });
 
@@ -178,7 +175,6 @@ export async function GET(req: NextRequest) {
 
     let totalAccountsPayable = 0;
     let totalPurchasesThisMonth = 0;
-    let totalActivePortalUsers = 0;
 
     for (const sup of allSuppliersForKpis) {
       const supPurchases = sup.purchaseOrders
@@ -193,9 +189,13 @@ export async function GET(req: NextRequest) {
         .filter((po) => po.status !== "cancelled" && po.status !== "draft" && new Date(po.poDate) >= firstDayOfMonth)
         .reduce((sum, po) => sum + Number(po.total || 0), 0);
       totalPurchasesThisMonth += mtdPurchases;
-
-      totalActivePortalUsers += sup._count.supplierUsers;
     }
+
+    const totalActivePortalUsers = await prisma.supplierUser.count({
+      where: {
+        active: true,
+      },
+    });
 
     return NextResponse.json({
       success: true,
@@ -242,7 +242,8 @@ export async function POST(req: NextRequest) {
     const address = (body.address || "").trim() || null;
     const gstNo = (body.gstNo || "").trim().toUpperCase() || null;
     const dlNo = (body.dlNo || "").trim().toUpperCase() || null;
-    const paymentTerms = Math.max(0, Math.min(365, parseInt(body.paymentTerms, 10) || 30));
+    const rawPaymentTerms = parseInt(body.paymentTerms, 10);
+    const paymentTerms = Math.max(0, Math.min(365, isNaN(rawPaymentTerms) ? 30 : rawPaymentTerms));
 
     if (!name) {
       return NextResponse.json({ success: false, message: "Vendor/Supplier name is required" }, { status: 400 });
@@ -354,7 +355,9 @@ export async function PUT(req: NextRequest) {
     const address = body.address !== undefined ? ((body.address || "").trim() || null) : existing.address;
     const gstNo = body.gstNo !== undefined ? ((body.gstNo || "").trim().toUpperCase() || null) : existing.gstNo;
     const dlNo = body.dlNo !== undefined ? ((body.dlNo || "").trim().toUpperCase() || null) : existing.dlNo;
-    const paymentTerms = body.paymentTerms !== undefined ? Math.max(0, Math.min(365, parseInt(body.paymentTerms, 10) || 30)) : existing.paymentTerms;
+    const paymentTerms = body.paymentTerms !== undefined && body.paymentTerms !== null && String(body.paymentTerms).trim() !== ""
+      ? Math.max(0, Math.min(365, isNaN(parseInt(body.paymentTerms, 10)) ? 30 : parseInt(body.paymentTerms, 10)))
+      : existing.paymentTerms;
 
     if (!name) {
       return NextResponse.json({ success: false, message: "Vendor/Supplier name cannot be empty" }, { status: 400 });
@@ -491,6 +494,16 @@ export async function DELETE(req: NextRequest) {
         {
           success: false,
           message: `Cannot delete supplier '${supplier.name}': There are ${supplier._count.purchaseOrders} purchase order records linked to this distributor.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (supplier._count.payments > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Cannot delete supplier '${supplier.name}': There are ${supplier._count.payments} financial payment/ledger records linked to this distributor.`,
         },
         { status: 400 }
       );

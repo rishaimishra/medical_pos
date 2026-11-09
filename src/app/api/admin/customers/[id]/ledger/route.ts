@@ -160,6 +160,7 @@ export async function GET(
         creditLimit,
       },
       summary: {
+        creditLimit,
         totalCreditSales: Math.round(totalDebit * 100) / 100,
         totalSettled: Math.round(totalCredit * 100) / 100,
         currentDue,

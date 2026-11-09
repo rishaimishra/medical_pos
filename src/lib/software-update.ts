@@ -54,6 +54,41 @@ export const PROTECTED_PATHS = [
   /^prisma\/schema\.prisma\.backup$/i,
 ];
 
+export const VERSION_FILE_PATH = path.join(process.cwd(), ".version.json");
+
+/**
+ * Returns current installed software version from dynamic version tracker, falling back to APP_VERSION.
+ */
+export function getInstalledVersion(): string {
+  try {
+    if (fs.existsSync(VERSION_FILE_PATH)) {
+      const raw = fs.readFileSync(VERSION_FILE_PATH, "utf-8");
+      const data = JSON.parse(raw);
+      if (data && typeof data.version === "string" && data.version.trim()) {
+        return data.version.trim();
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return APP_VERSION;
+}
+
+/**
+ * Saves dynamically installed software version upon successful update.
+ */
+export function setInstalledVersion(version: string): void {
+  try {
+    fs.writeFileSync(
+      VERSION_FILE_PATH,
+      JSON.stringify({ version, updatedAt: new Date().toISOString() }, null, 2),
+      "utf-8"
+    );
+  } catch (err) {
+    console.warn("[setInstalledVersion] Could not persist .version.json:", err);
+  }
+}
+
 /**
  * Semver comparison:
  * Returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal.
@@ -191,7 +226,7 @@ export async function inspectUpdateZip(buffer: Buffer): Promise<UpdateInspection
     };
   }
 
-  const currentVersion = APP_VERSION;
+  const currentVersion = getInstalledVersion();
   const newVersion = manifest.version;
   const cmp = compareSemver(newVersion, currentVersion);
   const isUpgrade = cmp > 0;
@@ -278,8 +313,9 @@ export async function applyUpdateZip(
       storeId: options.storeId,
       saveToFile: true,
     });
-  } catch (dumpErr) {
-    console.warn("[applyUpdateZip] Automatic pre-update DB snapshot warning:", dumpErr);
+  } catch (dumpErr: any) {
+    console.error("[applyUpdateZip] Automatic pre-update DB snapshot failed:", dumpErr);
+    throw new Error(`Automatic pre-update safety backup failed: ${dumpErr?.message || dumpErr}. Update aborted.`);
   }
 
   // Create rollback snapshot directory
@@ -289,36 +325,72 @@ export async function applyUpdateZip(
   fs.mkdirSync(snapshotDir, { recursive: true });
 
   let filesUpdated = 0;
+  const backedUpFiles: string[] = [];
+  const createdFiles: string[] = [];
 
-  for (const entry of zip.getEntries()) {
-    if (entry.isDirectory) continue;
+  try {
+    for (const entry of zip.getEntries()) {
+      if (entry.isDirectory) continue;
 
-    const safeRelPath = validateEntryPath(entry.entryName);
-    if (safeRelPath === "update.json" || safeRelPath === "manifest.json") {
-      continue;
-    }
-
-    const localFullPath = path.join(/*turbopackIgnore: true*/ rootDir, safeRelPath);
-
-    // If file exists locally, back it up to snapshot folder before overwriting
-    if (fs.existsSync(localFullPath)) {
-      const backupTarget = path.join(snapshotDir, safeRelPath);
-      const backupTargetDir = path.dirname(backupTarget);
-      if (!fs.existsSync(backupTargetDir)) {
-        fs.mkdirSync(backupTargetDir, { recursive: true });
+      const safeRelPath = validateEntryPath(entry.entryName);
+      if (safeRelPath === "update.json" || safeRelPath === "manifest.json") {
+        continue;
       }
-      fs.copyFileSync(localFullPath, backupTarget);
-    }
 
-    // Ensure target folder exists and write updated file
-    const targetDir = path.dirname(localFullPath);
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
-    }
+      const localFullPath = path.join(/*turbopackIgnore: true*/ rootDir, safeRelPath);
 
-    fs.writeFileSync(localFullPath, entry.getData());
-    filesUpdated++;
+      // If file exists locally, back it up to snapshot folder before overwriting
+      if (fs.existsSync(localFullPath)) {
+        const backupTarget = path.join(snapshotDir, safeRelPath);
+        const backupTargetDir = path.dirname(backupTarget);
+        if (!fs.existsSync(backupTargetDir)) {
+          fs.mkdirSync(backupTargetDir, { recursive: true });
+        }
+        fs.copyFileSync(localFullPath, backupTarget);
+        backedUpFiles.push(safeRelPath);
+      } else {
+        createdFiles.push(safeRelPath);
+      }
+
+      // Ensure target folder exists and write updated file
+      const targetDir = path.dirname(localFullPath);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+
+      fs.writeFileSync(localFullPath, entry.getData());
+      filesUpdated++;
+    }
+  } catch (extractErr: any) {
+    console.error("[applyUpdateZip] Extraction error, triggering automatic rollback:", extractErr);
+    // Automatic Rollback: restore backed up files from snapshot
+    for (const relPath of backedUpFiles) {
+      try {
+        const backupFile = path.join(snapshotDir, relPath);
+        const targetFile = path.join(rootDir, relPath);
+        if (fs.existsSync(backupFile)) {
+          fs.copyFileSync(backupFile, targetFile);
+        }
+      } catch (rbErr) {
+        console.error(`[Rollback Error on ${relPath}]:`, rbErr);
+      }
+    }
+    // Delete newly created files
+    for (const relPath of createdFiles) {
+      try {
+        const targetFile = path.join(rootDir, relPath);
+        if (fs.existsSync(targetFile)) {
+          fs.unlinkSync(targetFile);
+        }
+      } catch (delErr) {
+        console.error(`[Rollback Delete Error on ${relPath}]:`, delErr);
+      }
+    }
+    throw new Error(`Update extraction failed: ${extractErr?.message || extractErr}. Automatic rollback restored previous system state from snapshot.`);
   }
+
+  // Persist newly installed version dynamically
+  setInstalledVersion(inspection.newVersion);
 
   // Log audit
   await logAudit({

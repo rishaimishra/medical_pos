@@ -19,6 +19,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (auth.session.role !== "admin") {
+      return NextResponse.json(
+        { success: false, error: "Forbidden: Superadmin access required for JSON migration." },
+        { status: 403 }
+      );
+    }
+
     const contentType = req.headers.get("content-type") || "";
     let payload: any = null;
 
