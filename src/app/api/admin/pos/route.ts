@@ -1,29 +1,143 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma, runInTransaction } from "@/lib/db-transaction";
+import { verifyAdminRequest } from "@/lib/auth";
+import { canAccessBranch } from "@/lib/rbac";
+import { logAudit, getClientIp } from "@/lib/audit";
 
-export async function POST(request: Request) {
+// ─────────────────────────────────────────────────────────────────────────────
+// GET: POS Bootstrapping Data (Settings, Discounts, Today's Metrics)
+// ─────────────────────────────────────────────────────────────────────────────
+export async function GET(req: NextRequest) {
+  const auth = await verifyAdminRequest(req);
+  if (!auth.authorized || !auth.session) {
+    return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const branchParam = searchParams.get("branchId");
+  const requestedBranchId = branchParam && branchParam !== "all" ? parseInt(branchParam, 10) : null;
+  const targetBranchId = auth.session.branchId ? auth.session.branchId : requestedBranchId;
+
+  if (targetBranchId && !canAccessBranch(auth.session, targetBranchId)) {
+    return NextResponse.json(
+      { success: false, message: "Unauthorized branch access" },
+      { status: 403 }
+    );
+  }
+
   try {
-    const body = await request.json();
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const branchFilter = targetBranchId ? { branchId: targetBranchId } : {};
+
+    const [settings, branch, discounts, todaySales] = await Promise.all([
+      prisma.settings.findFirst({ orderBy: { id: "asc" } }),
+      targetBranchId
+        ? prisma.branch.findUnique({
+            where: { id: targetBranchId },
+            select: { id: true, code: true, name: true, phone: true, address: true, gstNo: true, dlNo: true },
+          })
+        : null,
+      prisma.discount.findMany({
+        where: { active: true },
+        orderBy: { value: "asc" },
+      }),
+      prisma.sale.findMany({
+        where: {
+          saleDate: { gte: todayStart },
+          ...branchFilter,
+        },
+        select: { grandTotal: true },
+      }),
+    ]);
+
+    const todayCount = todaySales.length;
+    const todayRevenue = todaySales.reduce((acc, s) => acc + Number(s.grandTotal || 0), 0);
+
+    return NextResponse.json({
+      success: true,
+      store: {
+        name: branch?.name || settings?.storeName || "DRxStore Pharmacy",
+        address: branch?.address || settings?.storeAddress || "",
+        phone: branch?.phone || settings?.storePhone || "",
+        dlNo: branch?.dlNo || settings?.storeDl || "",
+        gstNo: branch?.gstNo || settings?.storeGst || "",
+        email: settings?.storeEmail || "",
+        currency: settings?.currency || "₹",
+        upiId: "drxstore@upi",
+      },
+      branch,
+      discounts: discounts.map((d) => ({
+        id: d.id,
+        name: d.name,
+        type: d.type,
+        value: Number(d.value),
+        minAmount: Number(d.minAmount),
+      })),
+      todayMetrics: {
+        salesCount: todayCount,
+        totalRevenue: todayRevenue,
+      },
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, message: error?.message || "Failed to load POS settings" },
+      { status: 500 }
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST: Atomic POS Sale Finalization
+// ─────────────────────────────────────────────────────────────────────────────
+export async function POST(req: NextRequest | Request) {
+  const auth = await verifyAdminRequest(req as any);
+  if (!auth.authorized || !auth.session) {
+    return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
+  }
+
+  const currentUserId = auth.session.userId;
+
+  try {
+    const body = await req.json();
     const {
       customerId,
       paymentMethod = "cash",
       items,
       discountAmount = 0,
+      discountId,
+      branchId,
+      upiRef,
+      chequeNo,
+      chequeBank,
+      chequeDate,
       doctorName,
       doctorRegNo,
     } = body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
-        { error: "Cart items are required for checkout" },
+        { success: false, error: "Cart items are required for checkout" },
         { status: 400 }
       );
     }
 
+    // Multi-Branch Security & IDOR Isolation Check (Module 2.1.3)
+    const requestedBranchId = branchId ? parseInt(branchId, 10) : null;
+    if (requestedBranchId !== null && !canAccessBranch(auth.session, requestedBranchId)) {
+      return NextResponse.json(
+        { success: false, error: "Security Violation: You are not authorized to bill from this store branch" },
+        { status: 403 }
+      );
+    }
+
+    const effectiveBranchId = auth.session.branchId ? auth.session.branchId : requestedBranchId;
+
     const custId = customerId ? parseInt(customerId, 10) : null;
     if (paymentMethod === "credit" && !custId) {
       return NextResponse.json(
-        { error: "Customer selection is required for Credit / Baki Khata sales" },
+        { success: false, error: "Customer selection is required for Credit / Baki Khata sales" },
         { status: 400 }
       );
     }
@@ -48,10 +162,9 @@ export async function POST(request: Request) {
     const saleResult = await runInTransaction(async (tx) => {
       let subtotal = 0;
       let totalGst = 0;
-
-      // 1. Re-validate each item and prepare line items
       const preparedLines = [];
 
+      // 1. Validate each batch, stock and expiry atomically
       for (const item of items) {
         const batch = await tx.batch.findUnique({
           where: { id: item.batchId },
@@ -62,9 +175,15 @@ export async function POST(request: Request) {
           throw new Error(`Batch ID ${item.batchId} not found`);
         }
 
-        if (new Date(batch.expiryDate) < new Date()) {
+        if (effectiveBranchId && batch.branchId && batch.branchId !== effectiveBranchId) {
+          throw new Error(`Batch ${batch.batchNo} does not belong to the active store branch`);
+        }
+
+        const now = new Date();
+        const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        if (new Date(batch.expiryDate) <= todayMidnight) {
           throw new Error(
-            `Safety Violation: Cannot sell expired drug batch ${batch.batchNo}`
+            `Safety Violation: Cannot sell expired drug batch ${batch.batchNo} (Expired: ${new Date(batch.expiryDate).toLocaleDateString()})`
           );
         }
 
@@ -97,7 +216,7 @@ export async function POST(request: Request) {
           data: {
             batchId: batch.id,
             medicineId: batch.medicineId,
-            branchId: batch.branchId || null,
+            branchId: batch.branchId || effectiveBranchId || null,
             type: "sale",
             quantity: -item.quantity,
             reason: `Sale: ${invoiceNo}`,
@@ -120,7 +239,7 @@ export async function POST(request: Request) {
 
       const grandTotal = Math.max(0, subtotal - Number(discountAmount));
 
-      // Enforce Baki Khata Credit Limit (Module 1.13.3)
+      // 2. Enforce Baki Khata Credit Limit
       if (paymentMethod === "credit" && custId) {
         const cust = await tx.customer.findUnique({
           where: { id: custId },
@@ -136,7 +255,9 @@ export async function POST(request: Request) {
 
         const creditLimit = Number(cust.creditLimit);
         if (creditLimit <= 0) {
-          throw new Error(`Customer '${cust.name}' has no approved credit limit. Credit billing cannot proceed.`);
+          throw new Error(
+            `Customer '${cust.name}' has no approved credit limit. Credit billing cannot proceed.`
+          );
         }
 
         const totalCreditSales = cust.sales.reduce((sum, s) => sum + Number(s.grandTotal), 0);
@@ -145,37 +266,60 @@ export async function POST(request: Request) {
 
         if (currentDue + grandTotal > creditLimit) {
           throw new Error(
-            `Credit limit exceeded for ${cust.name}: Approved limit is ₹${creditLimit.toFixed(2)}, current due is ₹${currentDue.toFixed(2)}. Adding ₹${grandTotal.toFixed(2)} exceeds limit.`
+            `Credit limit exceeded for ${cust.name}: Approved limit is ₹${creditLimit.toFixed(2)}, current outstanding due is ₹${currentDue.toFixed(2)}. This sale of ₹${grandTotal.toFixed(2)} exceeds limit.`
           );
         }
       }
 
-      // 2. Create Sale header & line items
+      // 3. Create Sale header
       const newSale = await tx.sale.create({
         data: {
           invoiceNo,
-          customerId: customerId ? parseInt(customerId, 10) : null,
+          customerId: custId,
+          saleDate: new Date(),
           totalAmount: subtotal,
           gstAmount: totalGst,
-          discountAmount,
+          discountAmount: Number(discountAmount),
+          discountId: discountId ? parseInt(discountId, 10) : null,
           grandTotal,
           paymentMethod,
-          doctorName,
-          doctorRegNo,
+          upiRef: paymentMethod === "upi" ? upiRef : null,
+          chequeNo: paymentMethod === "cheque" ? chequeNo : null,
+          chequeBank: paymentMethod === "cheque" ? chequeBank : null,
+          chequeDate: paymentMethod === "cheque" && chequeDate ? new Date(chequeDate) : null,
+          doctorName: doctorName || null,
+          doctorRegNo: doctorRegNo || null,
+          createdBy: currentUserId,
+          branchId: effectiveBranchId,
           items: {
             create: preparedLines,
           },
         },
         include: {
-          items: true,
+          items: {
+            include: {
+              medicine: {
+                select: { id: true, name: true, genericName: true, company: true, hsnCode: true },
+              },
+              batch: {
+                select: { id: true, batchNo: true, expiryDate: true },
+              },
+            },
+          },
+          customer: {
+            select: { id: true, name: true, phone: true, email: true, address: true },
+          },
+          branch: {
+            select: { id: true, name: true, code: true, address: true, phone: true, gstNo: true, dlNo: true },
+          },
         },
       });
 
-      // 3. Write customer_purchase_log if registered customer
-      if (customerId) {
+      // 4. Write customer purchase log if registered customer
+      if (custId) {
         await tx.customerPurchaseLog.create({
           data: {
-            customerId: parseInt(customerId, 10),
+            customerId: custId,
             saleId: newSale.id,
             amount: grandTotal,
             date: new Date(),
@@ -186,15 +330,30 @@ export async function POST(request: Request) {
       return newSale;
     });
 
+    // Audit log
+    await logAudit({
+      action: "INVOICE_CREATED",
+      entity: "Sale",
+      entityId: saleResult.id,
+      userId: currentUserId,
+      branchId: effectiveBranchId || undefined,
+      ipAddress: getClientIp(req as any),
+      details: {
+        invoiceNo: saleResult.invoiceNo,
+        grandTotal: saleResult.grandTotal,
+        paymentMethod,
+        itemsCount: items.length,
+      },
+    });
+
     return NextResponse.json({
       success: true,
       sale: saleResult,
     });
   } catch (error: any) {
     return NextResponse.json(
-      { error: error?.message || "Transaction failed and rolled back" },
+      { success: false, error: error?.message || "Checkout failed and rolled back" },
       { status: 400 }
     );
   }
 }
-

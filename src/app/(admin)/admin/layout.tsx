@@ -23,11 +23,20 @@ import {
   Power,
   Store,
   Loader2,
+  Menu,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
 } from "lucide-react";
 import { useBranchStore } from "@/stores/useBranchStore";
 import { useCartStore } from "@/stores/useCartStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { getVisibleMenuItems } from "@/lib/menu-registry";
+import { ToastProvider } from "@/components/ui/ToastProvider";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { toast } from "@/stores/useToastStore";
+import { confirmAction } from "@/stores/useConfirmStore";
 
 const INACTIVITY_TIMEOUT_MS = 120 * 60 * 1000; // 2 hours (120 mins) auto-lock
 
@@ -60,6 +69,41 @@ export default function AdminLayout({
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Mobile menu & notifications state (Module 2.1.3)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Close mobile drawer on route navigation
+  useEffect(() => {
+    setMobileMenuOpen(false);
+    setNotificationsOpen(false);
+  }, [pathname]);
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch("/api/admin/notifications", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.notifications)) {
+          setNotifications(data.notifications);
+          setUnreadCount(data.totalCount || 0);
+        }
+      }
+    } catch {
+      // ignore network errors in polling
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchNotifications();
+      const interval = setInterval(fetchNotifications, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
 
   // 1. Check session & setup status on mount
   useEffect(() => {
@@ -155,26 +199,31 @@ export default function AdminLayout({
     );
   }
 
-  const handleBranchSwitch = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleBranchSwitch = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const nextBranchId = Number(e.target.value);
     if (!nextBranchId || nextBranchId === activeBranch?.id) return;
 
     if (!canSwitchBranch) {
-      window.alert(
+      toast.warning(
         `Your account (${user?.username}) does not have permission to switch branches. You are restricted to your assigned store.`
       );
       return;
     }
 
     if (cartItems.length > 0) {
-      const confirmed = window.confirm(
-        `You have ${cartItems.length} medicine(s) in your billing cart. Switching to another store branch will clear the current cart. Do you want to continue?`
-      );
+      const confirmed = await confirmAction({
+        title: "Switch Active Store Branch?",
+        message: `You have ${cartItems.length} medicine(s) in your billing cart. Switching to another store branch will clear the current cart. Do you want to continue?`,
+        confirmText: "Clear Cart & Switch",
+        cancelText: "Keep Cart",
+        type: "warning",
+      });
       if (!confirmed) return;
       clearCart();
     }
 
     setActiveBranch(nextBranchId);
+    toast.info("Active store branch updated.");
   };
 
   const handleUnlockSubmit = async (e: React.FormEvent) => {
@@ -292,8 +341,8 @@ export default function AdminLayout({
         </div>
       )}
 
-      {/* Left Vertical Curved Sidebar (Matching Screenshot 3 - Deep Slate-Teal #1F4E5B) */}
-      <aside className="w-60 bg-[#1F4E5B] text-white flex flex-col shrink-0 h-screen select-none sticky top-0 z-30">
+      {/* Desktop Left Vertical Curved Sidebar (Deep Slate-Teal #1F4E5B) */}
+      <aside className="hidden lg:flex w-60 bg-[#1F4E5B] text-white flex-col shrink-0 h-screen select-none sticky top-0 z-30">
         {/* User Profile Avatar & Info at Top */}
         <div className="pt-6 pb-4 px-4 flex flex-col items-center text-center shrink-0">
           <div className="w-16 h-16 rounded-full p-1 border-2 border-white/60 shadow-md flex items-center justify-center">
@@ -312,7 +361,7 @@ export default function AdminLayout({
           </span>
         </div>
 
-        {/* Curved Pill Navigation Links (Scrollable if too many tabs) */}
+        {/* Curved Pill Navigation Links */}
         <nav className="flex-1 overflow-y-auto space-y-1 pl-4 pr-1 py-1.5 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.2)_transparent]">
           {menuItems.map((item) => {
             const Icon = item.icon;
@@ -347,7 +396,7 @@ export default function AdminLayout({
           })}
         </nav>
 
-        {/* Bottom Logout Button (Always pinned and visible) */}
+        {/* Bottom Logout Button */}
         <div className="p-4 border-t border-white/10 shrink-0 bg-[#1F4E5B]">
           <button
             type="button"
@@ -360,27 +409,119 @@ export default function AdminLayout({
         </div>
       </aside>
 
-      {/* Main Right Canvas (#EAF2F4) - Scrolls independently */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
-        {/* Top Welcome & Search Bar (Matching Screenshot 3) */}
-        <header className="px-6 pt-5 pb-3 flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight">
-            Welcome {(user.name || user.username).split(" ")[0]} !
-          </h1>
+      {/* Mobile Drawer Sidebar + Backdrop Overlay (Module 2.1.3) */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs animate-fadeIn"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <aside className="fixed inset-y-0 left-0 w-72 bg-[#1F4E5B] text-white flex flex-col z-50 shadow-2xl animate-scaleUp">
+            <div className="p-4 flex items-center justify-between border-b border-white/10">
+              <span className="text-xs font-bold text-white uppercase tracking-wider">Store Menu</span>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+            <div className="pt-4 pb-3 px-4 flex flex-col items-center text-center shrink-0 border-b border-white/10">
+              <div className="w-14 h-14 rounded-full p-1 border-2 border-white/60 flex items-center justify-center">
+                <div className="w-full h-full rounded-full bg-[#EAF2F4] text-[#1F4E5B] flex items-center justify-center text-base font-extrabold">
+                  {userInitials}
+                </div>
+              </div>
+              <h2 className="mt-2 text-sm font-extrabold text-white truncate max-w-[220px]">
+                {user.name || user.username}
+              </h2>
+              <span className="mt-1 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/15 text-emerald-200">
+                {user.role}
+              </span>
+            </div>
+
+            <nav className="flex-1 overflow-y-auto space-y-1 p-3 [scrollbar-width:thin]">
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const isActive =
+                  pathname === item.href ||
+                  (item.href !== "/admin/dashboard" && pathname?.startsWith(item.href));
+                return (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      isActive
+                        ? "bg-[#EAF2F4] text-[#1F4E5B] shadow-xs"
+                        : "text-white/85 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </div>
+                    {item.badge && (
+                      <span
+                        className={`text-[9px] px-1.5 py-0.5 rounded-full font-extrabold ${
+                          isActive ? "bg-[#1F4E5B] text-white" : "bg-white/15 text-emerald-200"
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <div className="p-4 border-t border-white/10 shrink-0 bg-[#1F4E5B]">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-white/90 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <Power className="w-4 h-4 text-rose-300" />
+                <span>Logout</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* Main Right Canvas (#EAF2F4) */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        {/* Top Welcome & Search Bar */}
+        <header className="px-4 sm:px-6 pt-5 pb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="lg:hidden p-2 rounded-xl bg-white border border-slate-300 text-slate-700 hover:text-[#1F4E5B] shadow-2xs cursor-pointer"
+              title="Open Navigation Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-800 tracking-tight">
+              Welcome {(user.name || user.username).split(" ")[0]} !
+            </h1>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
             {/* Search Pill */}
-            <div className="flex items-center bg-white border border-slate-300 rounded-full overflow-hidden shadow-2xs w-60 sm:w-72">
+            <div className="flex items-center bg-white border border-slate-300 rounded-full overflow-hidden shadow-2xs w-48 sm:w-64">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search"
-                className="flex-1 bg-transparent px-4 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                className="flex-1 bg-transparent px-3.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none"
               />
               <button
                 type="button"
-                className="bg-[#D5E3E8] hover:bg-[#c2d6dd] text-[#1F4E5B] px-3.5 py-2 flex items-center justify-center transition-colors cursor-pointer"
+                className="bg-[#D5E3E8] hover:bg-[#c2d6dd] text-[#1F4E5B] px-3 py-2 flex items-center justify-center transition-colors cursor-pointer"
               >
                 <Search className="w-3.5 h-3.5" />
               </button>
@@ -416,7 +557,7 @@ export default function AdminLayout({
                 </div>
               ))}
 
-            {/* Toggle / Lock Pill (Matching Screenshot 3 top-right toggle) */}
+            {/* Toggle / Lock Pill */}
             <button
               type="button"
               onClick={() => lockScreen("manual_header_button")}
@@ -427,20 +568,97 @@ export default function AdminLayout({
               <Lock className="w-3.5 h-3.5" />
             </button>
 
-            {/* Notification Bell */}
-            <button
-              type="button"
-              className="relative p-2 rounded-full bg-white border border-slate-200 text-slate-700 hover:text-[#1F4E5B] shadow-2xs cursor-pointer"
-              title="Store Alerts"
-            >
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500" />
-            </button>
+            {/* Notification Bell Dropdown (Module 2.1.3) */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                className="relative p-2 rounded-full bg-white border border-slate-200 text-slate-700 hover:text-[#1F4E5B] shadow-2xs cursor-pointer transition-colors"
+                title="Store Alerts"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold flex items-center justify-center animate-pulse">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setNotificationsOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-slate-200 rounded-3xl shadow-2xl z-50 p-4 space-y-3 animate-scaleUp">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <Bell className="w-4 h-4 text-[#1F4E5B]" />
+                        <h3 className="text-xs font-extrabold text-slate-900">
+                          Store Notifications
+                        </h3>
+                        {unreadCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-extrabold">
+                            {unreadCount} New
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNotifications([]);
+                          setUnreadCount(0);
+                        }}
+                        className="text-[11px] font-bold text-slate-500 hover:text-[#1F4E5B] transition-colors cursor-pointer"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+
+                    <div className="max-h-72 overflow-y-auto space-y-2 [scrollbar-width:thin]">
+                      {notifications.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-slate-400">
+                          No new alerts. All systems normal.
+                        </div>
+                      ) : (
+                        notifications.map((notif) => (
+                          <Link
+                            key={notif.id}
+                            href={notif.href}
+                            onClick={() => setNotificationsOpen(false)}
+                            className="flex items-start gap-2.5 p-2.5 rounded-2xl hover:bg-slate-50 border border-slate-100 transition-colors block"
+                          >
+                            <div
+                              className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                                notif.severity === "danger"
+                                  ? "bg-rose-500"
+                                  : notif.severity === "warning"
+                                  ? "bg-amber-500"
+                                  : "bg-cyan-500"
+                              }`}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-xs font-bold text-slate-800 leading-tight">
+                                {notif.title}
+                              </h4>
+                              <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                                {notif.message}
+                              </p>
+                            </div>
+                            <ExternalLink className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                          </Link>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 px-6 pb-8 pt-2">
+        <main className="flex-1 px-4 sm:px-6 pb-8 pt-2">
           {!pageAllowed ? (
             <div className="max-w-xl mx-auto mt-12 bg-white border border-rose-200 rounded-3xl p-8 text-center space-y-4 shadow-sm">
               <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center mx-auto">
@@ -472,6 +690,10 @@ export default function AdminLayout({
           )}
         </main>
       </div>
+
+      {/* Global Shared Providers (Module 2.1.2) */}
+      <ToastProvider />
+      <ConfirmDialog />
     </div>
   );
 }

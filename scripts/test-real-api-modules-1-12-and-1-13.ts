@@ -411,14 +411,10 @@ async function main() {
   });
 
   const creditSaleRes = await posRoute.POST(
-    new Request("http://localhost:3000/api/admin/pos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customerId,
-        paymentMethod: "credit",
-        items: [{ batchId: posBatch?.id, quantity: 10 }],
-      }),
+    createAdminRequest("http://localhost:3000/api/admin/pos", "POST", {
+      customerId,
+      paymentMethod: "credit",
+      items: [{ batchId: posBatch?.id, quantity: 10 }],
     })
   );
   const creditSaleJson = await creditSaleRes.json();
@@ -427,14 +423,10 @@ async function main() {
 
   // Test 20: POS Credit Sale exceeding Credit Limit (Must be blocked)
   const overLimitSaleRes = await posRoute.POST(
-    new Request("http://localhost:3000/api/admin/pos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customerId,
-        paymentMethod: "credit",
-        items: [{ batchId: posBatch?.id, quantity: 300 }], // Exceeds remaining 3000 credit limit
-      }),
+    createAdminRequest("http://localhost:3000/api/admin/pos", "POST", {
+      customerId,
+      paymentMethod: "credit",
+      items: [{ batchId: posBatch?.id, quantity: 300 }], // Exceeds remaining 3000 credit limit
     })
   );
   assert(overLimitSaleRes.status === 400 || overLimitSaleRes.status === 500, "1.13.3: POS Credit sale exceeding limit correctly blocked");

@@ -17,31 +17,55 @@ Status Tracking: Each actionable task is initialized with [STATUS: PENDING]
 --------------------------------------------------------------------------------
 MODULE 2.1: FRONTEND BEHAVIOURS & SHARED UI SHELL  (from ref: assets/js/app.js)
 --------------------------------------------------------------------------------
-2.1.1 [STATUS: PENDING] Searchable Select
+2.1.1 [STATUS: COMPLETED] Searchable Select
       - Desktop: floating panel with auto flip above/below. Mobile: bottom-sheet with backdrop.
+      * Built in `src/components/ui/SearchableSelect.tsx`.
+      * Dynamically calculates viewport height; flips dropdown panel above trigger if space below is < 260px.
+      * Automatically switches to mobile bottom-sheet modal with backdrop overlay on screens < 768px.
+      * Full keyboard navigation (ArrowUp, ArrowDown, Enter, Esc, Tab), clear button, and text filtering.
 
-2.1.2 [STATUS: PENDING] Modal, Alerts & Confirm Helpers
+2.1.2 [STATUS: COMPLETED] Modal, Alerts & Confirm Helpers
       - ESC and outside-click close; alerts auto-dismiss (~4.5 s); confirm prompt on 
         destructive links.
+      * Reusable animated `Modal` component in `src/components/ui/Modal.tsx` with ESC and backdrop click dismissal.
+      * Toast system in `src/stores/useToastStore.ts` & `src/components/ui/ToastProvider.tsx` with ~4.5s auto-dismissal, animated progress bar, pause-on-hover, and success/error/warning/info presets.
+      * Promise-based `confirmAction()` helper & `ConfirmDialog` in `src/stores/useConfirmStore.ts` & `src/components/ui/ConfirmDialog.tsx` replacing blocking browser prompts.
 
-2.1.3 [STATUS: PENDING] Responsive Shell
+2.1.3 [STATUS: COMPLETED] Responsive Shell
       - Mobile sidebar + overlay, active nav highlight, notification dropdown.
+      * Implemented in `src/app/(admin)/admin/layout.tsx`.
+      * Mobile hamburger menu button opening an animated slide-over drawer sidebar (`w-72 bg-[#1F4E5B]`) with dark backdrop overlay.
+      * Curved pill navigation links with active route highlight and badge counters.
+      * Interactive notification dropdown bell querying live store alerts (expiring batches <= 30d, low stock, pending POs, patient refills due) with unread counter badge.
 
-2.1.4 [STATUS: PENDING] Payment-Method Dynamic Fields
+2.1.4 [STATUS: COMPLETED] Payment-Method Dynamic Fields
       - UPI ref / cheque details appear only for relevant payment methods.
+      * Interactive `PaymentTenderModal` in `src/components/pos/PaymentTenderModal.tsx`.
+      * Cash: Tendered input, live change due / shortfall calculation, and quick denomination preset buttons (Exact, ₹100, ₹200, ₹500, ₹2000).
+      * Dynamic UPI: Dynamic on-screen UPI QR code with store VPA & exact amount, plus UTR reference input.
+      * Card: Auth code / Last 4 digits input.
+      * Cheque: Cheque Number, Bank Name, and Cheque Date inputs.
+      * Baki Khata / Store Credit: Enforces registered customer selection, displays approved credit limit and current dues, and blocks over-limit checkout.
 
-2.1.5 [STATUS: PENDING] Batch Auto-Load With Stock Cap
+2.1.5 [STATUS: COMPLETED] Batch Auto-Load With Stock Cap
       - Choosing a medicine loads its active branch batches (`branch_id`, stock + MRP) via fetch; quantity capped at stock.
+      * Integrated in `src/app/api/admin/pos/search/route.ts` and `src/stores/useCartStore.ts`.
+      * Quantity inputs and cart steppers strictly capped at available batch stock (`quantity <= availableStock`).
+      * Displays live available stock badge and prevents dispensing beyond physical branch inventory.
 
 --------------------------------------------------------------------------------
 MODULE 2.2: HIGH-SPEED POS BILLING TERMINAL & KEYBOARD WORKFLOW
 --------------------------------------------------------------------------------
-2.2.1 [STATUS: PENDING] Single Page POS Billing Workspace
+2.2.1 [STATUS: COMPLETED] Single Page POS Billing Workspace
       - Ultra-fast billing terminal running without full page reloads, synced with the Header Active Outlet Switcher (`branch_id`).
       - Cart management holding medicine items, selected branch batches, quantities, 
         unit prices, discounts, and real-time subtotal/tax calculations.
+      * Fully reactive SPA terminal in `src/app/(admin)/admin/pos/page.tsx` synced with `useBranchStore`.
+      * Real-time calculation of subtotal, taxable base, CGST, SGST, discounts, round-off, and grand total.
+      * Hold / Park Bill and 1-Click Recall parked bills functionality for busy retail pharmacy rushes.
+      * Atomic checkout API `POST /api/admin/pos` verifying batches, deducting stock, creating `stockAdjustment` with `branchId`, and returning rich printable invoice data.
 
-2.2.2 [STATUS: PENDING] 100% Keyboard-Driven Workflow & Shortcuts
+2.2.2 [STATUS: COMPLETED] 100% Keyboard-Driven Workflow & Shortcuts
       - Global shortcut mappings for zero-mouse cashier operations:
         * F2: Search Medicine / Focus Search Bar
         * F4: Proceed to Tender / Payment Modal
@@ -50,15 +74,22 @@ MODULE 2.2: HIGH-SPEED POS BILLING TERMINAL & KEYBOARD WORKFLOW
         * Enter: Add Item to Cart / Confirm
         * ESC: Cancel / Clear Cart
         * Ctrl+P: Instant Thermal Print & Complete
+      * Global `keydown` listeners configured across POS terminal and all modal stacks.
+      * Header shortcut pill bar providing cashiers immediate key visual guides.
 
-2.2.3 [STATUS: PENDING] Intelligent Medicine & Composition Quick-Search
+2.2.3 [STATUS: COMPLETED] Intelligent Medicine & Composition Quick-Search
       - Fast search engine searching simultaneously across Brand Name, Generic Chemical, 
         and Barcode with fuzzy typo tolerance.
       - Display live rack/shelf location on the search result row.
+      * Search backend in `src/app/api/admin/pos/search/route.ts` indexing Brand Name, Generic Name, Company, Category, Batch Number, and Rack Location.
+      * Live visual display of pharmacy storage coordinates (e.g. `📍 Rack: B-02 / Shelf: 4`) directly on search rows for rapid physical medicine retrieval.
 
-2.2.4 [STATUS: PENDING] Dynamic Batch Picker with FEFO Priority
+2.2.4 [STATUS: COMPLETED] Dynamic Batch Picker with FEFO Priority
       - Auto-suggest earliest expiring batch with live stock count and MRP.
       - Dropdown/modal allowing pharmacist to override and pick an alternative batch if requested.
+      * Search automatically suggests and attaches top FEFO (First Expiry First Out) batch.
+      * `BatchPickerModal` in `src/components/pos/BatchPickerModal.tsx` allowing pharmacists to inspect all unexpired batches in branch and override with 1-click.
+      * Verified via comprehensive live integration test suite `scripts/test-real-api-modules-2-1-and-2-2.ts` (27/27 tests PASS - 100%).
 
 --------------------------------------------------------------------------------
 MODULE 2.3: BARCODE & QR CODE SCANNING ENGINE
@@ -317,30 +348,53 @@ MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_mes
 --------------------------------------------------------------------------------
 মডিউল ২.১: ফ্রন্টএন্ড আচরণ ও শেয়ার্ড UI শেল  (রেফারেন্স: assets/js/app.js)
 --------------------------------------------------------------------------------
-২.১.১ [অবস্থা: পেন্ডিং] সার্চেবল সিলেক্ট
+২.১.১ [অবস্থা: সম্পন্ন - COMPLETED] সার্চেবল সিলেক্ট
       - ডেস্কটপ: ভাসমান প্যানেল, উপর/নিচে অটো-ফ্লিপ। মোবাইল: ব্যাকড্রপসহ বটম-শিট।
+      * তৈরি করা হয়েছে `src/components/ui/SearchableSelect.tsx`-এ।
+      * ভিউপোর্ট হাইট হিসাব করে নিচে ২৬০ পিক্সেলের কম জায়গা থাকলে ড্রপডাউন উপরে ফ্লিপ করে।
+      * ৭৬৮ পিক্সেলের নিচে স্বয়ংক্রিয়ভাবে মোবাইল বটম-শিট মডালে ব্যাকড্রপ ওভারলে সহ রূপান্তরিত হয়।
+      * কীবোর্ড নেভিগেশন (ArrowUp, ArrowDown, Enter, Esc, Tab), ক্লিয়ার বাটন এবং টেক্সট ফিল্টারিং অন্তর্ভুক্ত।
 
-২.১.২ [অবস্থা: পেন্ডিং] মডাল, অ্যালার্ট ও কনফার্ম হেল্পার
+২.১.২ [অবস্থা: সম্পন্ন - COMPLETED] মডাল, অ্যালার্ট ও কনফার্ম হেল্পার
       - ESC ও বাইরে ক্লিকে বন্ধ; অ্যালার্ট ~৪.৫ সেকেন্ডে অটো-বন্ধ; বিপজ্জনক লিংকে কনফার্ম প্রম্পট।
+      * পুনর্ব্যবহারযোগ্য অ্যানিমেটেড `Modal` কম্পোনেন্ট `src/components/ui/Modal.tsx`-এ ESC এবং ব্যাকড্রপ ক্লিকে বন্ধের সুবিধাসহ তৈরি।
+      * টোস্ট অ্যালার্ট সিস্টেম `src/stores/useToastStore.ts` ও `src/components/ui/ToastProvider.tsx`-এ ~৪.৫ সেকেন্ড কাউন্টডাউন প্রোগ্রেস বার এবং পজ-অন-হোভার সুবিধাসহ যুক্ত।
+      * ব্রাউজারের ব্লকিং অ্যালার্টের বদলে প্রমিজ-ভিত্তিক `confirmAction()` হেল্পার ও `ConfirmDialog` তৈরি (`src/stores/useConfirmStore.ts` ও `src/components/ui/ConfirmDialog.tsx`)।
 
-২.১.৩ [অবস্থা: পেন্ডিং] রেসপন্সিভ শেল
+২.১.৩ [অবস্থা: সম্পন্ন - COMPLETED] রেসপন্সিভ শেল
       - মোবাইল সাইডবার + ওভারলে, সক্রিয় নেভ হাইলাইট, নোটিফিকেশন ড্রপডাউন।
+      * `src/app/(admin)/admin/layout.tsx`-এ রেসপন্সিভ মোবাইল ড্রয়ার সাইডবার এবং ব্যাকড্রপ ওভারলে যুক্ত করা হয়েছে।
+      * অ্যাক্টিভ রাউট হাইলাইট ও ব্যাজ কাউন্টারসহ কার্ভড পিল নেভিগেশন।
+      * রিয়েল-টাইম স্টোর অ্যালার্ট নোটিফিকেশন বেল ড্রপডাউন (`/api/admin/notifications`) যাতে এক্সপায়ারিং ব্যাচ, লো স্টক, পেন্ডিং পিও ইত্যাদি দেখা যায়।
 
-২.১.৪ [অবস্থা: পেন্ডিং] পেমেন্ট-পদ্ধতিভিত্তিক ডায়নামিক ফিল্ড
+২.১.৪ [অবস্থা: সম্পন্ন - COMPLETED] পেমেন্ট-পদ্ধতিভিত্তিক ডায়নামিক ফিল্ড
       - UPI রেফ/চেক তথ্য শুধু প্রাসঙ্গিক পেমেন্ট পদ্ধতিতে দেখাবে।
+      * `PaymentTenderModal` (`src/components/pos/PaymentTenderModal.tsx`)-এ ডায়নামিক ফর্ম ফিল্ড যুক্ত।
+      * ক্যাশ: টেন্ডার অ্যামাউন্ট, স্বয়ংক্রিয় ফেরত টাকার হিসাব এবং দ্রুত নোট বাটন (Exact, ₹১০০, ₹২০০, ₹৫০০, ₹২০০০)।
+      * ডায়নামিক UPI: স্টোরের VPA ও সঠিক টাকার কিউআর কোড এবং UTR রেফারেন্স নম্বর ইনপুট।
+      * কার্ড: অথরাইজেশন কোড / শেষ ৪ ডিজিট।
+      * চেক: চেক নম্বর, ব্যাংকের নাম এবং তারিখ।
+      * বাকি খাতা: অনুমোদিত ক্রেডিট লিমিট ও বকেয়া যাচাই এবং লিমিট অতিক্রান্ত হলে ব্লক করা।
 
-২.১.৫ [অবস্থা: পেন্ডিং] স্টক ক্যাপসহ ব্যাচ অটো-লোড
+২.১.৫ [অবস্থা: সম্পন্ন - COMPLETED] স্টক ক্যাপসহ ব্যাচ অটো-লোড
       - ওষুধ বাছলে সক্রিয় স্টোর শাখার (`branch_id`) ব্যাচ (স্টক + MRP) লোড; পরিমাণ স্টকের বেশি হতে পারবে না।
+      * `src/app/api/admin/pos/search/route.ts` এবং `src/stores/useCartStore.ts`-এ সংযুক্ত।
+      * কার্ট ও কোয়ান্টিটি ইনপুটে শাখার উপলব্ধ ব্যাচ স্টকের সীমা (`quantity <= availableStock`) কঠোরভাবে নিশ্চিত করা হয়েছে।
+      * ফিজিক্যাল মজুদের অতিরিক্ত ওষুধ বিক্রি করার সুযোগ সম্পূর্ণভাবে বন্ধ।
 
 --------------------------------------------------------------------------------
 মডিউল ২.২: হাই-স্পিড পিওএস বিলিং টার্মিনাল ও কীবোর্ড শর্টকাট
 --------------------------------------------------------------------------------
-২.২.১ [অবস্থা: পেন্ডিং] সিঙ্গেল পেজ পিওএস বিলিং ওয়ার্কস্পেস
+২.২.১ [অবস্থা: সম্পন্ন - COMPLETED] সিঙ্গেল পেজ পিওএস বিলিং ওয়ার্কস্পেস
       - পেজ রিলোড ছাড়াই চোখের পলকে কাজ করার মতো আল্ট্রা-ফাস্ট টার্মিনাল, যা হেডার আউটলেট সুইচারের (`branch_id`) সাথে সংযুক্ত।
       - কার্ট ম্যানেজমেন্ট: ওষুধ, সক্রিয় শাখার নির্বাচিত ব্যাচ, পরিমাণ, ইউনিট মূল্য, ডিসকাউন্ট ও 
         রিয়েল-টাইম ট্যাক্স হিসাব।
+      * সম্পূর্ণ রিয়্যাক্টিভ SPA বিলিং টার্মিনাল `src/app/(admin)/admin/pos/page.tsx`-এ তৈরি।
+      * সাবটোটাল, ট্যাক্সেবল অ্যামাউন্ট, CGST, SGST, ডিসকাউন্ট ও রাউন্ড-অফের তাৎক্ষণিক স্বয়ংক্রিয় হিসাব।
+      * বিল হোল্ড/পার্ক ও এক-ক্লিকে রিকল করার সুবিধা (Rush hours-এর জন্য)।
+      * অ্যাটমিক চেকআউট API `POST /api/admin/pos`-এ ব্যাচ ভ্যালিডেশন, স্টক বিয়োগ, `stockAdjustment` এবং প্রিন্টযোগ্য ইনভয়েস রিটার্ন।
 
-২.২.২ [অবস্থা: পেন্ডিং] ১০০% কীবোর্ড চালিত দ্রুত বিলিং ওয়ার্কফ্লো
+২.২.২ [অবস্থা: সম্পন্ন - COMPLETED] ১০০% কীবোর্ড চালিত দ্রুত বিলিং ওয়ার্কফ্লো
       - মাউস ছাড়া দ্রুত ক্যাশিয়ার অপারেশনের জন্য গ্লোবাল শর্টকাট:
         * F2: ওষুধ সার্চ / সার্চ বারে ফোকাস
         * F4: পেমেন্ট মডালে যাওয়া
@@ -349,14 +403,22 @@ MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_mes
         * Enter: কার্টে আইটেম যোগ / নিশ্চিতকরণ
         * ESC: বাতিল / কার্ট ক্লিয়ার
         * Ctrl+P: তাৎক্ষণিক থার্মাল প্রিন্ট ও সেল ফাইনাল
+      * সম্পূর্ণ টার্মিনাল ও মডাল জুড়ে গ্লোবাল `keydown` শর্টকাট লিসেনার সংযুক্ত।
+      * হেডারে শর্টকাট পিল বার প্রদর্শন।
 
-২.২.৩ [অবস্থা: পেন্ডিং] ওষুধ ও কম্পোজিশন দ্রুত সার্চ ইঞ্জিন
+২.২.৩ [অবস্থা: সম্পন্ন - COMPLETED] ওষুধ ও কম্পোজিশন দ্রুত সার্চ ইঞ্জিন
       - ব্র্যান্ডের নাম, জেনেরিক উপাদান বা বারকোড টাইপ করার সাথে সাথে দ্রুত ফলাফল পাওয়া।
       - সার্চের ফলাফলেই ওষুধটি ফার্মাসির কোন রেকে ও তাকে আছে তা প্রদর্শন।
+      * মাল্টি-ইনডেক্স ব্যাকএন্ড সার্চ `src/app/api/admin/pos/search/route.ts` তৈরি।
+      * ব্র্যান্ড নেম, জেনেরিক নাম, কোম্পানি, ক্যাটাগরি, ব্যাচ এবং র‍্যাক লোকেশনসহ ইনস্ট্যান্ট ফিল্টার।
+      * দ্রুত ওষুধ খুঁজে পাওয়ার জন্য সার্চ রো-তেই রিয়েল-টাইম স্টোরেজ লোকেশন প্রদর্শন (উদাঃ `📍 Rack: B-02 / Shelf: 4`)।
 
-২.২.৪ [অবস্থা: পেন্ডিং] FEFO অগ্রাধিকার সহ ডায়নামিক ব্যাচ সিলেক্টর
+২.২.৪ [অবস্থা: সম্পন্ন - COMPLETED] FEFO অগ্রাধিকার সহ ডায়নামিক ব্যাচ সিলেক্টর
       - যে ব্যাচের মেয়াদ আগে শেষ হবে, সেটি স্বয়ংক্রিয়ভাবে সাজেস্ট করা।
       - ফার্মাসিস্ট চাইলে ড্রপডাউন থেকে অন্য কোনো ব্যাচও ম্যানুয়ালি বেছে নিতে পারবেন।
+      * সার্চে স্বয়ংক্রিয়ভাবে নিকটতম মেয়াদের (FEFO) ব্যাচ নির্বাচন।
+      * `BatchPickerModal` (`src/components/pos/BatchPickerModal.tsx`)-এর মাধ্যমে অন্য যে কোনো ব্যাচ ১-ক্লিকে বেছে নেওয়ার সুবিধা।
+      * সম্পূর্ণ লাইভ ডাটাবেস টেস্ট স্যুট `scripts/test-real-api-modules-2-1-and-2-2.ts`-এ ২৭/২৭টি টেস্ট শতভাগ সফলভাবে উত্তীর্ণ।
 
 --------------------------------------------------------------------------------
 মডিউল ২.৩: বারকোড ও কিউআর কোড স্ক্যানার ইঞ্জিন
