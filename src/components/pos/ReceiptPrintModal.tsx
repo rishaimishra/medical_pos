@@ -38,6 +38,11 @@ export function ReceiptPrintModal({
   const cgstAmount = gstAmount / 2;
   const sgstAmount = gstAmount / 2;
 
+  const isSplit = saleData.paymentMethod === "split";
+  const splits = saleData.splitPayments;
+  const cashTendered = Number(saleData.cashTendered || 0);
+  const changeDue = Number(saleData.changeDue || 0);
+
   return (
     <Modal
       isOpen={isOpen}
@@ -155,12 +160,65 @@ export function ReceiptPrintModal({
             </div>
           </div>
 
-          {/* Payment Info */}
-          <div className="py-2 border-b border-dashed border-slate-400 space-y-0.5 text-[10px]">
+          {/* Payment Info (Module 2.5.1 & 2.6.3) */}
+          <div className="py-2 border-b border-dashed border-slate-400 space-y-1 text-[10px]">
             <div className="flex justify-between font-bold">
               <span>Payment Mode:</span>
-              <span className="uppercase">{saleData.paymentMethod || "CASH"}</span>
+              <span className="uppercase">{isSplit ? "SPLIT (MULTI-TENDER)" : saleData.paymentMethod || "CASH"}</span>
             </div>
+
+            {/* Split breakdown rows */}
+            {isSplit && splits && (
+              <div className="pl-2 space-y-0.5 border-l-2 border-slate-300 text-slate-700">
+                {splits.cash > 0 && (
+                  <div className="flex justify-between">
+                    <span>• Cash:</span>
+                    <span>₹{Number(splits.cash).toFixed(2)}</span>
+                  </div>
+                )}
+                {splits.upi > 0 && (
+                  <div className="flex justify-between">
+                    <span>• UPI:</span>
+                    <span>₹{Number(splits.upi).toFixed(2)}</span>
+                  </div>
+                )}
+                {splits.card > 0 && (
+                  <div className="flex justify-between">
+                    <span>• Card:</span>
+                    <span>₹{Number(splits.card).toFixed(2)}</span>
+                  </div>
+                )}
+                {splits.cheque > 0 && (
+                  <div className="flex justify-between">
+                    <span>• Cheque:</span>
+                    <span>₹{Number(splits.cheque).toFixed(2)}</span>
+                  </div>
+                )}
+                {splits.credit > 0 && (
+                  <div className="flex justify-between">
+                    <span>• Store Credit:</span>
+                    <span>₹{Number(splits.credit).toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Cash change info */}
+            {cashTendered > 0 && (
+              <>
+                <div className="flex justify-between text-slate-600">
+                  <span>Cash Tendered:</span>
+                  <span>₹{cashTendered.toFixed(2)}</span>
+                </div>
+                {changeDue > 0 && (
+                  <div className="flex justify-between font-bold text-emerald-800">
+                    <span>Change Returned:</span>
+                    <span>₹{changeDue.toFixed(2)}</span>
+                  </div>
+                )}
+              </>
+            )}
+
             {saleData.upiRef && (
               <div className="flex justify-between">
                 <span>UPI Ref / UTR:</span>
@@ -232,4 +290,3 @@ export function ReceiptPrintModal({
     </Modal>
   );
 }
-

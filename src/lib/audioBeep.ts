@@ -8,7 +8,9 @@ let audioCtx: AudioContext | null = null;
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
   if (!audioCtx) {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (AudioContextClass) {
       audioCtx = new AudioContextClass();
     }
@@ -56,7 +58,7 @@ export function playScanErrorBeep(): void {
     if (!ctx) return;
 
     const now = ctx.currentTime;
-    
+
     // Tone 1
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
@@ -80,6 +82,46 @@ export function playScanErrorBeep(): void {
     gain2.connect(ctx.destination);
     osc2.start(now + 0.12);
     osc2.stop(now + 0.22);
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * MODULE 2.5.2: Synthesizes a mechanical cash register drawer latch & bell sound.
+ */
+export function playCashDrawerSound(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+
+    // 1. Bell ring (Ka-ching tone)
+    const bell = ctx.createOscillator();
+    const bellGain = ctx.createGain();
+    bell.type = "sine";
+    bell.frequency.setValueAtTime(1760, now); // A6
+    bell.frequency.exponentialRampToValueAtTime(2637, now + 0.05); // E7
+    bellGain.gain.setValueAtTime(0.2, now);
+    bellGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    bell.connect(bellGain);
+    bellGain.connect(ctx.destination);
+    bell.start(now);
+    bell.stop(now + 0.35);
+
+    // 2. Mechanical drawer slide click
+    const click = ctx.createOscillator();
+    const clickGain = ctx.createGain();
+    click.type = "triangle";
+    click.frequency.setValueAtTime(300, now + 0.04);
+    click.frequency.exponentialRampToValueAtTime(80, now + 0.15);
+    clickGain.gain.setValueAtTime(0.25, now + 0.04);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    click.connect(clickGain);
+    clickGain.connect(ctx.destination);
+    click.start(now + 0.04);
+    click.stop(now + 0.15);
   } catch {
     // Ignore
   }

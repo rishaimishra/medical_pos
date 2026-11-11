@@ -26,6 +26,7 @@ import {
   Barcode,
   Scan,
   Zap,
+  Banknote,
 } from "lucide-react";
 import { useCartStore, CartItem } from "@/stores/useCartStore";
 import { useBranchStore } from "@/stores/useBranchStore";
@@ -42,6 +43,7 @@ import { BarcodePrintModal } from "@/components/pos/BarcodePrintModal";
 import { ItemDiscountModal } from "@/components/pos/ItemDiscountModal";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanSuccessBeep, playScanErrorBeep } from "@/lib/audioBeep";
+import { triggerCashDrawerKick } from "@/lib/cashDrawer";
 import { Modal } from "@/components/ui/Modal";
 
 export default function POSBillingPage() {
@@ -309,6 +311,14 @@ export default function POSBillingPage() {
         return;
       }
 
+      // F10: Electronic Cash Drawer Kick (Module 2.5.2)
+      if (e.key === "F10") {
+        e.preventDefault();
+        triggerCashDrawerKick({ silent: false, recordAudit: true, reason: "POS F10 Shortcut Kick" });
+        toast.success("Cash drawer kick pulse sent (F10)!");
+        return;
+      }
+
       // Ctrl+P / Cmd+P: Instant Thermal Print & Complete
       if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
         e.preventDefault();
@@ -452,6 +462,11 @@ export default function POSBillingPage() {
           <span>Discount</span>
           <span className="text-slate-300">•</span>
           <span className="text-[#1F4E5B] font-extrabold bg-[#EAF2F4] px-1.5 py-0.5 rounded">
+            F10
+          </span>
+          <span>Drawer</span>
+          <span className="text-slate-300">•</span>
+          <span className="text-[#1F4E5B] font-extrabold bg-[#EAF2F4] px-1.5 py-0.5 rounded">
             Ctrl+P
           </span>
           <span>Print</span>
@@ -489,6 +504,19 @@ export default function POSBillingPage() {
           >
             <Barcode className="w-3.5 h-3.5 text-slate-600" />
             <span>Print Labels</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              await triggerCashDrawerKick({ silent: false, recordAudit: true, reason: "POS Header Action Kick" });
+              toast.success("Electronic cash drawer opened (F10)!");
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold hover:bg-amber-100 transition-colors cursor-pointer"
+            title="Electronic Cash Drawer Kick (F10)"
+          >
+            <Banknote className="w-3.5 h-3.5 text-amber-700" />
+            <span>Open Drawer</span>
           </button>
         </div>
 

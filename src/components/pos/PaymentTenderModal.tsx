@@ -9,14 +9,17 @@ import {
   FileCheck2,
   Users,
   AlertTriangle,
-  CheckCircle2,
   Stethoscope,
   ArrowRight,
   ShieldAlert,
+  Layers,
+  Sparkles,
+  HelpCircle,
 } from "lucide-react";
 import { useCartStore } from "@/stores/useCartStore";
 import { useBranchStore } from "@/stores/useBranchStore";
 import { toast } from "@/stores/useToastStore";
+import { triggerCashDrawerKick } from "@/lib/cashDrawer";
 
 interface PaymentTenderModalProps {
   isOpen: boolean;
@@ -60,47 +63,122 @@ export function PaymentTenderModal({
   const subtotal = getSubtotal();
   const totalGst = getTotalGst();
 
-  // Local state for dynamic inputs
+  // Single tender local states
   const [localTendered, setLocalTendered] = useState<string>(
     tenderedAmount > 0 ? String(tenderedAmount) : String(Math.ceil(grandTotal))
   );
   const [localUpiRef, setLocalUpiRef] = useState(upiRef);
+  const [localCardAuth, setLocalCardAuth] = useState("");
+  const [localCardLast4, setLocalCardLast4] = useState("");
   const [localChequeNo, setLocalChequeNo] = useState(chequeNo);
   const [localChequeBank, setLocalChequeBank] = useState(chequeBank);
   const [localChequeDate, setLocalChequeDate] = useState(chequeDate);
   const [localDoctorName, setLocalDoctorName] = useState(doctorName);
   const [localDoctorRegNo, setLocalDoctorRegNo] = useState(doctorRegNo);
 
+  // Multi-tender split local states (Module 2.5.1)
+  const [splitCash, setSplitCash] = useState<string>("");
+  const [splitCashTendered, setSplitCashTendered] = useState<string>("");
+  const [splitUpi, setSplitUpi] = useState<string>("");
+  const [splitCard, setSplitCard] = useState<string>("");
+  const [splitCheque, setSplitCheque] = useState<string>("");
+  const [splitCredit, setSplitCredit] = useState<string>("");
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sync state on open
+  // Reset and sync state on modal open
   useEffect(() => {
     if (isOpen) {
       setLocalTendered(String(Math.ceil(grandTotal)));
       setTenderedAmount(Math.ceil(grandTotal));
       setError(null);
+
+      // Default split allocations to zero/empty
+      setSplitCash(String(Math.ceil(grandTotal)));
+      setSplitCashTendered(String(Math.ceil(grandTotal)));
+      setSplitUpi("");
+      setSplitCard("");
+      setSplitCheque("");
+      setSplitCredit("");
     }
   }, [isOpen, grandTotal, setTenderedAmount]);
 
-  const numTendered = parseFloat(localTendered) || 0;
-  const changeDue = Math.max(0, numTendered - grandTotal);
-  const cashShortfall = Math.max(0, grandTotal - numTendered);
+  // Single cash calculations
+  const numSingleTendered = parseFloat(localTendered) || 0;
+  const singleChangeDue = Math.max(0, numSingleTendered - grandTotal);
+  const singleCashShortfall = Math.max(0, grandTotal - numSingleTendered);
 
-  // Credit limit calculations
+  // Split tender calculations
+  const numSplitCash = parseFloat(splitCash) || 0;
+  const numSplitCashTendered = parseFloat(splitCashTendered) || numSplitCash;
+  const numSplitUpi = parseFloat(splitUpi) || 0;
+  const numSplitCard = parseFloat(splitCard) || 0;
+  const numSplitCheque = parseFloat(splitCheque) || 0;
+  const numSplitCredit = parseFloat(splitCredit) || 0;
+
+  const totalSplitAllocated =
+    numSplitCash + numSplitUpi + numSplitCard + numSplitCheque + numSplitCredit;
+  const splitUnallocated = Math.max(0, Math.round((grandTotal - totalSplitAllocated) * 100) / 100);
+  const splitOverAllocated = Math.max(0, Math.round((totalSplitAllocated - grandTotal) * 100) / 100);
+  const splitCashChangeDue = Math.max(0, numSplitCashTendered - numSplitCash);
+
+  // Customer Baki Khata credit calculations
   const creditLimit = customer ? Number(customer.creditLimit || 0) : 0;
   const currentDue = customer ? Number(customer.currentDue || 0) : 0;
   const availableCredit = Math.max(0, creditLimit - currentDue);
-  const isCreditOverLimit = paymentMethod === "credit" && currentDue + grandTotal > creditLimit;
 
-  // Has schedule H or H1 drugs in cart
+  const isCreditOverLimit =
+    (paymentMethod === "credit" && currentDue + grandTotal > creditLimit) ||
+    (paymentMethod === "split" && numSplitCredit > 0 && currentDue + numSplitCredit > creditLimit);
+
+  // Schedule H / H1 drug check
   const hasScheduleDrugs = items.some(
     (item: any) => item.scheduleType === "schedule_h" || item.scheduleType === "schedule_h1"
   );
 
   const handleCashPreset = (amount: number) => {
-    setLocalTendered(String(amount));
-    setTenderedAmount(amount);
+    if (paymentMethod === "cash") {
+      setLocalTendered(String(amount));
+      setTenderedAmount(amount);
+    } else if (paymentMethod === "split") {
+      setSplitCashTendered(String(amount));
+    }
+  };
+
+  const allocateRemainingTo = (tenderType: "cash" | "upi" | "card" | "cheque" | "credit") => {
+    const currentTenderVal =
+      tenderType === "cash"
+        ? numSplitCash
+        : tenderType === "upi"
+        ? numSplitUpi
+        : tenderType === "card"
+        ? numSplitCard
+        : tenderType === "cheque"
+        ? numSplitCheque
+        : numSplitCredit;
+
+    const newTarget = Math.max(0, currentTenderVal + splitUnallocated);
+    const rounded = Math.round(newTarget * 100) / 100;
+
+    if (tenderType === "cash") {
+      setSplitCash(rounded > 0 ? String(rounded) : "");
+      setSplitCashTendered(rounded > 0 ? String(Math.ceil(rounded)) : "");
+    } else if (tenderType === "upi") {
+      setSplitUpi(rounded > 0 ? String(rounded) : "");
+    } else if (tenderType === "card") {
+      setSplitCard(rounded > 0 ? String(rounded) : "");
+    } else if (tenderType === "cheque") {
+      setSplitCheque(rounded > 0 ? String(rounded) : "");
+    } else if (tenderType === "credit") {
+      setSplitCredit(rounded > 0 ? String(rounded) : "");
+    }
+  };
+
+  // Manual cash drawer kick button handler (Module 2.5.2)
+  const handleManualDrawerKick = async () => {
+    await triggerCashDrawerKick({ silent: false, recordAudit: true, reason: "Manual Kick from POS Modal" });
+    toast.success("Cash drawer pulse sent and chime triggered!");
   };
 
   const handleFinalize = async (e: React.FormEvent) => {
@@ -112,9 +190,28 @@ export function PaymentTenderModal({
       return;
     }
 
-    if (paymentMethod === "cash" && numTendered < grandTotal) {
-      setError(`Cash tendered (₹${numTendered.toFixed(2)}) is less than bill amount (₹${grandTotal.toFixed(2)}).`);
+    if (paymentMethod === "cash" && numSingleTendered < grandTotal) {
+      setError(`Cash tendered (₹${numSingleTendered.toFixed(2)}) is less than bill amount (₹${grandTotal.toFixed(2)}).`);
       return;
+    }
+
+    if (paymentMethod === "split") {
+      if (totalSplitAllocated < grandTotal - 0.01) {
+        setError(
+          `Split allocation total (₹${totalSplitAllocated.toFixed(2)}) is less than bill amount (₹${grandTotal.toFixed(2)}). Please allocate remaining ₹${splitUnallocated.toFixed(2)}.`
+        );
+        return;
+      }
+
+      if (numSplitCredit > 0 && !customer) {
+        setError("A registered customer is required to allocate Store Credit (Baki Khata).");
+        return;
+      }
+
+      if (numSplitCheque > 0 && (!localChequeNo.trim() || !localChequeBank.trim())) {
+        setError("Cheque Number and Bank Name are required for cheque split tender.");
+        return;
+      }
     }
 
     if (paymentMethod === "credit") {
@@ -128,7 +225,7 @@ export function PaymentTenderModal({
       }
       if (isCreditOverLimit) {
         setError(
-          `Credit limit exceeded: ${customer.name}'s approved limit is ₹${creditLimit.toFixed(2)}, current outstanding due is ₹${currentDue.toFixed(2)}. Adding ₹${grandTotal.toFixed(2)} exceeds limit.`
+          `Credit limit exceeded: ${customer.name}'s approved limit is ₹${creditLimit.toFixed(2)}, current outstanding due is ₹${currentDue.toFixed(2)}.`
         );
         return;
       }
@@ -142,7 +239,6 @@ export function PaymentTenderModal({
     setSubmitting(true);
 
     try {
-      // Sync store details
       setPaymentDetails({
         upiRef: localUpiRef.trim(),
         chequeNo: localChequeNo.trim(),
@@ -151,22 +247,42 @@ export function PaymentTenderModal({
       });
       setDoctor(localDoctorName.trim(), localDoctorRegNo.trim());
 
-      const payload = {
+      const payload: any = {
         customerId: customer?.id || null,
         paymentMethod,
         branchId: activeBranch?.id || null,
         items: items.map((i) => ({
           batchId: i.batchId,
           quantity: i.quantity,
+          discountAmount: i.discountAmount,
+          discountPercent: i.discountPercent,
+          managerApprovedBy: i.managerApprovedBy,
         })),
         discountAmount,
-        upiRef: paymentMethod === "upi" ? localUpiRef.trim() : null,
-        chequeNo: paymentMethod === "cheque" ? localChequeNo.trim() : null,
-        chequeBank: paymentMethod === "cheque" ? localChequeBank.trim() : null,
-        chequeDate: paymentMethod === "cheque" ? localChequeDate : null,
         doctorName: localDoctorName.trim() || null,
         doctorRegNo: localDoctorRegNo.trim() || null,
       };
+
+      if (paymentMethod === "split") {
+        payload.splitPayments = {
+          cash: numSplitCash,
+          cashTendered: numSplitCashTendered,
+          upi: numSplitUpi,
+          card: numSplitCard,
+          cheque: numSplitCheque,
+          credit: numSplitCredit,
+        };
+        payload.upiRef = numSplitUpi > 0 ? localUpiRef.trim() : null;
+        payload.chequeNo = numSplitCheque > 0 ? localChequeNo.trim() : null;
+        payload.chequeBank = numSplitCheque > 0 ? localChequeBank.trim() : null;
+        payload.chequeDate = numSplitCheque > 0 ? localChequeDate : null;
+      } else {
+        payload.cashTendered = paymentMethod === "cash" ? numSingleTendered : undefined;
+        payload.upiRef = paymentMethod === "upi" ? localUpiRef.trim() : null;
+        payload.chequeNo = paymentMethod === "cheque" ? localChequeNo.trim() : null;
+        payload.chequeBank = paymentMethod === "cheque" ? localChequeBank.trim() : null;
+        payload.chequeDate = paymentMethod === "cheque" ? localChequeDate : null;
+      }
 
       const res = await fetch("/api/admin/pos", {
         method: "POST",
@@ -177,6 +293,19 @@ export function PaymentTenderModal({
       const json = await res.json();
 
       if (json.success && json.sale) {
+        // MODULE 2.5.2: Electronic Cash Drawer Kick Trigger
+        const involvesCash =
+          paymentMethod === "cash" ||
+          (paymentMethod === "split" && numSplitCash > 0) ||
+          json.kickCashDrawer;
+
+        if (involvesCash) {
+          triggerCashDrawerKick({
+            silent: false,
+            reason: `Sale ${json.sale.invoiceNo} Tender Finalized`,
+          }).catch(() => {});
+        }
+
         toast.success(`Sale completed! Invoice: ${json.sale.invoiceNo}`);
         onSaleCompleted(json.sale);
         onClose();
@@ -192,11 +321,12 @@ export function PaymentTenderModal({
 
   if (!isOpen) return null;
 
-  // Generate dynamic UPI URI: upi://pay?pa=VPA&pn=DRxStore&am=TOTAL&cu=INR
+  // Dynamic UPI payment URL for single or split UPI
+  const dynamicUpiAmount = paymentMethod === "split" ? (numSplitUpi > 0 ? numSplitUpi : grandTotal) : grandTotal;
   const upiPayUri = `upi://pay?pa=${encodeURIComponent(storeUpiId)}&pn=${encodeURIComponent(
     activeBranch?.name || "DRxStore Pharmacy"
-  )}&am=${grandTotal.toFixed(2)}&cu=INR`;
-  const upiQrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+  )}&am=${dynamicUpiAmount.toFixed(2)}&cu=INR`;
+  const upiQrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
     upiPayUri
   )}`;
 
@@ -254,26 +384,40 @@ export function PaymentTenderModal({
               <button
                 type="button"
                 onClick={onOpenCustomerModal}
-                className="text-[11px] text-emerald-300 underline font-semibold hover:text-white"
+                className="text-[11px] text-emerald-300 underline font-semibold hover:text-white cursor-pointer"
               >
                 Attach Patient (F7)
               </button>
             )}
+
+            {/* Quick manual cash drawer kick button */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleManualDrawerKick}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-teal-800/60 hover:bg-teal-700/80 border border-teal-500/40 text-[10px] font-bold text-teal-100 transition-colors cursor-pointer"
+                title="Test hardware cash drawer solenoid pulse"
+              >
+                <Sparkles className="w-3 h-3 text-amber-300" />
+                <span>Test Drawer Kick</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Payment Method Selector Tabs */}
+        {/* Payment Method Selector Tabs (Module 2.5.1) */}
         <div className="space-y-1.5">
           <label className="block text-xs font-bold text-slate-700">
-            Select Payment Method
+            Select Payment Tender Mode
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
             {[
               { id: "cash", label: "Cash", icon: Banknote },
               { id: "upi", label: "Dynamic UPI", icon: QrCode },
               { id: "card", label: "Card / POS", icon: CreditCard },
               { id: "cheque", label: "Cheque", icon: FileCheck2 },
               { id: "credit", label: "Baki Khata", icon: Users },
+              { id: "split", label: "Split Multi-Tender", icon: Layers, highlight: true },
             ].map((method) => {
               const Icon = method.icon;
               const isSelected = paymentMethod === method.id;
@@ -285,21 +429,300 @@ export function PaymentTenderModal({
                     setPaymentMethod(method.id as any);
                     setError(null);
                   }}
-                  className={`py-3 px-2 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 ${
+                  className={`py-2.5 px-2 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 ${
                     isSelected
                       ? "bg-teal-50 border-[#1F4E5B] text-[#1F4E5B] font-extrabold shadow-2xs ring-2 ring-[#1F4E5B]/20"
+                      : method.highlight
+                      ? "bg-indigo-50/60 border-indigo-200 hover:bg-indigo-50 text-indigo-900 font-semibold"
                       : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700 font-medium"
                   }`}
                 >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span className="text-xs">{method.label}</span>
+                  <Icon className={`w-4 h-4 shrink-0 ${method.highlight && !isSelected ? "text-indigo-600" : ""}`} />
+                  <span className="text-xs leading-none">{method.label}</span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Dynamic Payment Fields (Module 2.1.4) */}
+        {/* ───────────────────────────────────────────────────────────── */}
+        {/* MULTI-TENDER SPLIT PAYMENT MODE (MODULE 2.5.1) */}
+        {/* ───────────────────────────────────────────────────────────── */}
+        {paymentMethod === "split" && (
+          <div className="p-4 rounded-3xl bg-slate-50 border border-slate-200 space-y-3.5 animate-fadeIn">
+            {/* Live Split Tender Allocation Status Bar */}
+            <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-2xs grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Due</span>
+                <span className="text-base font-black text-slate-900">₹{grandTotal.toFixed(2)}</span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Allocated</span>
+                <span className="text-base font-black text-[#1F4E5B]">₹{totalSplitAllocated.toFixed(2)}</span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Remaining</span>
+                <span className={`text-base font-black ${splitUnallocated > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                  ₹{splitUnallocated.toFixed(2)}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Change Return</span>
+                <span className="text-base font-black text-emerald-700">₹{splitCashChangeDue.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Split Tender Inputs Grid */}
+            <div className="space-y-2.5">
+              {/* Split 1: Cash */}
+              <div className="p-3 bg-white rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 w-32 shrink-0">
+                  <Banknote className="w-4 h-4 text-emerald-600" />
+                  <span className="text-xs font-bold text-slate-800">Cash Amount</span>
+                </div>
+                <div className="flex items-center gap-2 flex-1 max-w-xs">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="0.00"
+                      value={splitCash}
+                      onChange={(e) => setSplitCash(e.target.value)}
+                      className="w-full pl-6 pr-2 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1F4E5B]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => allocateRemainingTo("cash")}
+                    disabled={splitUnallocated <= 0}
+                    className="px-2 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[10px] font-bold text-slate-700 shrink-0 cursor-pointer disabled:opacity-40"
+                    title="Fill remaining balance into cash"
+                  >
+                    + Remaining
+                  </button>
+                </div>
+                {/* Cash Tendered & Change info */}
+                {numSplitCash > 0 && (
+                  <div className="w-full pt-1 flex items-center justify-end gap-3 text-xs border-t border-slate-100 text-slate-600">
+                    <span>Cash Handed:</span>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={splitCashTendered}
+                      onChange={(e) => setSplitCashTendered(e.target.value)}
+                      placeholder={splitCash}
+                      className="w-24 px-2 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-900"
+                    />
+                    <span>Change: <strong className="text-emerald-700">₹{splitCashChangeDue.toFixed(2)}</strong></span>
+                  </div>
+                )}
+              </div>
+
+              {/* Split 2: Dynamic UPI */}
+              <div className="p-3 bg-white rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 w-32 shrink-0">
+                  <QrCode className="w-4 h-4 text-teal-600" />
+                  <span className="text-xs font-bold text-slate-800">Dynamic UPI</span>
+                </div>
+                <div className="flex items-center gap-2 flex-1 max-w-xs">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="0.00"
+                      value={splitUpi}
+                      onChange={(e) => setSplitUpi(e.target.value)}
+                      className="w-full pl-6 pr-2 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1F4E5B]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => allocateRemainingTo("upi")}
+                    disabled={splitUnallocated <= 0}
+                    className="px-2 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[10px] font-bold text-slate-700 shrink-0 cursor-pointer disabled:opacity-40"
+                  >
+                    + Remaining
+                  </button>
+                </div>
+                {numSplitUpi > 0 && (
+                  <div className="w-full pt-2 flex items-center gap-4 border-t border-slate-100">
+                    <div className="w-16 h-16 shrink-0 bg-white border border-slate-200 p-1 rounded-xl">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={upiQrImageUrl} alt="UPI QR" className="w-full h-full object-contain" />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <span className="text-[11px] font-bold text-slate-700">
+                        Scan to pay ₹{numSplitUpi.toFixed(2)} ({storeUpiId})
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="UTR / UPI Ref (Optional)"
+                        value={localUpiRef}
+                        onChange={(e) => setLocalUpiRef(e.target.value)}
+                        className="w-full max-w-xs px-2.5 py-1 text-[11px] rounded-lg border border-slate-300"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Split 3: Card / POS */}
+              <div className="p-3 bg-white rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 w-32 shrink-0">
+                  <CreditCard className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs font-bold text-slate-800">Card / POS</span>
+                </div>
+                <div className="flex items-center gap-2 flex-1 max-w-xs">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="0.00"
+                      value={splitCard}
+                      onChange={(e) => setSplitCard(e.target.value)}
+                      className="w-full pl-6 pr-2 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1F4E5B]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => allocateRemainingTo("card")}
+                    disabled={splitUnallocated <= 0}
+                    className="px-2 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[10px] font-bold text-slate-700 shrink-0 cursor-pointer disabled:opacity-40"
+                  >
+                    + Remaining
+                  </button>
+                </div>
+                {numSplitCard > 0 && (
+                  <div className="w-full pt-1 flex items-center gap-3 border-t border-slate-100 text-xs">
+                    <input
+                      type="text"
+                      placeholder="Auth Code (Optional)"
+                      value={localCardAuth}
+                      onChange={(e) => setLocalCardAuth(e.target.value)}
+                      className="w-32 px-2 py-1 rounded-lg border border-slate-300 text-xs"
+                    />
+                    <input
+                      type="text"
+                      maxLength={4}
+                      placeholder="Last 4 Digits"
+                      value={localCardLast4}
+                      onChange={(e) => setLocalCardLast4(e.target.value)}
+                      className="w-28 px-2 py-1 rounded-lg border border-slate-300 text-xs"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Split 4: Cheque */}
+              <div className="p-3 bg-white rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 w-32 shrink-0">
+                  <FileCheck2 className="w-4 h-4 text-amber-600" />
+                  <span className="text-xs font-bold text-slate-800">Cheque</span>
+                </div>
+                <div className="flex items-center gap-2 flex-1 max-w-xs">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="0.00"
+                      value={splitCheque}
+                      onChange={(e) => setSplitCheque(e.target.value)}
+                      className="w-full pl-6 pr-2 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1F4E5B]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => allocateRemainingTo("cheque")}
+                    disabled={splitUnallocated <= 0}
+                    className="px-2 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[10px] font-bold text-slate-700 shrink-0 cursor-pointer disabled:opacity-40"
+                  >
+                    + Remaining
+                  </button>
+                </div>
+                {numSplitCheque > 0 && (
+                  <div className="w-full pt-1 grid grid-cols-1 sm:grid-cols-3 gap-2 border-t border-slate-100 text-xs">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Cheque No *"
+                      value={localChequeNo}
+                      onChange={(e) => setLocalChequeNo(e.target.value)}
+                      className="px-2 py-1 rounded-lg border border-slate-300 text-xs"
+                    />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Bank Name *"
+                      value={localChequeBank}
+                      onChange={(e) => setLocalChequeBank(e.target.value)}
+                      className="px-2 py-1 rounded-lg border border-slate-300 text-xs"
+                    />
+                    <input
+                      type="date"
+                      value={localChequeDate}
+                      onChange={(e) => setLocalChequeDate(e.target.value)}
+                      className="px-2 py-1 rounded-lg border border-slate-300 text-xs"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Split 5: Store Credit (Baki Khata) */}
+              <div className="p-3 bg-white rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 w-32 shrink-0">
+                  <Users className="w-4 h-4 text-purple-600" />
+                  <span className="text-xs font-bold text-slate-800">Store Credit</span>
+                </div>
+                <div className="flex items-center gap-2 flex-1 max-w-xs">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="0.00"
+                      value={splitCredit}
+                      onChange={(e) => setSplitCredit(e.target.value)}
+                      className="w-full pl-6 pr-2 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1F4E5B]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => allocateRemainingTo("credit")}
+                    disabled={splitUnallocated <= 0}
+                    className="px-2 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[10px] font-bold text-slate-700 shrink-0 cursor-pointer disabled:opacity-40"
+                  >
+                    + Remaining
+                  </button>
+                </div>
+                {numSplitCredit > 0 && (
+                  <div className="w-full pt-1 flex items-center justify-between text-[11px] border-t border-slate-100 text-slate-600">
+                    <span>
+                      Approved Limit: <strong>₹{creditLimit.toFixed(2)}</strong> | Current Due:{" "}
+                      <strong className="text-rose-600">₹{currentDue.toFixed(2)}</strong>
+                    </span>
+                    <span className={availableCredit >= numSplitCredit ? "text-emerald-700 font-bold" : "text-rose-600 font-bold"}>
+                      Space: ₹{availableCredit.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ───────────────────────────────────────────────────────────── */}
+        {/* SINGLE TENDER MODES */}
+        {/* ───────────────────────────────────────────────────────────── */}
 
         {/* 1. CASH PAYMENT FIELDS */}
         {paymentMethod === "cash" && (
@@ -329,14 +752,14 @@ export function PaymentTenderModal({
                 </label>
                 <div
                   className={`w-full rounded-2xl px-4 py-3 border text-lg font-black flex items-center justify-between ${
-                    cashShortfall > 0
+                    singleCashShortfall > 0
                       ? "bg-rose-50 border-rose-200 text-rose-700"
                       : "bg-emerald-50 border-emerald-200 text-emerald-800"
                   }`}
                 >
-                  <span>{cashShortfall > 0 ? "Shortfall:" : "Change Due:"}</span>
+                  <span>{singleCashShortfall > 0 ? "Shortfall:" : "Change Due:"}</span>
                   <span>
-                    ₹{cashShortfall > 0 ? cashShortfall.toFixed(2) : changeDue.toFixed(2)}
+                    ₹{singleCashShortfall > 0 ? singleCashShortfall.toFixed(2) : singleChangeDue.toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -348,7 +771,7 @@ export function PaymentTenderModal({
               <button
                 type="button"
                 onClick={() => handleCashPreset(Math.ceil(grandTotal))}
-                className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold text-slate-800"
+                className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold text-slate-800 cursor-pointer"
               >
                 Exact (₹{Math.ceil(grandTotal)})
               </button>
@@ -357,7 +780,7 @@ export function PaymentTenderModal({
                   key={amt}
                   type="button"
                   onClick={() => handleCashPreset(amt)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold text-slate-800"
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold text-slate-800 cursor-pointer"
                 >
                   ₹{amt}
                 </button>
@@ -421,6 +844,8 @@ export function PaymentTenderModal({
                 <input
                   type="text"
                   placeholder="e.g. 748921"
+                  value={localCardAuth}
+                  onChange={(e) => setLocalCardAuth(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#1F4E5B]"
                 />
               </div>
@@ -432,6 +857,8 @@ export function PaymentTenderModal({
                   type="text"
                   maxLength={4}
                   placeholder="e.g. 4242"
+                  value={localCardLast4}
+                  onChange={(e) => setLocalCardLast4(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#1F4E5B]"
                 />
               </div>
@@ -497,7 +924,7 @@ export function PaymentTenderModal({
                 <button
                   type="button"
                   onClick={onOpenCustomerModal}
-                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0"
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 cursor-pointer"
                 >
                   Select Customer (F7)
                 </button>
@@ -625,4 +1052,3 @@ export function PaymentTenderModal({
     </Modal>
   );
 }
-

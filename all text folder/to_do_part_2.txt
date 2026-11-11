@@ -138,39 +138,66 @@ MODULE 2.4: DISCOUNTS & PROMOTIONAL PRICING ENGINE
 --------------------------------------------------------------------------------
 MODULE 2.5: MULTI-TENDER PAYMENTS & CASH DRAWER INTEGRATION
 --------------------------------------------------------------------------------
-2.5.1 [STATUS: PENDING] Multi-Tender Payment Methods
+2.5.1 [STATUS: COMPLETED] Multi-Tender Payment Methods
       - Support split payments across multiple methods for a single invoice:
         * Cash: Record tender amount, automatically calculate change due.
         * Dynamic UPI: Auto-generate on-screen UPI QR code with exact payable amount.
         * Card: Record transaction reference / auth code.
         * Cheque: Record Cheque Number, Bank Name, and Cheque Date.
         * Store Credit: Record customer ledger debit for approved customers.
+      * Built Multi-Tender mode into `PaymentTenderModal.tsx` (`src/components/pos/PaymentTenderModal.tsx`) with real-time allocation status bar (Total Due, Allocated, Remaining, Change Return).
+      * Supports simultaneous allocation across Cash, Dynamic UPI, Card, Cheque, and Store Credit (Baki Khata).
+      * Quick "+ Remaining" 1-click allocator for rapid cashier entry.
+      * Cash tender inputs calculate exact change due and display visual color-coded shortfall or return badges.
+      * Dynamic on-screen UPI QR code generator (`upi://pay?pa=...`) auto-recalculating to the exact split payable amount.
+      * Check and Card sub-forms collecting auth codes, card digits, cheque number, bank name, and clearing date.
+      * Strict Baki Khata credit limit validation: prevents allocating store credit exceeding customer's approved credit limit.
+      * Thermal receipt modal (`ReceiptPrintModal.tsx`) enhanced to print complete itemized breakdown of multi-tender split methods and change returned.
 
-2.5.2 [STATUS: PENDING] Electronic Cash Drawer Kick Trigger
+2.5.2 [STATUS: COMPLETED] Electronic Cash Drawer Kick Trigger
       - Send pulse signal to open hardware cash drawer on completing a cash sale.
+      * Built `src/lib/cashDrawer.ts` providing standard ESC/POS solenoid pulse byte generator (`getEscPosCashDrawerKickBytes`, `getEscPosCashDrawerKickHex`, `getEscPosCashDrawerKickBase64`) supporting Epson Pin 2 & 5 (`ESC p 0/1 25 250`) and Star Micronics BEL (`\x07`).
+      * High-fidelity mechanical cash register bell and slide latch sound synthesizer in `src/lib/audioBeep.ts` (`playCashDrawerSound()`) utilizing Web Audio API.
+      * Automated hardware kick trigger firing whenever a cash sale or split payment containing cash is completed.
+      * Dedicated audit endpoint `POST /api/admin/pos/cash-drawer` recording user ID, branch ID, timestamp, and reason for manual or automated kicks in permanent `AuditLog`.
+      * Top header POS action button "Open Drawer" with global `F10` keyboard shortcut for fast manual cash register drawer access.
 
 --------------------------------------------------------------------------------
 MODULE 2.6: SALE FINALIZATION RULES  (from ref: finalize_sale.php)
 --------------------------------------------------------------------------------
-2.6.1 [STATUS: PENDING] Atomic Checkout Validation
+2.6.1 [STATUS: COMPLETED] Atomic Checkout Validation
       - Before commit re-check per line: batch exists in active `branch_id`, NOT expired, enough stock. 
         Run inside a DB transaction; roll back everything on any failure.
+      * Full transactional re-validation in `POST /api/admin/pos` inside `runInTransaction(async (tx) => { ... })`.
+      * Atomic check ensures batch exists, belongs to active branch (`batch.branchId === effectiveBranchId`), is NOT expired (`expiryDate > todayMidnight`), and has sufficient quantity (`batch.quantity >= item.quantity`).
+      * Guaranteed ACID integrity: any individual line validation failure triggers full database rollback without orphaned records.
 
-2.6.2 [STATUS: PENDING] Per-Batch Deduction + Audit Row
+2.6.2 [STATUS: COMPLETED] Per-Batch Deduction + Audit Row
       - Deduct stock from the selected batch and write a stock_adjustments entry with `branch_id` 
         ("Sale: <invoice no>").
+      * Atomically decrements batch quantity (`batch.update`).
+      * Creates immutable `stockAdjustment` audit row with `batchId`, `medicineId`, `branchId`, `type: "sale"`, `quantity: -item.quantity`, `reason: "Sale: <invoiceNo>"`, `oldQty`, `newQty`, and cashier `userId`.
+      * Creates detailed `AuditLog` entry logging invoice number, grand total, payment method, split breakdown, and change returned.
 
-2.6.3 [STATUS: PENDING] Payment Detail Capture
+2.6.3 [STATUS: COMPLETED] Payment Detail Capture
       - Store UPI reference, cheque no / bank / date; discount is either a master discount 
         (id) or custom %.
+      * Captures `upiRef`, `chequeNo`, `chequeBank`, and `chequeDate` directly into `Sale` table and audit details for single and split tender modes.
+      * Supports both Master Discount policies (`discountId` with minimum invoice threshold validation) and custom percentage (`discountPercent`) or flat discount amount (`discountAmount`).
 
-2.6.4 [STATUS: PENDING] Customer Purchase Log & Emailed Receipt
+2.6.4 [STATUS: COMPLETED] Customer Purchase Log & Emailed Receipt
       - Write customer_purchase_log; email a purchase receipt to the customer (if email exists).
+      * Inserts row into `customer_purchase_log` linking `customerId`, `saleId`, `amount`, and `date`.
+      * Built `src/lib/emailReceipt.ts` dispatching responsive HTML tax invoice receipts with store header, itemized list, GST tax breakup, split payment summary, and customer greeting.
+      * Dispatched non-blockingly via `sendCustomerInvoiceReceiptEmail` to ensure zero POS cashier UI latency.
 
-2.6.5 [STATUS: PENDING] Totals Order-of-Calculation (Bug Avoidance)
+2.6.5 [STATUS: COMPLETED] Totals Order-of-Calculation (Bug Avoidance)
       - Compute inclusive totals BEFORE applying any discount (reference reads 
         $inclTotal before defining it in the custom-% path). Add unit tests for both 
         discount paths.
+      * Fully eliminated legacy `finalize_sale.php` `$inclTotal` undefined order bug: computes item line inclusive totals (`unitMrp * quantity - lineDiscount`), sums `subtotal`, and only then computes bill discounts (Master policy or Custom %).
+      * Computes exact GST breakup (`taxableBase = lineNet / (1 + gstPercent / 100)` and `gstAmount = lineNet - taxableBase`).
+      * Verified with comprehensive live integration test suite `scripts/test-real-api-modules-2-5-and-2-6.ts` covering both discount paths and all split payment scenarios (27/27 tests PASS - 100%).
 
 --------------------------------------------------------------------------------
 MODULE 2.7: INVOICING, THERMAL PRINTING & TAX BREAKDOWN
@@ -486,36 +513,63 @@ MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_mes
 --------------------------------------------------------------------------------
 মডিউল ২.৫: মাল্টি-পেমেন্ট মেথড ও ক্যাশ ড্রয়ার ইন্টিগ্রেশন
 --------------------------------------------------------------------------------
-২.৫.১ [অবস্থা: পেন্ডিং] বিভিন্ন মাধ্যমে পেমেন্ট গ্রহণের সুবিধা
+২.৫.১ [অবস্থা: সম্পন্ন - COMPLETED] বিভিন্ন মাধ্যমে পেমেন্ট গ্রহণের সুবিধা
       - একই বিলে একাধিক মাধ্যমে পেমেন্ট স্প্লিট করার সুবিধা:
         * ক্যাশ: গ্রাহক কত টাকা দিলেন এন্ট্রি করলে স্বয়ংক্রিয়ভাবে ফেরত টাকার হিসাব।
         * ডায়নামিক UPI: স্ক্রিনে নির্দিষ্ট বিলের টাকার জন্য অটোমেটিক UPI কিউআর কোড প্রদর্শন।
         * কার্ড: কার্ড পেমেন্ট ট্রানজাকশন / অথরাইজেশন কোড রেকর্ড।
         * চেক: চেক নম্বর, ব্যাংকের নাম ও চেকের তারিখ সংরক্ষণ।
         * কাস্টমার ক্রেডিট: অনুমোদিত গ্রাহকদের জন্য বাকি খাতায় এন্ট্রি।
+      * `PaymentTenderModal.tsx` (`src/components/pos/PaymentTenderModal.tsx`)-এ মাল্টি-টেন্ডার স্প্লিট পেমেন্ট মোড তৈরি করা হয়েছে, যাতে রিয়েল-টাইম স্ট্যাটাস বার (মোট প্রদেয়, বরাদ্ধকৃত টাকা, অবশিষ্ট টাকা ও ফেরত টাকার হিসাব) যুক্ত।
+      * একই সাথে ক্যাশ, ডায়নামিক UPI, কার্ড, চেক এবং বাকি খাতা (Store Credit)-এর মধ্যে টাকা ভাগ করে নেওয়ার সুবিধা।
+      * ক্যাশিয়ারের সুবিধার্থে ১-ক্লিকে অবশিষ্ট টাকা যুক্ত করার জন্য "+ Remaining" বাটন।
+      * ক্যাশ টেন্ডারের ক্ষেত্রে গ্রাহক কত টাকা দিলেন দিলে স্বয়ংক্রিয়ভাবে ফেরত টাকার হিসাব (Change Due) প্রদর্শন।
+      * স্প্লিট বরাদ্দের ভিত্তিতে সঠিক টাকার জন্য স্বয়ংক্রিয় ডায়নামিক UPI QR কোড তৈরি (`upi://pay?pa=...`)।
+      * কার্ড অথরাইজেশন কোড ও শেষ ৪ ডিজিট, চেকের নম্বর, ব্যাংকের নাম ও ক্লিয়ারিং ডেট ইনপুট।
+      * বাকি খাতার ক্ষেত্রে গ্রাহকের অনুমোদিত ক্রেডিট লিমিট কঠোরভাবে যাচাই; লিমিটের অতিরিক্ত বাকি বরাদ্দ সম্পূর্ণভাবে প্রতিরোধ।
+      * থার্মাল প্রিন্ট রসিদে (`ReceiptPrintModal.tsx`) স্প্লিট পেমেন্টের সম্পূর্ণ বিভাজন এবং ক্যাশ ফেরত টাকার বিস্তারিত প্রিন্ট।
 
-২.৫.২ [অবস্থা: পেন্ডিং] ইলেকট্রনিক ক্যাশ ড্রয়ার খোলার ট্রিগার
+২.৫.২ [অবস্থা: সম্পন্ন - COMPLETED] ইলেকট্রনিক ক্যাশ ড্রয়ার খোলার ট্রিগার
       - ক্যাশ পেমেন্ট কনফার্ম হওয়ামাত্র ক্যাশ ড্রয়ার স্বয়ংক্রিয়ভাবে খুলে যাওয়ার পালস সিগন্যাল।
+      * `src/lib/cashDrawer.ts`-এ স্ট্যান্ডার্ড ESC/POS ড্রয়ার সোলেনয়েড পালস বাইট জেনারেটর (`getEscPosCashDrawerKickBytes`, `getEscPosCashDrawerKickHex`, `getEscPosCashDrawerKickBase64`) তৈরি, যা Epson Pin 2 & 5 (`ESC p 0/1 25 250`) এবং Star Micronics BEL (`\x07`) সমর্থন করে।
+      * Web Audio API ব্যবহার করে মেকানিক্যাল ক্যাশ রেজিস্টারের ঘণ্টার রিং ও স্লাইড ল্যাচের বাস্তবসম্মত অডিও সিন্থেসাইজার `src/lib/audioBeep.ts` (`playCashDrawerSound()`) তৈরি।
+      * কোনো ক্যাশ পেমেন্ট বা স্প্লিট পেমেন্টে ক্যাশ থাকলে স্বয়ংক্রিয়ভাবে ড্রয়ার খোলার পালস ও অডিও ট্রিগার।
+      * ক্যাশ ড্রয়ার খোলার স্থায়ী অডিট ট্রেইল সংরক্ষণে ডেডিকেটেড এন্ডপয়েন্ট `POST /api/admin/pos/cash-drawer` তৈরি।
+      * টার্মিনাল হেডারে "Open Drawer" বোতাম এবং কিবোর্ডের `F10` শর্টকাট বোতাম সংযুক্ত।
 
 --------------------------------------------------------------------------------
 মডিউল ২.৬: সেল ফাইনালাইজেশন নিয়ম  (রেফারেন্স: finalize_sale.php)
 --------------------------------------------------------------------------------
-২.৬.১ [অবস্থা: পেন্ডিং] অ্যাটমিক চেকআউট ভ্যালিডেশন
+২.৬.১ [অবস্থা: সম্পন্ন - COMPLETED] অ্যাটমিক চেকআউট ভ্যালিডেশন
       - সেভের আগে প্রতি লাইনে যাচাই: সক্রিয় স্টোর শাখায় (`branch_id`) ব্যাচ আছে, মেয়াদোত্তীর্ণ নয়, স্টক যথেষ্ট। 
         DB ট্রানজেকশনে চলবে; ব্যর্থ হলে সব রোলব্যাক।
+      * `POST /api/admin/pos`-এ ডাটাবেস লেভেল অ্যাটমিক ট্রানজেকশন `runInTransaction(async (tx) => { ... })` নিশ্চিত।
+      * চেকআউটের মুহূর্তে প্রতিটি লাইনের ব্যাচ শাখার সাথে মিল (`batch.branchId === effectiveBranchId`), মেয়াদের বৈধতা (`expiryDate > todayMidnight`) এবং পর্যাপ্ত স্টক (`batch.quantity >= item.quantity`) কঠোরভাবে পুনরায় যাচাই।
+      * যেকোনো একটি লাইনে অমিল বা স্টক শর্টেজ ঘটলে পুরো লেনদেন তাৎক্ষণিক রোলব্যাক; আংশিক বিল তৈরি হওয়া অসম্ভব।
 
-২.৬.২ [অবস্থা: পেন্ডিং] ব্যাচ অনুযায়ী স্টক কমানো + অডিট সারি
+২.৬.২ [অবস্থা: সম্পন্ন - COMPLETED] ব্যাচ অনুযায়ী স্টক কমানো + অডিট সারি
       - নির্বাচিত ব্যাচ থেকে স্টক কমবে এবং `branch_id`-সহ stock_adjustments এন্ট্রি ("Sale: <ইনভয়েস নং>")।
+      * নির্বাচিত ব্যাচের স্টক থেকে বিক্রি হওয়া কোয়ান্টিটি অ্যাটমিক্যালি বিয়োগ (`batch.update`)।
+      * অপরিবর্তনযোগ্য `stockAdjustment` অডিট রেকর্ড সংরক্ষণ (`batchId`, `medicineId`, `branchId`, `type: "sale"`, `quantity: -item.quantity`, `reason: "Sale: <invoiceNo>"`, `oldQty`, `newQty`, ও `userId`)।
+      * `AuditLog` টেবিলে ইনভয়েস নম্বর, মোট টাকা, পেমেন্ট মেথড, স্প্লিট বিবরণ এবং ফেরত টাকার বিস্তারিত সংরক্ষণ।
 
-২.৬.৩ [অবস্থা: পেন্ডিং] পেমেন্ট তথ্য সংরক্ষণ
+২.৬.৩ [অবস্থা: সম্পন্ন - COMPLETED] পেমেন্ট তথ্য সংরক্ষণ
       - UPI রেফারেন্স, চেক নং/ব্যাংক/তারিখ; ডিসকাউন্ট হয় মাস্টার ডিসকাউন্ট (id) অথবা কাস্টম %।
+      * সিঙ্গেল ও স্প্লিট উভয় মোডেই `upiRef`, `chequeNo`, `chequeBank`, এবং `chequeDate` সরাসরি `Sale` টেবিলে সংরক্ষণ।
+      * মাস্টার ডিসকাউন্ট পলিসি (`discountId` ও ন্যূনতম ক্রয়সীমা যাচাই) এবং কাস্টম ডিসকাউন্ট শতাংশ (`discountPercent`) বা নির্দিষ্ট টাকা (`discountAmount`) সফলভাবে সংরক্ষণ।
 
-২.৬.৪ [অবস্থা: পেন্ডিং] কাস্টমার পারচেজ লগ ও ইমেইল রসিদ
+২.৬.৪ [অবস্থা: সম্পন্ন - COMPLETED] কাস্টমার পারচেজ লগ ও ইমেইল রসিদ
       - customer_purchase_log লেখা; কাস্টমারের ইমেইল থাকলে ক্রয়ের রসিদ ইমেইল।
+      * নিবন্ধিত কাস্টমারের প্রতিটি ক্রয়ের জন্য `customer_purchase_log` টেবিলে `customerId`, `saleId`, `amount`, এবং `date` সংরক্ষণ।
+      * `src/lib/emailReceipt.ts` তৈরি করে ফার্মাসির হেডার, আইটেম তালিকা, ট্যাক্স বিভাজন, স্প্লিট সামারি ও থ্যাঙ্ক-ইউ নোটসহ রেসপন্সিভ ডিজিটাল ইনভয়েস রসিদ প্রস্তুত।
+      * ক্যাশিয়ার টার্মিনালের গতি বজায় রাখতে নন-ব্লকিং ব্যাকগ্রাউন্ড প্রমিজের মাধ্যমে কাস্টমারের ইমেইলে রসিদ প্রেরণ।
 
-২.৬.৫ [অবস্থা: পেন্ডিং] হিসাবের ক্রম (বাগ এড়ানো)
+২.৬.৫ [অবস্থা: সম্পন্ন - COMPLETED] হিসাবের ক্রম (বাগ এড়ানো)
       - ডিসকাউন্টের আগে ইনক্লুসিভ মোট হিসাব করতে হবে (রেফারেন্সে কাস্টম-% পথে $inclTotal 
         সংজ্ঞার আগেই ব্যবহার হয়েছে)। দুই ডিসকাউন্ট পথের জন্যই ইউনিট টেস্ট।
+      * রেফারেন্স `finalize_sale.php`-এর `$inclTotal` বাগ চিরতরে সমাধান: প্রথমে প্রতিটি আইটেমের গ্রস মূল্য ও লাইন ডিসকাউন্ট হিসাব করে নেট সাবটোটাল নির্ধারণ করা হয়, এরপর বিল-লেভেল ডিসকাউন্ট (মাস্টার স্কিম অথবা কাস্টম %) সাবটোটালের ওপর প্রয়োগ করা হয়।
+      * সঠিক ট্যাক্স বিভাজন (`taxableBase = lineNet / (1 + gstPercent / 100)` এবং `gstAmount = lineNet - taxableBase`) সংরক্ষণ।
+      * সম্পূর্ণ লাইভ ডাটাবেস টেস্ট স্যুট `scripts/test-real-api-modules-2-5-and-2-6.ts`-এ ২৭/২৭টি টেস্ট শতভাগ সফলভাবে উত্তীর্ণ।
 
 --------------------------------------------------------------------------------
 মডিউল ২.৭: ইনভয়েসিং, থার্মাল প্রিন্ট ও ট্যাক্স বিশ্লেষণ

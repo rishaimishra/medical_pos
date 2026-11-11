@@ -3,6 +3,7 @@ import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, hasPermission } from "@/lib/rbac";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { sendCustomerInvoiceReceiptEmail } from "@/lib/emailReceipt";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET: POS Bootstrapping Data (Settings, Discounts, Today's Metrics)
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST: Atomic POS Sale Finalization
+// POST: Atomic POS Sale Finalization (MODULE 2.5 & 2.6)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest | Request) {
   const auth = await verifyAdminRequest(req as any);
@@ -104,16 +105,21 @@ export async function POST(req: NextRequest | Request) {
     const {
       customerId,
       paymentMethod = "cash",
+      splitPayments,
       items,
       discountAmount = 0,
+      discountPercent,
       discountId,
       branchId,
       upiRef,
       chequeNo,
       chequeBank,
       chequeDate,
+      cashTendered,
+      tenderedAmount,
       doctorName,
       doctorRegNo,
+      managerApprovedBy,
     } = body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -123,7 +129,7 @@ export async function POST(req: NextRequest | Request) {
       );
     }
 
-    // Multi-Branch Security & IDOR Isolation Check (Module 2.1.3)
+    // Multi-Branch Security & IDOR Isolation Check (Module 2.1.3 & 2.6.1)
     const requestedBranchId = branchId ? parseInt(branchId, 10) : null;
     if (requestedBranchId !== null && !canAccessBranch(auth.session, requestedBranchId)) {
       return NextResponse.json(
@@ -142,7 +148,7 @@ export async function POST(req: NextRequest | Request) {
       );
     }
 
-    // Generate formatted invoice number DRX-YYYY-00001
+    // Generate formatted invoice number DRX-YYYY-00001 (Module 2.13.2)
     const currentYear = new Date().getFullYear();
     const invoicePrefix = `DRX-${currentYear}-`;
     const lastSale = await prisma.sale.findFirst({
@@ -170,9 +176,9 @@ export async function POST(req: NextRequest | Request) {
       let subtotal = 0;
       let totalItemDiscounts = 0;
       let totalGst = 0;
-      const preparedLines = [];
+      const preparedLines: any[] = [];
 
-      // 1. Validate each batch, stock, expiry, and item-level discount atomically
+      // 1. MODULE 2.6.1 & 2.6.5: Validate each batch & calculate inclusive line totals BEFORE discounts
       for (const item of items) {
         const batch = await tx.batch.findUnique({
           where: { id: item.batchId },
@@ -180,7 +186,7 @@ export async function POST(req: NextRequest | Request) {
         });
 
         if (!batch) {
-          throw new Error(`Batch ID ${item.batchId} not found`);
+          throw new Error(`Batch ID ${item.batchId} not found in inventory`);
         }
 
         if (effectiveBranchId && batch.branchId && batch.branchId !== effectiveBranchId) {
@@ -226,7 +232,7 @@ export async function POST(req: NextRequest | Request) {
         totalItemDiscounts += lineDiscount;
         totalGst += gstAmount;
 
-        // Deduct batch quantity
+        // Deduct batch quantity (Module 2.6.2)
         const oldQty = batch.quantity;
         const newQty = oldQty - item.quantity;
 
@@ -235,7 +241,7 @@ export async function POST(req: NextRequest | Request) {
           data: { quantity: newQty },
         });
 
-        // Write immutable stock_adjustments entry
+        // Write immutable stock_adjustments entry (Module 2.6.2)
         await tx.stockAdjustment.create({
           data: {
             batchId: batch.id,
@@ -246,6 +252,7 @@ export async function POST(req: NextRequest | Request) {
             reason: `Sale: ${invoiceNo}`,
             oldQty,
             newQty,
+            userId: currentUserId,
           },
         });
 
@@ -261,25 +268,132 @@ export async function POST(req: NextRequest | Request) {
         });
       }
 
-      // Bill-level discount validation (Module 2.4.2)
-      const billDiscount = Math.min(subtotal, Number(discountAmount || 0));
+      // 2. MODULE 2.6.5: Order-of-Calculation for Bill-Level Discount (Bug Avoidance)
+      // Inclusive totals computed FIRST from lines above, then bill discounts evaluated
+      let billDiscount = 0;
+      let appliedDiscountId: number | null = null;
+
+      if (discountId) {
+        // Master discount path
+        const dId = parseInt(discountId, 10);
+        const discountPolicy = await tx.discount.findUnique({ where: { id: dId } });
+        if (!discountPolicy || !discountPolicy.active) {
+          throw new Error("Specified discount policy is inactive or does not exist");
+        }
+        if (subtotal < Number(discountPolicy.minAmount)) {
+          throw new Error(
+            `Minimum purchase of ₹${Number(discountPolicy.minAmount).toFixed(2)} required for '${discountPolicy.name}' policy`
+          );
+        }
+        if (discountPolicy.type === "percent") {
+          billDiscount = (subtotal * Number(discountPolicy.value)) / 100;
+        } else {
+          billDiscount = Number(discountPolicy.value);
+        }
+        appliedDiscountId = discountPolicy.id;
+      } else if (discountPercent !== undefined && discountPercent !== null && discountPercent !== "") {
+        // Custom-% path: Subtotal is already computed, resolving legacy $inclTotal undefined bug
+        const pct = Math.max(0, Math.min(100, Number(discountPercent)));
+        billDiscount = (subtotal * pct) / 100;
+      } else {
+        // Flat discount amount path
+        billDiscount = Math.max(0, Number(discountAmount || 0));
+      }
+
+      billDiscount = Math.min(subtotal, billDiscount);
       const effectiveBillPct = subtotal > 0 ? (billDiscount / subtotal) * 100 : 0;
 
-      if (effectiveBillPct > cashierMaxDiscount + 0.01 && !canApplyHighDiscount && !body.managerApprovedBy) {
+      if (effectiveBillPct > cashierMaxDiscount + 0.01 && !canApplyHighDiscount && !managerApprovedBy && !body.managerApprovedBy) {
         throw new Error(
           `Permission Denied: Bill discount of ${effectiveBillPct.toFixed(1)}% exceeds cashier limit (${cashierMaxDiscount}%) without manager authorization`
         );
       }
 
-      const grandTotal = Math.max(0, subtotal - billDiscount);
+      const grandTotal = Math.round(Math.max(0, subtotal - billDiscount) * 100) / 100;
       const combinedTotalDiscount = totalItemDiscounts + billDiscount;
 
-      // 2. Enforce Baki Khata Credit Limit
-      if (paymentMethod === "credit" && custId) {
+      // 3. MODULE 2.5.1: Multi-Tender Split Payment Validation & Customer Credit Checks
+      let parsedSplits: any = null;
+      let effectiveUpiRef = upiRef || null;
+      let effectiveChequeNo = chequeNo || null;
+      let effectiveChequeBank = chequeBank || null;
+      let effectiveChequeDate = chequeDate ? new Date(chequeDate) : null;
+
+      if (paymentMethod === "split") {
+        if (!splitPayments || typeof splitPayments !== "object") {
+          throw new Error("Split payment breakdown is required when paymentMethod is 'split'");
+        }
+
+        const cashPart = Number(splitPayments.cash || 0);
+        const upiPart = Number(splitPayments.upi || 0);
+        const cardPart = Number(splitPayments.card || 0);
+        const chequePart = Number(splitPayments.cheque || 0);
+        const creditPart = Number(splitPayments.credit || 0);
+
+        const totalSplitAllocated = cashPart + upiPart + cardPart + chequePart + creditPart;
+        if (totalSplitAllocated < grandTotal - 0.01) {
+          throw new Error(
+            `Split payment allocation (₹${totalSplitAllocated.toFixed(2)}) is less than grand total (₹${grandTotal.toFixed(2)})`
+          );
+        }
+
+        if (chequePart > 0 && (!chequeNo || !chequeBank)) {
+          throw new Error("Cheque Number and Bank Name are required for cheque split portion");
+        }
+
+        if (creditPart > 0) {
+          if (!custId) {
+            throw new Error("A registered customer is required to allocate Store Credit (Baki Khata)");
+          }
+
+          const cust = await tx.customer.findUnique({
+            where: { id: custId },
+            include: {
+              sales: { where: { paymentMethod: { in: ["credit", "split"] } }, select: { grandTotal: true } },
+              payments: { select: { amount: true } },
+            },
+          });
+
+          if (!cust) {
+            throw new Error("Selected customer not found for credit allocation");
+          }
+
+          const creditLimit = Number(cust.creditLimit);
+          if (creditLimit <= 0) {
+            throw new Error(`Customer '${cust.name}' has no approved credit limit`);
+          }
+
+          const totalCreditSales = cust.sales.reduce((sum, s) => sum + Number(s.grandTotal), 0);
+          const totalPaid = cust.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+          const currentDue = Math.max(0, totalCreditSales - totalPaid);
+
+          if (currentDue + creditPart > creditLimit) {
+            throw new Error(
+              `Credit limit exceeded for ${cust.name}: Approved limit is ₹${creditLimit.toFixed(2)}, current outstanding due is ₹${currentDue.toFixed(2)}. Credit split of ₹${creditPart.toFixed(2)} exceeds limit.`
+            );
+          }
+        }
+
+        parsedSplits = {
+          cash: cashPart,
+          upi: upiPart,
+          card: cardPart,
+          cheque: chequePart,
+          credit: creditPart,
+        };
+
+        if (upiPart > 0 && upiRef) effectiveUpiRef = upiRef;
+        if (chequePart > 0) {
+          effectiveChequeNo = chequeNo || null;
+          effectiveChequeBank = chequeBank || null;
+          effectiveChequeDate = chequeDate ? new Date(chequeDate) : null;
+        }
+      } else if (paymentMethod === "credit" && custId) {
+        // Single Tender Credit Check
         const cust = await tx.customer.findUnique({
           where: { id: custId },
           include: {
-            sales: { where: { paymentMethod: "credit" }, select: { grandTotal: true } },
+            sales: { where: { paymentMethod: { in: ["credit", "split"] } }, select: { grandTotal: true } },
             payments: { select: { amount: true } },
           },
         });
@@ -306,7 +420,7 @@ export async function POST(req: NextRequest | Request) {
         }
       }
 
-      // 3. Create Sale header
+      // 4. Create Sale Master Header (Module 2.6.3)
       const newSale = await tx.sale.create({
         data: {
           invoiceNo,
@@ -315,13 +429,13 @@ export async function POST(req: NextRequest | Request) {
           totalAmount: subtotal,
           gstAmount: totalGst,
           discountAmount: combinedTotalDiscount,
-          discountId: discountId ? parseInt(discountId, 10) : null,
+          discountId: appliedDiscountId,
           grandTotal,
           paymentMethod,
-          upiRef: paymentMethod === "upi" ? upiRef : null,
-          chequeNo: paymentMethod === "cheque" ? chequeNo : null,
-          chequeBank: paymentMethod === "cheque" ? chequeBank : null,
-          chequeDate: paymentMethod === "cheque" && chequeDate ? new Date(chequeDate) : null,
+          upiRef: effectiveUpiRef,
+          chequeNo: effectiveChequeNo,
+          chequeBank: effectiveChequeBank,
+          chequeDate: effectiveChequeDate,
           doctorName: doctorName || null,
           doctorRegNo: doctorRegNo || null,
           createdBy: currentUserId,
@@ -350,7 +464,7 @@ export async function POST(req: NextRequest | Request) {
         },
       });
 
-      // 4. Write customer purchase log if registered customer
+      // 5. MODULE 2.6.4: Customer Purchase Log Entry
       if (custId) {
         await tx.customerPurchaseLog.create({
           data: {
@@ -362,28 +476,98 @@ export async function POST(req: NextRequest | Request) {
         });
       }
 
-      return newSale;
+      return {
+        sale: newSale,
+        splitPayments: parsedSplits,
+      };
     });
 
-    // Audit log
+    const finalSale = saleResult.sale;
+    const splitPaymentsData = saleResult.splitPayments;
+
+    // Calculate change due if cash tendered was supplied
+    const effectiveCashTendered = Number(
+      body.splitPayments?.cashTendered ||
+      cashTendered ||
+      tenderedAmount ||
+      (paymentMethod === "cash" ? finalSale.grandTotal : Number(splitPaymentsData?.cash || 0))
+    );
+    const cashPortion = paymentMethod === "cash" ? Number(finalSale.grandTotal) : Number(splitPaymentsData?.cash || 0);
+    const changeDue = Math.max(0, effectiveCashTendered - cashPortion);
+
+    // Audit log (Module 2.6.2)
     await logAudit({
       action: "INVOICE_CREATED",
       entity: "Sale",
-      entityId: saleResult.id,
+      entityId: finalSale.id,
       userId: currentUserId,
       branchId: effectiveBranchId || undefined,
       ipAddress: getClientIp(req as any),
       details: {
-        invoiceNo: saleResult.invoiceNo,
-        grandTotal: saleResult.grandTotal,
+        invoiceNo: finalSale.invoiceNo,
+        grandTotal: finalSale.grandTotal,
         paymentMethod,
+        splitPayments: splitPaymentsData,
         itemsCount: items.length,
+        cashTendered: effectiveCashTendered,
+        changeDue,
       },
     });
 
+    // 6. MODULE 2.6.4: Asynchronous Email Receipt Dispatch (Non-blocking for POS speed)
+    let emailReceiptSent = false;
+    if (finalSale.customer?.email) {
+      emailReceiptSent = true;
+      prisma.settings.findFirst().then((storeSettings) => {
+        sendCustomerInvoiceReceiptEmail({
+          toEmail: finalSale.customer!.email!,
+          customerName: finalSale.customer!.name,
+          invoiceNo: finalSale.invoiceNo,
+          saleDate: finalSale.saleDate,
+          storeName: finalSale.branch?.name || storeSettings?.storeName || "DRxStore Pharmacy",
+          storeAddress: finalSale.branch?.address || storeSettings?.storeAddress || "",
+          storePhone: finalSale.branch?.phone || storeSettings?.storePhone || "",
+          storeGst: finalSale.branch?.gstNo || storeSettings?.storeGst || "",
+          storeDl: finalSale.branch?.dlNo || storeSettings?.storeDl || "",
+          paymentMethod,
+          splitDetails: splitPaymentsData || undefined,
+          upiRef: finalSale.upiRef,
+          chequeNo: finalSale.chequeNo,
+          doctorName: finalSale.doctorName,
+          items: finalSale.items.map((i) => ({
+            name: i.medicine.name,
+            batchNo: i.batch.batchNo,
+            expiryDate: i.batch.expiryDate,
+            quantity: i.quantity,
+            mrp: Number(i.mrp),
+            price: Number(i.price),
+          })),
+          subtotal: Number(finalSale.totalAmount),
+          discountAmount: Number(finalSale.discountAmount),
+          gstAmount: Number(finalSale.gstAmount),
+          grandTotal: Number(finalSale.grandTotal),
+        }).catch((err) => {
+          console.error("Non-blocking receipt email dispatch error:", err);
+        });
+      }).catch((err) => {
+        console.error("Failed to prepare receipt email settings:", err);
+      });
+    }
+
+    // Determine if cash drawer kick should be requested (Module 2.5.2)
+    const shouldKickDrawer =
+      paymentMethod === "cash" || (paymentMethod === "split" && (splitPaymentsData?.cash || 0) > 0);
+
     return NextResponse.json({
       success: true,
-      sale: saleResult,
+      sale: {
+        ...finalSale,
+        splitPayments: splitPaymentsData,
+        cashTendered: effectiveCashTendered,
+        changeDue,
+      },
+      kickCashDrawer: shouldKickDrawer,
+      emailReceiptSent,
     });
   } catch (error: any) {
     return NextResponse.json(

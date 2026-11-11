@@ -54,7 +54,7 @@ interface CartState {
   discountPercent: number; // Bill-level discount %
   discountId: number | null; // Master Discount policy ID
   managerApprovedBillDiscount: ManagerApproval | null;
-  paymentMethod: "cash" | "upi" | "card" | "cheque" | "credit";
+  paymentMethod: "cash" | "upi" | "card" | "cheque" | "credit" | "split";
   
   // Payment dynamic fields (Module 2.1.4)
   tenderedAmount: number;
