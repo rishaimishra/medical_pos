@@ -263,3 +263,4 @@ export async function sendCustomerInvoiceReceiptEmail(
     text: `Tax Invoice: ${invoiceNo}\nStore: ${storeName}\nGrand Total: ₹${Number(grandTotal).toFixed(2)}\nThank you for choosing us!`,
   });
 }
+

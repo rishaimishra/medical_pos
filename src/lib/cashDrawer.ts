@@ -130,3 +130,4 @@ export async function triggerCashDrawerKick(options: CashDrawerKickOptions = {})
     timestamp,
   };
 }
+
