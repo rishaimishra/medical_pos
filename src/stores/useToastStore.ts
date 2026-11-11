@@ -58,3 +58,4 @@ export const toast = {
   info: (message: string, title?: string, duration?: number) =>
     useToastStore.getState().addToast({ type: "info", message, title, duration }),
 };
+

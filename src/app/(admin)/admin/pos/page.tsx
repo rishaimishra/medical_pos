@@ -23,6 +23,9 @@ import {
   HeartPulse,
   Tag,
   CheckCircle2,
+  Barcode,
+  Scan,
+  Zap,
 } from "lucide-react";
 import { useCartStore, CartItem } from "@/stores/useCartStore";
 import { useBranchStore } from "@/stores/useBranchStore";
@@ -35,6 +38,11 @@ import { CustomerLookupModal } from "@/components/pos/CustomerLookupModal";
 import { DiscountModal } from "@/components/pos/DiscountModal";
 import { PaymentTenderModal } from "@/components/pos/PaymentTenderModal";
 import { ReceiptPrintModal } from "@/components/pos/ReceiptPrintModal";
+import { BarcodePrintModal } from "@/components/pos/BarcodePrintModal";
+import { ItemDiscountModal } from "@/components/pos/ItemDiscountModal";
+import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
+import { playScanSuccessBeep, playScanErrorBeep } from "@/lib/audioBeep";
+import { Modal } from "@/components/ui/Modal";
 
 export default function POSBillingPage() {
   const {
@@ -45,6 +53,9 @@ export default function POSBillingPage() {
     updateBatch,
     clearCart,
     getSubtotal,
+    getTotalItemDiscounts,
+    getSubtotalAfterItemDiscounts,
+    getTotalDiscount,
     getTotalGst,
     getGrandTotal,
     discountAmount,
@@ -71,6 +82,18 @@ export default function POSBillingPage() {
   const [isTenderModalOpen, setIsTenderModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [completedSaleData, setCompletedSaleData] = useState<any>(null);
+
+  // Barcode & Item Discount Modals state (Modules 2.3 & 2.4)
+  const [isBarcodePrintOpen, setIsBarcodePrintOpen] = useState(false);
+  const [barcodePrintTarget, setBarcodePrintTarget] = useState<{
+    medicineName?: string;
+    batchNo?: string;
+    expiryDate?: string;
+    mrp?: number;
+  } | null>(null);
+  const [itemDiscountTarget, setItemDiscountTarget] = useState<CartItem | null>(null);
+  const [isBarcodeTestModalOpen, setIsBarcodeTestModalOpen] = useState(false);
+  const [testBarcodeInput, setTestBarcodeInput] = useState("");
 
   // Batch Picker state
   const [batchPickerTarget, setBatchPickerTarget] = useState<{
@@ -138,6 +161,57 @@ export default function POSBillingPage() {
 
     return () => clearTimeout(timer);
   }, [searchQuery, activeBranch?.id]);
+
+  // Hardware Barcode Scanner Listener & Instant Cart Auto-Add (Module 2.3.1)
+  const handleBarcodeScanned = useCallback(
+    async (barcode: string) => {
+      try {
+        const url = `/api/admin/pos/barcode?code=${encodeURIComponent(
+          barcode
+        )}&branchId=${activeBranch?.id || ""}`;
+        const res = await fetch(url);
+        const json = await res.json();
+        if (res.ok && json.success) {
+          const { medicine, batch, availableStock } = json;
+          const currentItems = useCartStore.getState().items;
+          const existing = currentItems.find((i) => i.batchId === batch.id);
+          if (existing && existing.quantity >= availableStock) {
+            playScanErrorBeep();
+            toast.warning(
+              `Cannot add more ${medicine.name}. Max available stock (${availableStock}) reached.`
+            );
+            return;
+          }
+          addItem({
+            medicineId: medicine.id,
+            medicineName: medicine.name,
+            genericName: medicine.genericName,
+            rackLocation: medicine.rackLocation,
+            batchId: batch.id,
+            batchNo: batch.batchNo,
+            expiryDate: batch.expiryDate,
+            quantity: 1,
+            availableStock,
+            unitPrice: batch.mrp,
+            taxPercent: medicine.gstPercent || 12,
+          });
+          playScanSuccessBeep();
+          toast.success(`Scanned: ${medicine.name} (Batch: ${batch.batchNo})`);
+        } else {
+          playScanErrorBeep();
+          toast.error(json.error || `Barcode '${barcode}' not found`);
+        }
+      } catch {
+        playScanErrorBeep();
+        toast.error("Barcode lookup failed");
+      }
+    },
+    [activeBranch?.id, addItem]
+  );
+
+  const { lastScanned, isScanning, simulateScan } = useBarcodeScanner({
+    onScan: handleBarcodeScanned,
+  });
 
   // 3. Add Medicine with FEFO Auto-Selected Batch (Module 2.1.5 & 2.2.4)
   const handleAddMedicine = (med: any) => {
@@ -322,8 +396,11 @@ export default function POSBillingPage() {
     fetchPosBootstrap();
   };
 
-  // Calculations
-  const subtotal = getSubtotal();
+  // Calculations (Module 2.2 & 2.4)
+  const grossSubtotal = getSubtotal();
+  const totalItemDiscounts = getTotalItemDiscounts();
+  const subtotalAfterItemDiscounts = getSubtotalAfterItemDiscounts();
+  const totalCombinedDiscount = getTotalDiscount();
   const totalGst = getTotalGst();
   const grandTotal = getGrandTotal();
   const cgst = totalGst / 2;
@@ -378,6 +455,41 @@ export default function POSBillingPage() {
             Ctrl+P
           </span>
           <span>Print</span>
+        </div>
+
+        {/* Barcode Scanner & Thermal Label Actions (Module 2.3) */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsBarcodeTestModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold hover:bg-emerald-100 transition-colors cursor-pointer"
+            title="Hardware USB/Bluetooth scanner listener active. Click to test manual barcode entry."
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+            </span>
+            <Scan className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Scanner Ready</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setBarcodePrintTarget({
+                medicineName: items[0]?.medicineName || "Sample Medicine",
+                batchNo: items[0]?.batchNo || "BAT-001",
+                expiryDate: items[0]?.expiryDate || "2028-12-31",
+                mrp: items[0]?.unitPrice || 100,
+              });
+              setIsBarcodePrintOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+            title="Generate thermal barcode labels"
+          >
+            <Barcode className="w-3.5 h-3.5 text-slate-600" />
+            <span>Print Labels</span>
+          </button>
         </div>
 
         {/* Parked Bills Quick Recall Indicator */}
@@ -600,7 +712,9 @@ export default function POSBillingPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {items.map((item) => {
-                      const lineTotal = item.unitPrice * item.quantity;
+                      const lineGross = item.unitPrice * item.quantity;
+                      const lineDiscount = item.discountAmount || 0;
+                      const lineNet = Math.max(0, lineGross - lineDiscount);
                       const isStockMax = item.quantity >= item.availableStock;
 
                       return (
@@ -702,21 +816,69 @@ export default function POSBillingPage() {
                             {item.taxPercent}%
                           </td>
 
-                          {/* Line Total */}
-                          <td className="py-3.5 px-4 text-right font-black text-slate-900 text-sm">
-                            ₹{lineTotal.toFixed(2)}
+                          {/* Line Total with Item-Discount Indicator (Module 2.4.2) */}
+                          <td className="py-3.5 px-4 text-right">
+                            {lineDiscount > 0 ? (
+                              <div>
+                                <div className="text-[10px] text-slate-400 line-through">
+                                  ₹{lineGross.toFixed(2)}
+                                </div>
+                                <div className="font-black text-slate-900 text-sm">
+                                  ₹{lineNet.toFixed(2)}
+                                </div>
+                                <div className="inline-flex items-center gap-1 text-[9px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded mt-0.5">
+                                  -₹{lineDiscount.toFixed(2)} ({item.discountPercent?.toFixed(1)}%)
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="font-black text-slate-900 text-sm">
+                                ₹{lineGross.toFixed(2)}
+                              </div>
+                            )}
                           </td>
 
-                          {/* Remove button */}
+                          {/* Action Buttons: Item Discount, Barcode Print, Remove */}
                           <td className="py-3.5 px-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => removeItem(item.batchId)}
-                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                              title="Remove item"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setItemDiscountTarget(item)}
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                  lineDiscount > 0
+                                    ? "bg-amber-100 text-amber-900 hover:bg-amber-200"
+                                    : "text-slate-400 hover:text-amber-700 hover:bg-amber-50"
+                                }`}
+                                title="Apply item-level discount"
+                              >
+                                <Percent className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBarcodePrintTarget({
+                                    medicineName: item.medicineName,
+                                    batchNo: item.batchNo,
+                                    expiryDate: item.expiryDate,
+                                    mrp: item.unitPrice,
+                                  });
+                                  setIsBarcodePrintOpen(true);
+                                }}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-[#1F4E5B] hover:bg-teal-50 transition-colors cursor-pointer"
+                                title="Print barcode label for this batch"
+                              >
+                                <Barcode className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => removeItem(item.batchId)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Remove item"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -814,20 +976,34 @@ export default function POSBillingPage() {
 
             <div className="space-y-2 text-xs">
               <div className="flex justify-between text-slate-600">
-                <span>Items Subtotal:</span>
-                <span className="font-bold text-slate-900">₹{subtotal.toFixed(2)}</span>
+                <span>Gross MRP Total:</span>
+                <span className="font-bold text-slate-900">₹{grossSubtotal.toFixed(2)}</span>
               </div>
+
+              {totalItemDiscounts > 0 && (
+                <div className="flex justify-between text-amber-700 font-semibold">
+                  <span>Item Discounts:</span>
+                  <span>-₹{totalItemDiscounts.toFixed(2)}</span>
+                </div>
+              )}
 
               {discountAmount > 0 && (
                 <div className="flex justify-between text-rose-600 font-bold">
                   <span>
-                    Discount {discountPercent > 0 ? `(${discountPercent}%)` : ""}:
+                    Bill Discount {discountPercent > 0 ? `(${discountPercent}%)` : ""}:
                   </span>
                   <span>-₹{discountAmount.toFixed(2)}</span>
                 </div>
               )}
 
-              <div className="flex justify-between text-slate-500 text-[11px] pt-1">
+              {totalCombinedDiscount > 0 && (
+                <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 flex justify-between text-emerald-900 font-bold text-[11px]">
+                  <span>Total Savings:</span>
+                  <span>₹{totalCombinedDiscount.toFixed(2)} OFF</span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-slate-500 text-[11px] pt-1 border-t border-slate-100">
                 <span>CGST (Included):</span>
                 <span>₹{cgst.toFixed(2)}</span>
               </div>
@@ -937,6 +1113,102 @@ export default function POSBillingPage() {
           searchInputRef.current?.focus();
         }}
       />
+
+      {/* Item-Level Discount Modal (Module 2.4.2) */}
+      <ItemDiscountModal
+        isOpen={Boolean(itemDiscountTarget)}
+        onClose={() => setItemDiscountTarget(null)}
+        item={itemDiscountTarget}
+      />
+
+      {/* Thermal Barcode Label Generation & Printing Modal (Module 2.3.2) */}
+      <BarcodePrintModal
+        isOpen={isBarcodePrintOpen}
+        onClose={() => setIsBarcodePrintOpen(false)}
+        medicineName={barcodePrintTarget?.medicineName || "Medicine"}
+        batchNo={barcodePrintTarget?.batchNo || "BAT-001"}
+        expiryDate={barcodePrintTarget?.expiryDate || "2028-12-31"}
+        mrp={barcodePrintTarget?.mrp || 100}
+        storeName={activeBranch?.name || "DRx Pharmacy"}
+      />
+
+      {/* Manual Barcode Scanner Test Modal (Module 2.3.1) */}
+      <Modal
+        isOpen={isBarcodeTestModalOpen}
+        onClose={() => setIsBarcodeTestModalOpen(false)}
+        title="Hardware Barcode Scanner Listener"
+        description="USB / Bluetooth handheld scanners automatically trigger into cart anywhere on this screen"
+        headerIcon={
+          <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center">
+            <Scan className="w-5 h-5" />
+          </div>
+        }
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-900 space-y-1">
+            <div className="flex items-center gap-1.5 font-bold">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+              </span>
+              <span>Active Background Listener</span>
+            </div>
+            <p className="text-[11px] text-emerald-800 leading-relaxed">
+              When using a physical barcode gun, simply pull the trigger while pointing at any medicine packaging. The terminal intercepts rapid keystrokes (&lt; 50ms) and adds to cart without requiring focus!
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Simulate Barcode Gun Scan (Manual Test)
+            </label>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (testBarcodeInput.trim()) {
+                  simulateScan(testBarcodeInput.trim());
+                  setTestBarcodeInput("");
+                  setIsBarcodeTestModalOpen(false);
+                }
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                autoFocus
+                value={testBarcodeInput}
+                onChange={(e) => setTestBarcodeInput(e.target.value)}
+                placeholder="Scan or type barcode (e.g. batch number)..."
+                className="flex-1 bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1F4E5B]"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-[#1F4E5B] hover:bg-[#163a44] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                Simulate Scan
+              </button>
+            </form>
+          </div>
+
+          {lastScanned && (
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs flex justify-between items-center">
+              <span className="text-slate-500">Last Scanned Code:</span>
+              <span className="font-mono font-bold text-slate-900">{lastScanned}</span>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsBarcodeTestModalOpen(false)}
+              className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition-colors cursor-pointer"
+            >
+              Close (Esc)
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

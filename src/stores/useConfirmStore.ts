@@ -47,3 +47,4 @@ export const useConfirmStore = create<ConfirmState>((set, get) => ({
 export const confirmAction = (options: Omit<ConfirmOptions, "resolve">): Promise<boolean> => {
   return useConfirmStore.getState().askConfirm(options);
 };
+

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
-import { canAccessBranch } from "@/lib/rbac";
+import { canAccessBranch, hasPermission } from "@/lib/rbac";
 import { logAudit, getClientIp } from "@/lib/audit";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -158,13 +158,21 @@ export async function POST(req: NextRequest | Request) {
     }
     const invoiceNo = `${invoicePrefix}${String(nextNumber).padStart(5, "0")}`;
 
+    // Staff discount permissions check (Module 2.4.2)
+    const cashierMaxDiscount = auth.session.maxDiscountPercent ?? (auth.session.role === "admin" ? 100 : 10);
+    const canApplyHighDiscount =
+      auth.session.role === "admin" ||
+      auth.session.role === "manager" ||
+      hasPermission(auth.session, "apply_high_discount");
+
     // Execute atomic checkout transaction
     const saleResult = await runInTransaction(async (tx) => {
       let subtotal = 0;
+      let totalItemDiscounts = 0;
       let totalGst = 0;
       const preparedLines = [];
 
-      // 1. Validate each batch, stock and expiry atomically
+      // 1. Validate each batch, stock, expiry, and item-level discount atomically
       for (const item of items) {
         const batch = await tx.batch.findUnique({
           where: { id: item.batchId },
@@ -195,11 +203,27 @@ export async function POST(req: NextRequest | Request) {
 
         const gstPercent = Number(batch.medicine.gstPercent || 12);
         const unitMrp = Number(batch.mrp);
-        const lineTotal = unitMrp * item.quantity;
-        const taxableBase = lineTotal / (1 + gstPercent / 100);
-        const gstAmount = lineTotal - taxableBase;
+        const lineGross = unitMrp * item.quantity;
 
-        subtotal += lineTotal;
+        // Item-level discount calculation & cashier limit check (Module 2.4.2)
+        const lineDiscount = Math.min(
+          lineGross,
+          Number(item.discountAmount || item.itemDiscountAmount || (item.discountPercent ? (lineGross * item.discountPercent) / 100 : 0))
+        );
+        const effectiveLinePct = lineGross > 0 ? (lineDiscount / lineGross) * 100 : 0;
+
+        if (effectiveLinePct > cashierMaxDiscount + 0.01 && !canApplyHighDiscount && !item.managerApprovedBy) {
+          throw new Error(
+            `Permission Denied: Item discount of ${effectiveLinePct.toFixed(1)}% on ${batch.medicine.name} exceeds cashier limit (${cashierMaxDiscount}%) without manager authorization`
+          );
+        }
+
+        const lineNet = Math.max(0, lineGross - lineDiscount);
+        const taxableBase = lineNet / (1 + gstPercent / 100);
+        const gstAmount = lineNet - taxableBase;
+
+        subtotal += lineNet;
+        totalItemDiscounts += lineDiscount;
         totalGst += gstAmount;
 
         // Deduct batch quantity
@@ -233,11 +257,22 @@ export async function POST(req: NextRequest | Request) {
           taxableBase,
           gstPercent,
           gstAmount,
-          price: lineTotal,
+          price: lineNet,
         });
       }
 
-      const grandTotal = Math.max(0, subtotal - Number(discountAmount));
+      // Bill-level discount validation (Module 2.4.2)
+      const billDiscount = Math.min(subtotal, Number(discountAmount || 0));
+      const effectiveBillPct = subtotal > 0 ? (billDiscount / subtotal) * 100 : 0;
+
+      if (effectiveBillPct > cashierMaxDiscount + 0.01 && !canApplyHighDiscount && !body.managerApprovedBy) {
+        throw new Error(
+          `Permission Denied: Bill discount of ${effectiveBillPct.toFixed(1)}% exceeds cashier limit (${cashierMaxDiscount}%) without manager authorization`
+        );
+      }
+
+      const grandTotal = Math.max(0, subtotal - billDiscount);
+      const combinedTotalDiscount = totalItemDiscounts + billDiscount;
 
       // 2. Enforce Baki Khata Credit Limit
       if (paymentMethod === "credit" && custId) {
@@ -279,7 +314,7 @@ export async function POST(req: NextRequest | Request) {
           saleDate: new Date(),
           totalAmount: subtotal,
           gstAmount: totalGst,
-          discountAmount: Number(discountAmount),
+          discountAmount: combinedTotalDiscount,
           discountId: discountId ? parseInt(discountId, 10) : null,
           grandTotal,
           paymentMethod,

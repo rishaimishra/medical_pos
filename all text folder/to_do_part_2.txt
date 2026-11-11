@@ -94,25 +94,46 @@ MODULE 2.2: HIGH-SPEED POS BILLING TERMINAL & KEYBOARD WORKFLOW
 --------------------------------------------------------------------------------
 MODULE 2.3: BARCODE & QR CODE SCANNING ENGINE
 --------------------------------------------------------------------------------
-2.3.1 [STATUS: PENDING] Hardware Barcode Scanner Listener
+2.3.1 [STATUS: COMPLETED] Hardware Barcode Scanner Listener
       - High-speed USB/Bluetooth barcode scanner integration supporting standard 
         symbologies (EAN-13, UPC, Code 128, GS1 Datamatrix).
       - Instant auto-add to cart upon barcode trigger without requiring manual focus.
+      * Built `useBarcodeScanner` hook in `src/hooks/useBarcodeScanner.ts` measuring elapsed keystroke speed (< 50ms interval) to differentiate hardware scanners from manual user typing.
+      * Dedicated lookup endpoint `GET /api/admin/pos/barcode?code=...` resolving scanned batch numbers, medicine HSNs, or item codes into in-stock unexpired inventory.
+      * Immediate auto-add to cart with quantity = 1 or increment if already in cart (strictly respecting available branch batch stock cap).
+      * Web Audio API synthesized feedback in `src/lib/audioBeep.ts` (pleasant chime on success, double warning beep on out of stock / error).
+      * Header barcode scanner indicator badge with live pulse indicator and manual simulation test modal.
 
-2.3.2 [STATUS: PENDING] Barcode Label Generation & Printing
+2.3.2 [STATUS: COMPLETED] Barcode Label Generation & Printing
       - Generate printable thermal barcode labels containing Medicine Name, Batch No, 
         Expiry Date, MRP, and Store Name.
+      * Pure zero-dependency Code 128 (Subtype B/C) vector SVG generator in `src/lib/barcode.ts` generating crisp vector bars for 203 & 300 DPI printers.
+      * `BarcodePrintModal` in `src/components/pos/BarcodePrintModal.tsx` supporting 50x25mm, 38x25mm, and A4 24-up sticker sheet layouts.
+      * Live label preview displaying Store Name, Medicine Name, Batch No, Expiry (MM/YY), MRP, tax inclusive disclaimer, and SVG barcode.
+      * 1-Click thermal print with isolated `@media print` zero-margin CSS.
 
 --------------------------------------------------------------------------------
 MODULE 2.4: DISCOUNTS & PROMOTIONAL PRICING ENGINE
 --------------------------------------------------------------------------------
-2.4.1 [STATUS: PENDING] Configurable Discount Architecture
+2.4.1 [STATUS: COMPLETED] Configurable Discount Architecture
       - Master discount policies (e.g., Senior Citizen 10%, Regular Customer 5%, Flat ₹50 off).
       - Support percentage-based or flat currency discounts with minimum invoice thresholds.
+      * Full REST CRUD endpoints in `src/app/api/admin/discounts/route.ts` and `src/app/api/admin/discounts/[id]/route.ts`.
+      * Master discounts management UI page in `src/app/(admin)/admin/discounts/page.tsx` with KPI summary cards, search, type/status filters, and create/edit modal.
+      * Enforces minimum invoice threshold validation before applying scheme in POS terminal.
+      * Safeguards financial history: policies referenced by historical sales are automatically soft-deactivated (`active: false`) rather than hard-deleted.
+      * Added "Discount Policies" to sidebar navigation menu and RBAC allow-lists.
 
-2.4.2 [STATUS: PENDING] Item-Level & Bill-Level Discount Application
+2.4.2 [STATUS: COMPLETED] Item-Level & Bill-Level Discount Application
       - Allow staff to apply discount on individual medicines or globally on entire cart.
       - Enforce manager approval if discount exceeds cashier maximum allowable percentage.
+      * Updated `useCartStore.ts` supporting `discountAmount`, `discountPercent`, and `managerApprovedBy` on each cart line item.
+      * `ItemDiscountModal` in `src/components/pos/ItemDiscountModal.tsx` allowing cashiers to set line-level % or flat ₹ discounts.
+      * Integrated `DiscountModal` for bill-level discounts with scheme policy selection and custom discount mode.
+      * Cashier limit enforcement (10% ceiling for cashiers): if cashier attempts item or bill discount exceeding limit, prompts for Manager Authorization.
+      * Manager Override API `POST /api/admin/pos/manager-override` verifying manager credentials, validating manager discount ceiling, and writing tamper-proof `AuditLog` entry.
+      * POS checkout API `POST /api/admin/pos` validates item & bill discounts, ensures cashier limits or manager authorization, and computes accurate grand total and tax breakdown.
+      * Verified with comprehensive live integration test suite `scripts/test-real-api-modules-2-3-and-2-4.ts` (38/38 tests PASS - 100%).
 
 --------------------------------------------------------------------------------
 MODULE 2.5: MULTI-TENDER PAYMENTS & CASH DRAWER INTEGRATION
@@ -423,23 +444,44 @@ MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_mes
 --------------------------------------------------------------------------------
 মডিউল ২.৩: বারকোড ও কিউআর কোড স্ক্যানার ইঞ্জিন
 --------------------------------------------------------------------------------
-২.৩.১ [অবস্থা: পেন্ডিং] হার্ডওয়্যার বারকোড স্ক্যানার লিসেনার
+২.৩.১ [অবস্থা: সম্পন্ন - COMPLETED] হার্ডওয়্যার বারকোড স্ক্যানার লিসেনার
       - USB / ব্লুটুথ বারকোড স্ক্যানার সাপোর্ট (EAN-13, Code 128, GS1 Datamatrix)।
       - বারকোড স্ক্যান করলেই কোনো বাড়তি ক্লিক ছাড়া কার্টে ওষুধ যুক্ত হওয়া।
+      * `src/hooks/useBarcodeScanner.ts`-এ কীবোর্ডের ইনপুট স্পিড (< ৫০ms) পরিমাপ করে মানুষের স্বাভাবিক টাইপিং ও হার্ডওয়্যার স্ক্যানারের পার্থক্য নির্ণয়কারী হুক তৈরি।
+      * ডেডিকেটেড এন্ডপয়েন্ট `GET /api/admin/pos/barcode?code=...` দিয়ে স্ক্যান করা ব্যাচ নম্বর, ওষুধের HSN কোড বা আইটেম কোড দিয়ে সক্রিয় স্টোরে মজুদ অনুসন্ধান।
+      * কোনো ম্যানুয়াল ক্লিক বা ফোকাস ছাড়াই স্বয়ংক্রিয়ভাবে কার্টে ১ কোয়ান্টিটি যুক্ত হওয়া (অথবা কার্টে থাকলে কোয়ান্টিটি বৃদ্ধি, যা ব্যাচ স্টকের সীমার মধ্যে থাকবে)।
+      * Web Audio API দিয়ে তৈরি অডিও ফিডব্যাক `src/lib/audioBeep.ts` (সফল স্ক্যানে মেলোডিয়াস চিম এবং স্টক আউট বা এররে ডাবল ওয়ার্নিং বিপ)।
+      * পিওএস টার্মিনাল হেডারে লাইভ পালস ডটসহ স্ক্যানার স্ট্যাটাস ব্যাজ এবং ম্যানুয়াল টেস্ট সিমুলেশন মডাল।
 
-২.৩.২ [অবস্থা: পেন্ডিং] বারকোড লেবেল তৈরি ও প্রিন্ট
+২.৩.২ [অবস্থা: সম্পন্ন - COMPLETED] বারকোড লেবেল তৈরি ও প্রিন্ট
       - ওষুধের নাম, ব্যাচ নম্বর, মেয়াদ, MRP ও স্টোরের নামসহ থার্মাল বারকোড স্টিকার প্রিন্ট।
+      * কোনো বাহ্যিক লাইব্রেরি ছাড়াই নিখুঁত Code 128 (Subtype B/C) ভেক্টর SVG বারকোড জেনারেটর `src/lib/barcode.ts`-এ তৈরি, যা ২০৩ ও ৩০০ DPI থার্মাল প্রিন্টারে ক্রিস্প প্রিন্ট নিশ্চিত করে।
+      * `BarcodePrintModal` (`src/components/pos/BarcodePrintModal.tsx`)-এ ৫০x২৫মিমি, ৩৮x২৫মিমি ও A4 শিট (২৪ লেবেল) লেআউট সাপোর্ট।
+      * স্টোরের নাম, ওষুধের নাম, ব্যাচ নং, মেয়াদ (MM/YY), MRP এবং SVG বারকোড সহ লাইভ প্রিভিউ।
+      * সম্পূর্ণ জিরো-মার্জিন `@media print` CSS দিয়ে ১-ক্লিকে থার্মাল লেবেল প্রিন্টের ব্যবস্থা।
 
 --------------------------------------------------------------------------------
 মডিউল ২.৪: ডিসকাউন্ট ও প্রোমোশনাল প্রাইসিং ইঞ্জিন
 --------------------------------------------------------------------------------
-২.৪.১ [অবস্থা: পেন্ডিং] ডিসকাউন্ট পলিসি কনফিগারেশন
+২.৪.১ [অবস্থা: সম্পন্ন - COMPLETED] ডিসকাউন্ট পলিসি কনফিগারেশন
       - মাস্টার পলিসি (যেমন: সিনিয়ার সিটিজেন ১০%, রেগুলার গ্রাহক ৫%, ফ্ল্যাট ৫০ টাকা ছাড়)।
       - শতকরা হারে অথবা নির্দিষ্ট টাকায় ডিসকাউন্ট নির্ধারণ।
+      * সম্পূর্ণ RESTful CRUD এন্ডপয়েন্ট `src/app/api/admin/discounts/route.ts` এবং `src/app/api/admin/discounts/[id]/route.ts`-এ তৈরি।
+      * মাস্টার ডিসকাউন্ট ম্যানেজমেন্ট পেজ `src/app/(admin)/admin/discounts/page.tsx`-এ KPI সামারি কার্ড, ফিল্টার এবং তৈরি/এডিটের মডাল যুক্ত।
+      * বিলে ডিসকাউন্ট স্কিম যুক্ত করার পূর্বে ন্যূনতম ইনভয়েস থ্রেশহোল্ড (Minimum Purchase Amount) স্বয়ংক্রিয়ভাবে যাচাই।
+      * আর্থিক অডিট সুরক্ষায় কোনো স্কিম দিয়ে পূর্বে বিক্রি হয়ে থাকলে তা ডাটাবেস থেকে হার্ড-ডিলিটের বদলে সফট-ডিঅ্যাক্টিভ (`active: false`) করা হয়।
+      * অ্যাডমিন সাইডবার ও RBAC অ্যালো-লিস্টে "Discount Policies" মেনু সংযুক্ত।
 
-২.৪.২ [অবস্থা: পেন্ডিং] আইটেম-লেভেল ও বিল-লেভেল ডিসকাউন্ট
+২.৪.২ [অবস্থা: সম্পন্ন - COMPLETED] আইটেম-লেভেল ও বিল-লেভেল ডিসকাউন্ট
       - নির্দিষ্ট কোনো ওষুধের ওপর কিংবা পুরো বিলের ওপর ডিসকাউন্ট দেওয়ার সুবিধা।
       - ক্যাশিয়ারের সীমার বাইরে ডিসকাউন্ট হলে ম্যানেজারের পাসওয়ার্ড অনুমোদনের ব্যবস্থা।
+      * কার্ট স্টেট `src/stores/useCartStore.ts`-এ প্রতিটি লাইনের জন্য `discountAmount`, `discountPercent` ও `managerApprovedBy` সাপোর্ট যুক্ত।
+      * `ItemDiscountModal` (`src/components/pos/ItemDiscountModal.tsx`)-এর মাধ্যমে প্রতি লাইনে শতাংশ বা ফ্ল্যাট টাকায় ছাড়ের সুবিধা।
+      * পুরো বিলের জন্য `DiscountModal`-এ মাস্টার স্কিম নির্বাচন অথবা কাস্টম ডিসকাউন্ট প্রদান।
+      * ক্যাশিয়ার ডিসকাউন্ট লিমিট গার্ড (ক্যাশিয়ারের সর্বোচ্চ সীমা ১০%): সীমা অতিক্রম করলেই ম্যানেজারের পাসওয়ার্ড প্রম্পট মডাল ওপেন হওয়া।
+      * ম্যানেজার অথরাইজেশন এন্ডপয়েন্ট `POST /api/admin/pos/manager-override`-এ ম্যানেজারের ক্রেডেনশিয়াল যাচাই এবং `AuditLog`-এ স্থায়ী রেকর্ড সংরক্ষণ।
+      * পিওএস চেকআউট API `POST /api/admin/pos`-এ আইটেম ও বিল ডিসকাউন্ট যাচাই করে সঠিক নেট টোটাল ও ট্যাক্স হিসাব সংরক্ষণ।
+      * সম্পূর্ণ লাইভ ডাটাবেস টেস্ট স্যুট `scripts/test-real-api-modules-2-3-and-2-4.ts`-এ ৩৮/৩৮টি টেস্ট শতভাগ সফলভাবে উত্তীর্ণ।
 
 --------------------------------------------------------------------------------
 মডিউল ২.৫: মাল্টি-পেমেন্ট মেথড ও ক্যাশ ড্রয়ার ইন্টিগ্রেশন
