@@ -255,6 +255,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: results,
+      medicines: results,
       pagination: {
         page,
         limit,

@@ -104,6 +104,7 @@ export default function PurchaseOrdersPage() {
   const [suppliersList, setSuppliersList] = useState<any[]>([]);
   const [medicinesList, setMedicinesList] = useState<any[]>([]);
   const [medicineSearch, setMedicineSearch] = useState("");
+  const [isSearchingMeds, setIsSearchingMeds] = useState(false);
   const [filteredMedicines, setFilteredMedicines] = useState<any[]>([]);
   const [poForm, setPoForm] = useState<{
     supplierId: string;
@@ -205,8 +206,8 @@ export default function PurchaseOrdersPage() {
       ]);
       const supJson = await supRes.json();
       const medJson = await medRes.json();
-      if (supJson.success) setSuppliersList(supJson.suppliers || []);
-      if (medJson.success) setMedicinesList(medJson.medicines || []);
+      if (supJson.success) setSuppliersList(supJson.suppliers || supJson.data || []);
+      if (medJson.success) setMedicinesList(medJson.medicines || medJson.data || []);
     } catch (err) {
       console.error("Error loading suppliers/medicines:", err);
     }
@@ -239,8 +240,8 @@ export default function PurchaseOrdersPage() {
     } else {
       // Fetch latest batch price if available
       const lastBatch = med.batches?.[0];
-      const price = lastBatch ? Number(lastBatch.purchasePrice) : 0;
-      const mrp = lastBatch ? Number(lastBatch.mrp) : 0;
+      const mrp = lastBatch ? Number(lastBatch.mrp) : (med.stockSummary?.minMrp ? Number(med.stockSummary.minMrp) : 15);
+      const price = lastBatch ? Number(lastBatch.purchasePrice) : Number((mrp * 0.7).toFixed(2)) || 10;
 
       setPoForm({
         ...poForm,
@@ -249,16 +250,17 @@ export default function PurchaseOrdersPage() {
           {
             medicineId: med.id,
             medicineName: med.name,
-            company: med.company,
-            category: med.category,
+            company: med.company || "Generic",
+            category: med.category || "General",
             quantity: 50,
-            price: price || 10,
-            mrp: mrp || 15,
+            price: price,
+            mrp: mrp,
           },
         ],
       });
     }
     setMedicineSearch("");
+    setFilteredMedicines([]);
   };
 
   // Save New PO
@@ -406,18 +408,21 @@ export default function PurchaseOrdersPage() {
   useEffect(() => {
     if (!medicineSearch.trim()) {
       setFilteredMedicines([]);
+      setIsSearchingMeds(false);
       return;
     }
+    setIsSearchingMeds(true);
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(`/api/admin/medicines?search=${encodeURIComponent(medicineSearch.trim())}&limit=20`);
         const json = await res.json();
-        if (json.success && Array.isArray(json.medicines) && json.medicines.length > 0) {
-          setFilteredMedicines(json.medicines);
+        const list = json.medicines || json.data;
+        if (json.success && Array.isArray(list) && list.length > 0) {
+          setFilteredMedicines(list);
         } else {
           const q = medicineSearch.toLowerCase();
           setFilteredMedicines(
-            medicinesList
+            (medicinesList || [])
               .filter((m) => m.name.toLowerCase().includes(q) || (m.genericName || "").toLowerCase().includes(q))
               .slice(0, 8)
           );
@@ -425,10 +430,12 @@ export default function PurchaseOrdersPage() {
       } catch {
         const q = medicineSearch.toLowerCase();
         setFilteredMedicines(
-          medicinesList
+          (medicinesList || [])
             .filter((m) => m.name.toLowerCase().includes(q) || (m.genericName || "").toLowerCase().includes(q))
             .slice(0, 8)
         );
+      } finally {
+        setIsSearchingMeds(false);
       }
     }, 250);
     return () => clearTimeout(timer);
@@ -966,7 +973,7 @@ export default function PurchaseOrdersPage() {
               </div>
 
               {/* Medicine Picker Bar */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 relative">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                 <label className="font-bold text-slate-700 block">
                   Search & Add Medicines to Order
                 </label>
@@ -977,35 +984,60 @@ export default function PurchaseOrdersPage() {
                     value={medicineSearch}
                     onChange={(e) => setMedicineSearch(e.target.value)}
                     placeholder="Type medicine name or generic composition..."
-                    className="w-full pl-9 pr-4 py-2.5 bg-white text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#0F6E56]/20"
+                    className="w-full pl-9 pr-10 py-2.5 bg-white text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#0F6E56]/20 font-medium"
                   />
-                </div>
+                  {isSearchingMeds && (
+                    <Loader2 className="w-4 h-4 text-[#0F6E56] animate-spin absolute right-3.5 top-1/2 -translate-y-1/2" />
+                  )}
 
-                {/* Dropdown list of results */}
-                {filteredMedicines.length > 0 && (
-                  <div className="absolute left-4 right-4 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 max-h-56 overflow-y-auto divide-y divide-slate-100">
-                    {filteredMedicines.map((m) => (
-                      <div
-                        key={m.id}
-                        onClick={() => handleAddItemToPO(m)}
-                        className="p-3 hover:bg-[#EAF5F0] cursor-pointer flex items-center justify-between text-xs"
-                      >
-                        <div>
-                          <strong className="text-slate-900 block">{m.name}</strong>
-                          <span className="text-[11px] text-slate-500 font-medium">
-                            {m.company} • {m.genericName || m.category}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          className="px-2.5 py-1 rounded-lg bg-[#0F6E56] text-white text-[11px] font-bold"
-                        >
-                          + Add
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  {/* Dropdown: No Results */}
+                  {medicineSearch.trim().length > 0 && !isSearchingMeds && filteredMedicines.length === 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 p-4 text-center text-xs text-slate-400">
+                      No medicines found matching &ldquo;{medicineSearch}&rdquo;
+                    </div>
+                  )}
+
+                  {/* Dropdown: List of matched medicines */}
+                  {filteredMedicines.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-slate-100">
+                      {filteredMedicines.map((m) => {
+                        const batch = m.batches?.[0];
+                        const estCost = batch?.purchasePrice || (m.stockSummary?.minMrp ? (m.stockSummary.minMrp * 0.7).toFixed(2) : "—");
+                        const estMrp = batch?.mrp || m.stockSummary?.minMrp || "—";
+                        return (
+                          <div
+                            key={m.id}
+                            onClick={() => handleAddItemToPO(m)}
+                            className="p-3 hover:bg-[#EAF5F0] cursor-pointer flex items-center justify-between text-xs transition-colors"
+                          >
+                            <div className="pr-2">
+                              <div className="flex items-center gap-2">
+                                <strong className="text-slate-900">{m.name}</strong>
+                                {m.category && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 font-medium">
+                                    {m.category}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
+                                {m.company || "Generic"} {m.genericName ? `• ${m.genericName}` : ""}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block mt-0.5">
+                                Est. Cost: ₹{estCost} | MRP: ₹{estMrp} | In Stock: {m.stockSummary?.totalQuantity ?? 0}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className="shrink-0 px-3 py-1.5 rounded-lg bg-[#0F6E56] hover:bg-[#0b5643] text-white text-[11px] font-bold transition-colors"
+                            >
+                              + Add to PO
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Added Line Items Table */}
