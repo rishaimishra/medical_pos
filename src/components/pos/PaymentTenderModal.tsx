@@ -20,6 +20,7 @@ import { useCartStore } from "@/stores/useCartStore";
 import { useBranchStore } from "@/stores/useBranchStore";
 import { toast } from "@/stores/useToastStore";
 import { triggerCashDrawerKick } from "@/lib/cashDrawer";
+import { generateQrCodeDataUri } from "@/lib/qrcode";
 
 interface PaymentTenderModalProps {
   isOpen: boolean;
@@ -42,6 +43,9 @@ export function PaymentTenderModal({
     getTotalGst,
     getGrandTotal,
     discountAmount,
+    discountPercent,
+    discountId,
+    managerApprovedBillDiscount,
     paymentMethod,
     setPaymentMethod,
     tenderedAmount,
@@ -92,9 +96,17 @@ export function PaymentTenderModal({
     if (isOpen) {
       setLocalTendered(String(Math.ceil(grandTotal)));
       setTenderedAmount(Math.ceil(grandTotal));
+      setLocalUpiRef(upiRef || "");
+      setLocalCardAuth("");
+      setLocalCardLast4("");
+      setLocalChequeNo(chequeNo || "");
+      setLocalChequeBank(chequeBank || "");
+      setLocalChequeDate(chequeDate || new Date().toISOString().split("T")[0]);
+      setLocalDoctorName(doctorName || "");
+      setLocalDoctorRegNo(doctorRegNo || "");
       setError(null);
 
-      // Default split allocations to zero/empty
+      // Default split allocations
       setSplitCash(String(Math.ceil(grandTotal)));
       setSplitCashTendered(String(Math.ceil(grandTotal)));
       setSplitUpi("");
@@ -102,7 +114,7 @@ export function PaymentTenderModal({
       setSplitCheque("");
       setSplitCredit("");
     }
-  }, [isOpen, grandTotal, setTenderedAmount]);
+  }, [isOpen, grandTotal, setTenderedAmount, upiRef, chequeNo, chequeBank, chequeDate, doctorName, doctorRegNo]);
 
   // Single cash calculations
   const numSingleTendered = parseFloat(localTendered) || 0;
@@ -111,7 +123,8 @@ export function PaymentTenderModal({
 
   // Split tender calculations
   const numSplitCash = parseFloat(splitCash) || 0;
-  const numSplitCashTendered = parseFloat(splitCashTendered) || numSplitCash;
+  const numSplitCashTendered =
+    splitCashTendered.trim() === "" ? 0 : parseFloat(splitCashTendered) || 0;
   const numSplitUpi = parseFloat(splitUpi) || 0;
   const numSplitCard = parseFloat(splitCard) || 0;
   const numSplitCheque = parseFloat(splitCheque) || 0;
@@ -203,6 +216,20 @@ export function PaymentTenderModal({
         return;
       }
 
+      if (splitOverAllocated > 0.01) {
+        setError(
+          `Split allocation total (₹${totalSplitAllocated.toFixed(2)}) exceeds bill amount (₹${grandTotal.toFixed(2)}) by ₹${splitOverAllocated.toFixed(2)}. Please adjust split amounts (use "Cash Handed" for extra cash given by customer).`
+        );
+        return;
+      }
+
+      if (numSplitCash > 0 && numSplitCashTendered < numSplitCash - 0.01) {
+        setError(
+          `Cash handed (₹${numSplitCashTendered.toFixed(2)}) is less than allocated cash portion (₹${numSplitCash.toFixed(2)}).`
+        );
+        return;
+      }
+
       if (numSplitCredit > 0 && !customer) {
         setError("A registered customer is required to allocate Store Credit (Baki Khata).");
         return;
@@ -257,8 +284,13 @@ export function PaymentTenderModal({
           discountAmount: i.discountAmount,
           discountPercent: i.discountPercent,
           managerApprovedBy: i.managerApprovedBy,
+          managerOverrideToken: i.managerOverrideToken,
         })),
         discountAmount,
+        discountPercent: discountPercent > 0 ? discountPercent : undefined,
+        discountId: discountId ?? null,
+        managerApprovedBy: managerApprovedBillDiscount?.managerName || null,
+        managerOverrideToken: managerApprovedBillDiscount?.token || null,
         doctorName: localDoctorName.trim() || null,
         doctorRegNo: localDoctorRegNo.trim() || null,
       };
@@ -273,12 +305,16 @@ export function PaymentTenderModal({
           credit: numSplitCredit,
         };
         payload.upiRef = numSplitUpi > 0 ? localUpiRef.trim() : null;
+        payload.cardAuthCode = numSplitCard > 0 ? localCardAuth.trim() || null : null;
+        payload.cardLast4 = numSplitCard > 0 ? localCardLast4.trim() || null : null;
         payload.chequeNo = numSplitCheque > 0 ? localChequeNo.trim() : null;
         payload.chequeBank = numSplitCheque > 0 ? localChequeBank.trim() : null;
         payload.chequeDate = numSplitCheque > 0 ? localChequeDate : null;
       } else {
         payload.cashTendered = paymentMethod === "cash" ? numSingleTendered : undefined;
         payload.upiRef = paymentMethod === "upi" ? localUpiRef.trim() : null;
+        payload.cardAuthCode = paymentMethod === "card" ? localCardAuth.trim() || null : null;
+        payload.cardLast4 = paymentMethod === "card" ? localCardLast4.trim() || null : null;
         payload.chequeNo = paymentMethod === "cheque" ? localChequeNo.trim() : null;
         payload.chequeBank = paymentMethod === "cheque" ? localChequeBank.trim() : null;
         payload.chequeDate = paymentMethod === "cheque" ? localChequeDate : null;
@@ -321,14 +357,12 @@ export function PaymentTenderModal({
 
   if (!isOpen) return null;
 
-  // Dynamic UPI payment URL for single or split UPI
+  // Dynamic UPI payment URL for single or split UPI (generated 100% locally offline)
   const dynamicUpiAmount = paymentMethod === "split" ? (numSplitUpi > 0 ? numSplitUpi : grandTotal) : grandTotal;
   const upiPayUri = `upi://pay?pa=${encodeURIComponent(storeUpiId)}&pn=${encodeURIComponent(
     activeBranch?.name || "DRxStore Pharmacy"
   )}&am=${dynamicUpiAmount.toFixed(2)}&cu=INR`;
-  const upiQrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
-    upiPayUri
-  )}`;
+  const upiQrImageUrl = generateQrCodeDataUri(upiPayUri, 160);
 
   return (
     <Modal

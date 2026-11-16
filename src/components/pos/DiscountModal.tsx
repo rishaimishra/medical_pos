@@ -16,6 +16,8 @@ interface DiscountModalProps {
 
 export function DiscountModal({ isOpen, onClose, masterDiscounts = [] }: DiscountModalProps) {
   const {
+    getSubtotal,
+    getTotalItemDiscounts,
     getSubtotalAfterItemDiscounts,
     setDiscount,
     setManagerApprovedBillDiscount,
@@ -25,6 +27,8 @@ export function DiscountModal({ isOpen, onClose, masterDiscounts = [] }: Discoun
   } = useCartStore();
   const { user } = useAuthStore();
 
+  const grossSubtotal = getSubtotal();
+  const totalItemDiscounts = getTotalItemDiscounts();
   const subtotal = getSubtotalAfterItemDiscounts();
   const maxAllowablePercent = user?.maxDiscountPercent ?? (user?.role === "admin" ? 100 : 10);
 
@@ -69,7 +73,12 @@ export function DiscountModal({ isOpen, onClose, masterDiscounts = [] }: Discoun
   calculatedDiscount = Math.min(calculatedDiscount, subtotal);
 
   const resultingTotal = Math.max(0, subtotal - calculatedDiscount);
-  const exceedsCashierLimit = effectivePercent > maxAllowablePercent && user?.role !== "admin";
+  const combinedDiscount = totalItemDiscounts + calculatedDiscount;
+  const combinedPercent = grossSubtotal > 0 ? (combinedDiscount / grossSubtotal) * 100 : effectivePercent;
+  const effectiveCheckPercent = Math.max(effectivePercent, combinedPercent);
+  // Active Master Discount Policies are pre-approved by Admin/Manager; custom ad-hoc discounts require override if > cashier ceiling
+  const exceedsCashierLimit =
+    !selectedMasterId && effectiveCheckPercent > maxAllowablePercent + 0.01 && user?.role !== "admin";
 
   const handleApply = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,22 +92,31 @@ export function DiscountModal({ isOpen, onClose, masterDiscounts = [] }: Discoun
       return;
     }
 
+    if (mode === "percent" && numVal > 100) {
+      setError("Percentage discount cannot exceed 100%.");
+      return;
+    }
+
+    const clampedPct = Math.min(100, effectivePercent);
+    const requestedOverridePct = Math.min(100, effectiveCheckPercent);
+
     if (exceedsCashierLimit) {
-      setPendingDiscountPct(effectivePercent);
+      setPendingDiscountPct(requestedOverridePct);
       setIsManagerModalOpen(true);
       return;
     }
 
-    setDiscount(calculatedDiscount, effectivePercent, selectedMasterId);
-    toast.success(`Bill discount of ₹${calculatedDiscount.toFixed(2)} (${effectivePercent.toFixed(1)}%) applied!`);
+    setManagerApprovedBillDiscount(null);
+    setDiscount(calculatedDiscount, mode === "percent" ? clampedPct : 0, selectedMasterId);
+    toast.success(`Bill discount of ₹${calculatedDiscount.toFixed(2)} (${clampedPct.toFixed(1)}%) applied!`);
     onClose();
   };
 
-  const handleManagerAuthorized = (auth: { managerName: string; managerId: number; percent: number }) => {
+  const handleManagerAuthorized = (auth: { managerName: string; managerId: number; percent: number; token?: string }) => {
     setManagerApprovedBillDiscount(auth);
-    setDiscount(calculatedDiscount, auth.percent, selectedMasterId);
+    setDiscount(calculatedDiscount, mode === "percent" ? auth.percent : 0, selectedMasterId);
     setIsManagerModalOpen(false);
-    toast.success(`High discount of ${auth.percent}% authorized by ${auth.managerName}!`);
+    toast.success(`High discount of ${auth.percent.toFixed(1)}% authorized by ${auth.managerName}!`);
     onClose();
   };
 

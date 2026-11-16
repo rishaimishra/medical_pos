@@ -7,7 +7,7 @@ import { CheckCircle2, AlertTriangle, AlertCircle, Info, X } from "lucide-react"
 function ToastCard({ toast, onRemove }: { toast: ToastItem; onRemove: (id: string) => void }) {
   const [progress, setProgress] = useState(100);
   const [isPaused, setIsPaused] = useState(false);
-  const duration = toast.duration ?? 4500;
+  const duration = Math.max(100, toast.duration ?? 4500);
 
   useEffect(() => {
     if (isPaused) return;
@@ -16,18 +16,17 @@ function ToastCard({ toast, onRemove }: { toast: ToastItem; onRemove: (id: strin
     const decrement = (intervalTime / duration) * 100;
 
     const timer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev <= 0) {
-          clearInterval(timer);
-          onRemove(toast.id);
-          return 0;
-        }
-        return Math.max(0, prev - decrement);
-      });
+      setProgress((prev) => Math.max(0, prev - decrement));
     }, intervalTime);
 
     return () => clearInterval(timer);
-  }, [duration, isPaused, onRemove, toast.id]);
+  }, [duration, isPaused]);
+
+  useEffect(() => {
+    if (progress <= 0) {
+      onRemove(toast.id);
+    }
+  }, [progress, onRemove, toast.id]);
 
   const typeStyles: Record<
     ToastType,

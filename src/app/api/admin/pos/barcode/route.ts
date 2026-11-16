@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
-import { canAccessBranch } from "@/lib/rbac";
+import { canAccessBranch, canAccessPage } from "@/lib/rbac";
+import { getTodayMidnightUtc } from "@/lib/config";
 
 /**
  * MODULE 2.3.1: Hardware Barcode Scanner Lookup Endpoint
@@ -12,6 +13,9 @@ export async function GET(req: NextRequest) {
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, error: auth.message || "Unauthorized" }, { status: auth.status });
+  }
+  if (!canAccessPage(auth.session, "/admin/pos")) {
+    return NextResponse.json({ success: false, error: "Forbidden: POS access denied" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -34,8 +38,12 @@ export async function GET(req: NextRequest) {
   }
 
   const effectiveBranchId = auth.session.branchId ? auth.session.branchId : requestedBranchId;
-  const now = new Date();
-  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const userStoreId = auth.session.storeId;
+  const branchScope = {
+    ...(effectiveBranchId ? { branchId: effectiveBranchId } : {}),
+    ...(userStoreId ? { branch: { storeId: userStoreId } } : {}),
+  };
+  const todayMidnight = getTodayMidnightUtc();
 
   try {
     // 1. Try matching directly by Batch Number first
@@ -43,7 +51,7 @@ export async function GET(req: NextRequest) {
       where: {
         batchNo: { equals: rawCode, mode: "insensitive" },
         expiryDate: { gt: todayMidnight },
-        ...(effectiveBranchId ? { branchId: effectiveBranchId } : {}),
+        ...branchScope,
       },
       include: { medicine: true },
       orderBy: { expiryDate: "asc" },
@@ -86,12 +94,37 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 2. Try matching by Medicine HSN Code, or Name exactly
-    const medicineMatch = await prisma.medicine.findFirst({
+    // Check if an expired batch matches this barcode so pharmacist gets an explicit safety warning
+    const expiredBatchMatch = await prisma.batch.findFirst({
+      where: {
+        batchNo: { equals: rawCode, mode: "insensitive" },
+        expiryDate: { lte: todayMidnight },
+        ...branchScope,
+      },
+      include: { medicine: true },
+      orderBy: { expiryDate: "desc" },
+    });
+
+    if (expiredBatchMatch) {
+      return NextResponse.json(
+        {
+          success: false,
+          expired: true,
+          error: `Safety Violation: Batch '${expiredBatchMatch.batchNo}' (${expiredBatchMatch.medicine.name}) is EXPIRED (${expiredBatchMatch.expiryDate.toLocaleDateString()}) and cannot be dispensed.`,
+          medicineName: expiredBatchMatch.medicine.name,
+          batchNo: expiredBatchMatch.batchNo,
+          availableStock: 0,
+        },
+        { status: 400 }
+      );
+    }
+
+    // 2. Try matching by Medicine Name (exact) or HSN Code (disambiguate shared HSNs)
+    const medicineMatches = await prisma.medicine.findMany({
       where: {
         OR: [
-          { hsnCode: { equals: rawCode, mode: "insensitive" } },
           { name: { equals: rawCode, mode: "insensitive" } },
+          { hsnCode: { equals: rawCode, mode: "insensitive" } },
         ],
       },
       include: {
@@ -99,14 +132,35 @@ export async function GET(req: NextRequest) {
           where: {
             expiryDate: { gt: todayMidnight },
             quantity: { gt: 0 },
-            ...(effectiveBranchId ? { branchId: effectiveBranchId } : {}),
+            ...branchScope,
           },
           orderBy: { expiryDate: "asc" },
         },
       },
+      take: 10,
     });
 
-    if (medicineMatch) {
+    if (medicineMatches.length > 0) {
+      const exactNameMatch = medicineMatches.find(
+        (m) => m.name.toLowerCase() === rawCode.toLowerCase()
+      );
+      const inStockMatches = medicineMatches.filter((m) => m.batches.length > 0);
+
+      if (!exactNameMatch && inStockMatches.length > 1) {
+        return NextResponse.json(
+          {
+            success: false,
+            multipleMatches: true,
+            error: `Code '${rawCode}' matches multiple in-stock medicines (${inStockMatches
+              .slice(0, 3)
+              .map((m) => m.name)
+              .join(", ")}). Please scan a batch barcode or use Medicine Search [F2].`,
+          },
+          { status: 409 }
+        );
+      }
+
+      const medicineMatch = exactNameMatch || inStockMatches[0] || medicineMatches[0];
       const topBatch = medicineMatch.batches[0];
       if (!topBatch) {
         return NextResponse.json(
@@ -143,6 +197,7 @@ export async function GET(req: NextRequest) {
         },
         availableStock: totalStock,
         batchStock: topBatch.quantity,
+        totalBranchStock: totalStock,
       });
     }
 

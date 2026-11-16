@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
-import { verifyAdminRequest, verifyPassword } from "@/lib/auth";
+import {
+  verifyAdminRequest,
+  verifyPassword,
+  createDiscountOverrideToken,
+  checkBruteForceLockout,
+  recordFailedLoginAttempt,
+  clearFailedLoginAttempts,
+} from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
-import { getEffectiveMaxDiscount, hasPermission } from "@/lib/rbac";
+import { canAccessBranch, getEffectiveMaxDiscount, hasPermission } from "@/lib/rbac";
 
 /**
  * MODULE 2.4.2: Manager Discount Override Authentication
@@ -40,39 +47,108 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Find manager/admin user
+    // Find manager/admin user within the same store tenant
+    const ip = getClientIp(req);
     const canonical = usernameOrEmail.trim().toLowerCase();
+
+    const lockout = await checkBruteForceLockout(ip, "admin", canonical);
+    if (lockout.locked) {
+      return NextResponse.json(
+        {
+          success: false,
+          lockedOut: true,
+          remainingSeconds: lockout.remainingSeconds,
+          error: `Too many failed override attempts. Try again in ${Math.ceil(lockout.remainingSeconds / 60)} minute(s).`,
+        },
+        { status: 429 }
+      );
+    }
+
     const managerUser = await prisma.user.findFirst({
       where: {
         OR: [
           { username: { equals: canonical, mode: "insensitive" } },
           { email: { equals: canonical, mode: "insensitive" } },
         ],
+        ...(auth.session.storeId ? { storeId: auth.session.storeId } : {}),
       },
     });
 
     if (!managerUser || !managerUser.active) {
+      await recordFailedLoginAttempt(ip, "admin", canonical);
       return NextResponse.json(
         { success: false, error: "Invalid manager credentials or inactive account" },
         { status: 401 }
       );
     }
 
+    const userLockout = await checkBruteForceLockout(ip, "admin", managerUser.username, managerUser.email);
+    if (userLockout.locked) {
+      return NextResponse.json(
+        {
+          success: false,
+          lockedOut: true,
+          remainingSeconds: userLockout.remainingSeconds,
+          error: `Manager override temporarily locked due to failed attempts. Try again in ${Math.ceil(userLockout.remainingSeconds / 60)} minute(s).`,
+        },
+        { status: 429 }
+      );
+    }
+
+    if (
+      auth.session.branchId &&
+      !canAccessBranch(
+        {
+          role: managerUser.role,
+          branchId: managerUser.branchId,
+          permissions: managerUser.permissions,
+        },
+        auth.session.branchId
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Manager '${managerUser.name}' is not authorized for this store branch.`,
+        },
+        { status: 403 }
+      );
+    }
+
     // Verify Password
     const passwordValid = await verifyPassword(password, managerUser.password);
     if (!passwordValid) {
+      await recordFailedLoginAttempt(ip, "admin", managerUser.username, managerUser.email);
+      await logAudit({
+        storeId: auth.session.storeId ?? null,
+        userId: auth.session.userId,
+        branchId: auth.session.branchId ?? null,
+        action: "manager_discount_override_failed",
+        entity: "pos_discount",
+        details: {
+          attemptedManager: managerUser.username,
+          requestedDiscountPercent: requestedPct,
+          cashierName: auth.session.name,
+        },
+        ipAddress: ip,
+      });
       return NextResponse.json(
         { success: false, error: "Incorrect manager password" },
         { status: 401 }
       );
     }
 
-    // Check authorization rights
+    await clearFailedLoginAttempts(ip, "admin", managerUser.username, managerUser.email);
+
+    // Check authorization rights (using managerUser's actual custom permissions)
     const role = managerUser.role as any;
     const canAuthorizeHighDiscount =
       role === "admin" ||
       role === "manager" ||
-      hasPermission({ role, permissions: [] } as any, "apply_high_discount");
+      hasPermission(
+        { role, permissions: managerUser.permissions, branchId: managerUser.branchId },
+        "apply_high_discount"
+      );
 
     if (!canAuthorizeHighDiscount) {
       return NextResponse.json(
@@ -84,8 +160,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify requested percentage against manager's own ceiling
-    const managerMaxDiscount = getEffectiveMaxDiscount(role);
+    // Verify requested percentage against manager's own ceiling (including custom ceiling)
+    const managerMaxDiscount = getEffectiveMaxDiscount(role, managerUser.permissions);
     if (requestedPct > managerMaxDiscount) {
       return NextResponse.json(
         {
@@ -95,6 +171,15 @@ export async function POST(req: NextRequest) {
         { status: 403 }
       );
     }
+
+    const overrideToken = createDiscountOverrideToken({
+      managerId: managerUser.id,
+      managerName: managerUser.name,
+      managerRole: managerUser.role,
+      maxApprovedPercent: requestedPct,
+      storeId: auth.session.storeId ?? null,
+      cashierId: auth.session.userId,
+    });
 
     // Record Manager Override in Audit Log
     await logAudit({
@@ -120,6 +205,7 @@ export async function POST(req: NextRequest) {
       authorized: true,
       managerId: managerUser.id,
       managerName: managerUser.name,
+      overrideToken,
       approvedDiscountPercent: requestedPct,
       message: `Discount approved by ${managerUser.name} (${managerUser.role.toUpperCase()})`,
     });

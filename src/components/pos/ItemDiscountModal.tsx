@@ -15,7 +15,14 @@ interface ItemDiscountModalProps {
 }
 
 export function ItemDiscountModal({ isOpen, onClose, item }: ItemDiscountModalProps) {
-  const { updateItemDiscount, removeItemDiscount } = useCartStore();
+  const {
+    items,
+    discountAmount: billDiscountAmount,
+    discountId: billDiscountId,
+    getSubtotal,
+    updateItemDiscount,
+    removeItemDiscount,
+  } = useCartStore();
   const { user } = useAuthStore();
 
   const maxAllowablePercent = user?.maxDiscountPercent ?? (user?.role === "admin" ? 100 : 10);
@@ -59,7 +66,16 @@ export function ItemDiscountModal({ isOpen, onClose, item }: ItemDiscountModalPr
 
   calculatedDiscount = Math.min(calculatedDiscount, lineGross);
   const lineNet = Math.max(0, lineGross - calculatedDiscount);
-  const exceedsCashierLimit = effectivePercent > maxAllowablePercent && user?.role !== "admin";
+  const grossSubtotal = getSubtotal();
+  const otherItemDiscounts = items
+    .filter((i) => i.batchId !== item.batchId)
+    .reduce((sum, i) => sum + (i.discountAmount || 0), 0);
+  const combinedTotalDiscount =
+    otherItemDiscounts + calculatedDiscount + (billDiscountId ? 0 : billDiscountAmount);
+  const combinedPercent = grossSubtotal > 0 ? (combinedTotalDiscount / grossSubtotal) * 100 : effectivePercent;
+  const effectiveCheckPercent = Math.max(effectivePercent, combinedPercent);
+  const exceedsCashierLimit =
+    effectiveCheckPercent > maxAllowablePercent + 0.01 && user?.role !== "admin";
 
   const handleApply = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,21 +88,34 @@ export function ItemDiscountModal({ isOpen, onClose, item }: ItemDiscountModalPr
       return;
     }
 
+    if (mode === "percent" && numVal > 100) {
+      setError("Percentage discount cannot exceed 100%.");
+      return;
+    }
+
+    const clampedPct = Math.min(100, effectivePercent);
+
     if (exceedsCashierLimit) {
       // Require Manager Approval
-      setPendingDiscountPct(effectivePercent);
+      setPendingDiscountPct(Math.min(100, effectiveCheckPercent));
       setIsManagerModalOpen(true);
       return;
     }
 
     // Cashier is within limit or admin
-    updateItemDiscount(item.batchId, calculatedDiscount, effectivePercent);
-    toast.success(`Discount of ₹${calculatedDiscount.toFixed(2)} (${effectivePercent.toFixed(1)}%) applied to ${item.medicineName}`);
+    updateItemDiscount(item.batchId, calculatedDiscount, mode === "percent" ? clampedPct : 0);
+    toast.success(`Discount of ₹${calculatedDiscount.toFixed(2)} (${clampedPct.toFixed(1)}%) applied to ${item.medicineName}`);
     onClose();
   };
 
-  const handleManagerAuthorized = (auth: { managerName: string; managerId: number; percent: number }) => {
-    updateItemDiscount(item.batchId, calculatedDiscount, auth.percent, auth.managerName);
+  const handleManagerAuthorized = (auth: { managerName: string; managerId: number; percent: number; token?: string }) => {
+    updateItemDiscount(
+      item.batchId,
+      calculatedDiscount,
+      mode === "percent" ? auth.percent : 0,
+      auth.managerName,
+      auth.token
+    );
     setIsManagerModalOpen(false);
     toast.success(`Discount authorized by ${auth.managerName} and applied!`);
     onClose();

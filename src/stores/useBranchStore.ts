@@ -54,8 +54,8 @@ export const useBranchStore = create<BranchState>((set, get) => ({
         }
 
         const matched =
-          (preferredBranchId ? activeList.find((b) => b.id === preferredBranchId) : null) ||
           activeList.find((b) => b.id === savedId) ||
+          (preferredBranchId ? activeList.find((b) => b.id === preferredBranchId) : null) ||
           activeList.find((b) => b.isMain) ||
           activeList[0] ||
           null;

@@ -84,7 +84,8 @@ export default function AdminLayout({
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch("/api/admin/notifications", { cache: "no-store" });
+      const branchQuery = activeBranch?.id ? `?branchId=${activeBranch.id}` : "";
+      const res = await fetch(`/api/admin/notifications${branchQuery}`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.notifications)) {
@@ -103,7 +104,7 @@ export default function AdminLayout({
       const interval = setInterval(fetchNotifications, 60000);
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, activeBranch?.id]);
 
   // 1. Check session & setup status on mount
   useEffect(() => {
@@ -219,9 +220,9 @@ export default function AdminLayout({
         type: "warning",
       });
       if (!confirmed) return;
-      clearCart();
     }
 
+    clearCart(true);
     setActiveBranch(nextBranchId);
     toast.info("Active store branch updated.");
   };
@@ -244,6 +245,7 @@ export default function AdminLayout({
   };
 
   const handleLogout = async () => {
+    clearCart(true);
     clearBranches();
     await logout();
     router.replace("/admin/login");
@@ -267,9 +269,9 @@ export default function AdminLayout({
 
   return (
     <div className="h-screen overflow-hidden bg-[#EAF2F4] text-slate-900 flex font-sans relative">
-      {/* Screen Lock Popup (Keeps Billing Cart Safe) */}
+      {/* Screen Lock Popup (Keeps Billing Cart Safe, above all Modals/ConfirmDialogs) */}
       {isLocked && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[9995] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 space-y-5">
             <div className="flex items-center gap-3.5">
               <div className="w-11 h-11 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center">
@@ -511,21 +513,33 @@ export default function AdminLayout({
 
           <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
             {/* Search Pill */}
-            <div className="flex items-center bg-white border border-slate-300 rounded-full overflow-hidden shadow-2xs w-48 sm:w-64">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const q = searchQuery.trim();
+                if (!q) return;
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(new CustomEvent("admin:global-search", { detail: q }));
+                }
+                router.push(`/admin/medicines?search=${encodeURIComponent(q)}`);
+              }}
+              className="flex items-center bg-white border border-slate-300 rounded-full overflow-hidden shadow-2xs w-48 sm:w-64"
+            >
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search"
+                placeholder="Search medicines..."
                 className="flex-1 bg-transparent px-3.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none"
               />
               <button
-                type="button"
+                type="submit"
                 className="bg-[#D5E3E8] hover:bg-[#c2d6dd] text-[#1F4E5B] px-3 py-2 flex items-center justify-center transition-colors cursor-pointer"
+                title="Search medicine catalog"
               >
                 <Search className="w-3.5 h-3.5" />
               </button>
-            </div>
+            </form>
 
             {/* Real Authenticated Store Branch Selector / Locked Pill */}
             {activeBranches.length > 0 &&

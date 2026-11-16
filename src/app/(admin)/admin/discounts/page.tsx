@@ -400,17 +400,29 @@ export default function DiscountsManagementPage() {
                       {d.minAmount > 0 ? `₹${d.minAmount.toFixed(2)}` : "None (₹0)"}
                     </td>
                     <td className="py-3.5 px-4 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStatus(d)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold cursor-pointer transition-all ${
-                          d.active
-                            ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
-                            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                        }`}
-                      >
-                        {d.active ? "Active" : "Disabled"}
-                      </button>
+                      {isAdminOrManager ? (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleStatus(d)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold cursor-pointer transition-all ${
+                            d.active
+                              ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                              : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                          }`}
+                        >
+                          {d.active ? "Active" : "Disabled"}
+                        </button>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold ${
+                            d.active
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-slate-200 text-slate-600"
+                          }`}
+                        >
+                          {d.active ? "Active" : "Disabled"}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-center font-bold text-slate-600">
                       {d.salesCount}

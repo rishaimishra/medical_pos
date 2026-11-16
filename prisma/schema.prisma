@@ -48,6 +48,7 @@ model Settings {
   branches  Branch[]
   users     User[]
   auditLogs AuditLog[]
+  discounts Discount[]
 
   @@map("settings")
 }
@@ -422,7 +423,11 @@ model Sale {
   discountAmount Decimal   @default(0.00) @map("discount_amount") @db.Decimal(12, 2)
   discountId     Int?      @map("discount_id")
   grandTotal     Decimal   @map("grand_total") @db.Decimal(12, 2)
-  paymentMethod  String    @default("cash") @map("payment_method") @db.VarChar(50) // cash, upi, card, cheque, credit
+  paymentMethod  String    @default("cash") @map("payment_method") @db.VarChar(50) // cash, upi, card, cheque, credit, split
+  splitDetails   String?   @map("split_details") @db.Text
+  creditAmount   Decimal   @default(0.00) @map("credit_amount") @db.Decimal(12, 2)
+  cardAuthCode   String?   @map("card_auth_code") @db.VarChar(100)
+  cardLast4      String?   @map("card_last_4") @db.VarChar(4)
   upiRef         String?   @map("upi_ref") @db.VarChar(100)
   chequeNo       String?   @map("cheque_no") @db.VarChar(100)
   chequeBank     String?   @map("cheque_bank") @db.VarChar(100)
@@ -535,6 +540,7 @@ model ReturnItem {
 // Table: discounts (Discount policies and promotional schemes)
 model Discount {
   id        Int      @id @default(autoincrement())
+  storeId   Int?     @map("store_id")
   name      String   @db.VarChar(255)
   type      String   @default("percent") @db.VarChar(20) // percent, flat
   value     Decimal  @db.Decimal(10, 2)
@@ -543,8 +549,10 @@ model Discount {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
   createdAt DateTime @default(now()) @map("created_at")
 
+  store Settings? @relation(fields: [storeId], references: [id], onDelete: Cascade)
   sales Sale[]
 
+  @@index([storeId], name: "idx_discounts_store")
   @@map("discounts")
 }
 

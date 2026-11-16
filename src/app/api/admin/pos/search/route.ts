@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
-import { canAccessBranch } from "@/lib/rbac";
-import { getExpiryStatus } from "@/lib/config";
+import { canAccessBranch, canAccessPage } from "@/lib/rbac";
+import { getExpiryStatus, getTodayMidnightUtc } from "@/lib/config";
 import { parsePackMetadata } from "@/app/api/admin/medicines/route";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
+  }
+  if (!canAccessPage(auth.session, "/admin/pos")) {
+    return NextResponse.json({ success: false, message: "Forbidden: POS access denied" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -31,8 +34,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const now = new Date();
-    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayMidnight = getTodayMidnightUtc();
+    const userStoreId = auth.session.storeId;
+    const batchScopeFilter = {
+      ...(targetBranchId ? { branchId: targetBranchId } : {}),
+      ...(userStoreId ? { branch: { storeId: userStoreId } } : {}),
+    };
 
     // Search medicines by brand name, generic composition, category, rack location, or batch number
     const medicines = await prisma.medicine.findMany({
@@ -47,7 +54,7 @@ export async function GET(req: NextRequest) {
             batches: {
               some: {
                 batchNo: { contains: q, mode: "insensitive" },
-                ...(targetBranchId ? { branchId: targetBranchId } : {}),
+                ...batchScopeFilter,
               },
             },
           },
@@ -56,7 +63,7 @@ export async function GET(req: NextRequest) {
       include: {
         batches: {
           where: {
-            ...(targetBranchId ? { branchId: targetBranchId } : {}),
+            ...batchScopeFilter,
             quantity: { gt: 0 },
             expiryDate: { gt: todayMidnight }, // Only unexpired batches with stock
           },

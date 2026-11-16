@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
-import { getExpiryStatus, ExpiryTier } from "@/lib/config";
+import { getExpiryStatus, getTodayMidnightUtc, ExpiryTier } from "@/lib/config";
 import { canAccessBranch } from "@/lib/rbac";
 
 /**
@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
   const branchParam = searchParams.get("branchId");
   const tierParam = searchParams.get("tier"); // "expired" | "critical_30" | "warning_90" | "safe" | "all"
   const stockParam = searchParams.get("stock"); // "in_stock" | "out_of_stock" | "all"
+  const excludeExpired = searchParams.get("excludeExpired") === "true";
   const fefoMode = searchParams.get("fefo") === "true";
   const recommendFefo = searchParams.get("recommend") === "true"; // Returns single top FEFO batch for POS checkout
 
@@ -62,8 +63,7 @@ export async function GET(req: NextRequest) {
   const targetBranchId = auth.session.branchId ? auth.session.branchId : requestedBranchId;
 
   try {
-    const now = new Date();
-    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayMidnight = getTodayMidnightUtc();
     const thirtyDaysAhead = new Date(todayMidnight.getTime() + 30 * 24 * 60 * 60 * 1000);
     const ninetyDaysAhead = new Date(todayMidnight.getTime() + 90 * 24 * 60 * 60 * 1000);
 
@@ -113,6 +113,8 @@ export async function GET(req: NextRequest) {
       where.expiryDate = { gt: thirtyDaysAhead, lte: ninetyDaysAhead };
     } else if (tierParam === "safe") {
       where.expiryDate = { gt: ninetyDaysAhead };
+    } else if (excludeExpired) {
+      where.expiryDate = { gt: todayMidnight };
     }
 
     // 2. Recommend FEFO for POS Billing (1.8.2)

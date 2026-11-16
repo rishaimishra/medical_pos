@@ -4,20 +4,20 @@
  * crisp SVG vector bars suitable for 203 DPI and 300 DPI thermal label printers.
  */
 
-// Code 128 Patterns (B and C)
-// Each character is encoded as 11 modules: 3 bars and 3 spaces (except stop which has 13 modules)
-const CODE128_PATTERNS: number[] = [
-  0x6cc, 0x66c, 0x666, 0x498, 0x48c, 0x44c, 0x4c8, 0x4c4, 0x464, 0x648, // 0-9
-  0x644, 0x624, 0x59c, 0x4dc, 0x4ce, 0x59e, 0x4de, 0x4ee, 0x72c, 0x6ac, // 10-19
-  0x6b4, 0x7ac, 0x7b4, 0x7b6, 0x76c, 0x764, 0x734, 0x736, 0x774, 0x776, // 20-29
-  0x76e, 0x77c, 0x77e, 0x52c, 0x54c, 0x546, 0x526, 0x564, 0x566, 0x748, // 30-39
-  0x744, 0x724, 0x5ac, 0x5b4, 0x5b6, 0x7a8, 0x7a4, 0x726, 0x768, 0x738, // 40-49
-  0x5dc, 0x5ee, 0x5ae, 0x7b8, 0x7b2, 0x762, 0x732, 0x71a, 0x716, 0x75a, // 50-59
-  0x756, 0x778, 0x772, 0x73a, 0x76a, 0x56a, 0x5aa, 0x69c, 0x6ce, 0x6b6, // 60-69
-  0x676, 0x6ec, 0x6f4, 0x6f6, 0x74c, 0x754, 0x756, 0x73c, 0x73e, 0x766, // 70-79
-  0x75e, 0x6da, 0x6ec, 0x6f6, 0x76e, 0x77c, 0x77e, 0x7b8, 0x7b2, 0x762, // 80-89
-  0x71a, 0x75a, 0x756, 0x778, 0x772, 0x73a, 0x76a, 0x56a, 0x5aa, 0x69c, // 90-99
-  0x6ce, 0x6b6, 0x676, 0x67a, 0x72a, 0x74a, 0x76a, 0x772, 0x18eb,       // 100-106 (106 is STOP pattern: 13 modules)
+// Official ISO/IEC 15417 Code 128 element-width table (symbols 0..106)
+// Each symbol 0..105 sums to 11 modules (b1,s1,b2,s2,b3,s3); symbol 106 (STOP) is 13 modules including termination bar (2331112).
+const CODE128_WIDTHS: string[] = [
+  "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312", "132212", "221213", // 0-9
+  "221312", "231212", "112232", "122132", "122231", "113222", "123122", "123221", "223211", "221132", // 10-19
+  "221231", "213212", "223112", "312131", "311222", "321122", "321221", "312212", "322112", "322211", // 20-29
+  "212123", "212321", "232121", "111323", "131123", "131321", "112313", "132113", "132311", "211313", // 30-39
+  "231113", "231311", "112133", "112331", "132131", "113123", "113321", "133121", "313121", "211331", // 40-49
+  "231131", "213113", "213311", "213131", "311123", "311321", "331121", "312113", "312311", "332111", // 50-59
+  "314111", "221411", "431111", "111224", "111422", "121124", "121421", "141122", "141221", "112214", // 60-69
+  "112412", "122114", "122411", "142112", "142211", "241211", "221114", "413111", "241112", "134111", // 70-79
+  "111242", "121142", "121241", "114212", "124112", "124211", "411212", "421112", "421211", "212141", // 80-89
+  "214121", "412121", "111143", "111341", "131141", "114113", "114311", "411113", "411311", "113141", // 90-99
+  "114131", "311141", "411131", "211412", "211214", "211232", "2331112",                              // 100-106
 ];
 
 const START_B = 104;
@@ -32,7 +32,7 @@ export function encodeCode128B(text: string): string {
 
   // Filter to printable ASCII chars 32-126
   const cleanText = text.replace(/[^\x20-\x7E]/g, "-");
-  
+
   const codes: number[] = [START_B];
   let checkSum = START_B;
 
@@ -49,18 +49,13 @@ export function encodeCode128B(text: string): string {
   // Convert each code index into binary modules (1=bar, 0=space)
   let binaryString = "";
   for (let idx = 0; idx < codes.length; idx++) {
-    const code = codes[idx];
-    const isStop = idx === codes.length - 1;
-    const moduleCount = isStop ? 13 : 11;
-    const pattern = CODE128_PATTERNS[code] ?? 0x6cc;
-
-    for (let bit = moduleCount - 1; bit >= 0; bit--) {
-      binaryString += ((pattern >> bit) & 1) ? "1" : "0";
+    const widths = CODE128_WIDTHS[codes[idx]] ?? CODE128_WIDTHS[0];
+    for (let i = 0; i < widths.length; i++) {
+      const moduleCount = Number(widths[i]);
+      const bit = i % 2 === 0 ? "1" : "0";
+      binaryString += bit.repeat(moduleCount);
     }
   }
-
-  // Final termination bar (2 modules)
-  binaryString += "11";
 
   return binaryString;
 }

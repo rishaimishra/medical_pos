@@ -31,6 +31,10 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Discount policy not found" }, { status: 404 });
     }
 
+    if (auth.session.storeId && discount.storeId && discount.storeId !== auth.session.storeId) {
+      return NextResponse.json({ success: false, error: "Forbidden: Discount policy belongs to another store" }, { status: 403 });
+    }
+
     return NextResponse.json({
       success: true,
       discount: {
@@ -81,6 +85,10 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Discount policy not found" }, { status: 404 });
     }
 
+    if (auth.session.storeId && existing.storeId && existing.storeId !== auth.session.storeId) {
+      return NextResponse.json({ success: false, error: "Forbidden: Discount policy belongs to another store" }, { status: 403 });
+    }
+
     const updateData: {
       name?: string;
       type?: string;
@@ -108,15 +116,22 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       if (isNaN(numVal) || numVal <= 0) {
         return NextResponse.json({ success: false, error: "Value must be positive" }, { status: 400 });
       }
-      const targetType = type || existing.type;
-      if (targetType === "percent" && numVal > 100) {
-        return NextResponse.json({ success: false, error: "Percentage discount cannot exceed 100%" }, { status: 400 });
-      }
       updateData.value = numVal;
     }
 
+    // Always validate effective type vs effective value together (catches flat->percent conversion)
+    const targetType = updateData.type || existing.type;
+    const targetValue = updateData.value !== undefined ? updateData.value : Number(existing.value);
+    if (targetType === "percent" && targetValue > 100) {
+      return NextResponse.json({ success: false, error: "Percentage discount cannot exceed 100%" }, { status: 400 });
+    }
+
     if (minAmount !== undefined) {
-      updateData.minAmount = Math.max(0, parseFloat(minAmount) || 0);
+      const parsedMin = minAmount === "" || minAmount === null ? 0 : parseFloat(minAmount);
+      if (isNaN(parsedMin) || parsedMin < 0) {
+        return NextResponse.json({ success: false, error: "Minimum invoice amount cannot be negative" }, { status: 400 });
+      }
+      updateData.minAmount = parsedMin;
     }
 
     if (active !== undefined) {
@@ -199,6 +214,10 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
 
     if (!existing) {
       return NextResponse.json({ success: false, error: "Discount policy not found" }, { status: 404 });
+    }
+
+    if (auth.session.storeId && existing.storeId && existing.storeId !== auth.session.storeId) {
+      return NextResponse.json({ success: false, error: "Forbidden: Discount policy belongs to another store" }, { status: 403 });
     }
 
     // Safety guard: if discount was already applied in historical sales, deactivate rather than hard delete

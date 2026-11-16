@@ -188,16 +188,26 @@ export function formatCurrency(
  */
 export type ExpiryTier = "expired" | "critical_30" | "warning_90" | "safe";
 
+/**
+ * Returns today's calendar date at 00:00:00.000Z to match PostgreSQL `@db.Date` columns cleanly
+ * across any server timezone (e.g. UTC+05:30).
+ */
+export function getTodayMidnightUtc(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
 export function getExpiryStatus(
   expiryDate: Date | string,
   warningThresholdDays: number = 90
 ): { tier: ExpiryTier; daysRemaining: number; label: string } {
   const exp = typeof expiryDate === "string" ? new Date(expiryDate) : expiryDate;
-  const now = new Date();
-  
-  // Calculate difference in whole days
-  const diffTime = exp.getTime() - now.getTime();
-  const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const todayUtc = getTodayMidnightUtc();
+  const expUtc = new Date(Date.UTC(exp.getUTCFullYear(), exp.getUTCMonth(), exp.getUTCDate()));
+
+  // Calculate difference in whole calendar days
+  const diffTime = expUtc.getTime() - todayUtc.getTime();
+  const daysRemaining = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
   if (daysRemaining <= 0) {
     return { tier: "expired", daysRemaining, label: "Expired" };

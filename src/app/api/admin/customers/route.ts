@@ -33,10 +33,15 @@ export async function GET(req: NextRequest) {
   const chronicFilter = (searchParams.get("chronic") || "all").toLowerCase(); // "all" | "chronic" | "non_chronic"
   const genderFilter = (searchParams.get("gender") || "all").toLowerCase();
   const hasDueOnly = searchParams.get("hasDue") === "true";
+  const activeOnly = searchParams.get("activeOnly") === "true";
   const sortBy = searchParams.get("sort") || "recent"; // "recent" | "name_asc" | "due_desc"
 
   try {
     const whereClause: any = {};
+
+    if (activeOnly) {
+      whereClause.active = true;
+    }
 
     if (search) {
       whereClause.OR = [
@@ -68,8 +73,11 @@ export async function GET(req: NextRequest) {
       prisma.customer.count(),
       prisma.customer.count({ where: { isChronic: true } }),
       prisma.sale.findMany({
-        where: { customerId: { not: null }, paymentMethod: "credit" },
-        select: { customerId: true, grandTotal: true },
+        where: {
+          customerId: { not: null },
+          OR: [{ paymentMethod: "credit" }, { creditAmount: { gt: 0 } }],
+        },
+        select: { customerId: true, paymentMethod: true, grandTotal: true, creditAmount: true },
       }),
       prisma.customerPayment.findMany({
         select: { customerId: true, amount: true },
@@ -80,7 +88,9 @@ export async function GET(req: NextRequest) {
     const duesMap = new Map<number, number>();
     for (const s of rawDueSales) {
       if (s.customerId) {
-        duesMap.set(s.customerId, (duesMap.get(s.customerId) || 0) + Number(s.grandTotal));
+        const cAmt = Number(s.creditAmount || 0);
+        const saleDue = cAmt > 0 ? cAmt : s.paymentMethod === "credit" ? Number(s.grandTotal) : 0;
+        duesMap.set(s.customerId, (duesMap.get(s.customerId) || 0) + saleDue);
       }
     }
     for (const p of rawPayments) {

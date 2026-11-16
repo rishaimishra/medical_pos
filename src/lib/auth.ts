@@ -622,3 +622,54 @@ export async function verifyCustomerRequest(req: NextRequest): Promise<{
   return { authorized: true, status: 200, session };
 }
 
+export interface DiscountOverrideTokenPayload {
+  managerId: number;
+  managerName: string;
+  managerRole: string;
+  maxApprovedPercent: number;
+  storeId: number | null;
+  cashierId: number;
+  exp: number;
+}
+
+export function createDiscountOverrideToken(payload: Omit<DiscountOverrideTokenPayload, "exp">): string {
+  const full: DiscountOverrideTokenPayload = {
+    ...payload,
+    exp: Date.now() + 15 * 60 * 1000, // 15 minutes validity
+  };
+  const dataB64 = Buffer.from(JSON.stringify(full), "utf8").toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", SESSION_SECRET)
+    .update(`override:${dataB64}`)
+    .digest("base64url");
+  return `${dataB64}.${signature}`;
+}
+
+export function verifyDiscountOverrideToken(
+  token?: string | null
+): DiscountOverrideTokenPayload | null {
+  if (!token || !token.includes(".")) return null;
+  const [dataB64, sig] = token.split(".");
+  if (!dataB64 || !sig) return null;
+
+  const expected = crypto
+    .createHmac("sha256", SESSION_SECRET)
+    .update(`override:${dataB64}`)
+    .digest("base64url");
+  const sigBuf = Buffer.from(sig);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(dataB64, "base64url").toString("utf8")
+    ) as DiscountOverrideTokenPayload;
+    if (!parsed || typeof parsed.exp !== "number" || Date.now() > parsed.exp) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+

@@ -6,6 +6,19 @@
 
 import { sendEmail, EmailResult } from "./email";
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case "&": return "&amp;";
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case '"': return "&quot;";
+      case "'": return "&#39;";
+      default: return ch;
+    }
+  });
+}
+
 export interface InvoiceEmailReceiptOptions {
   toEmail: string;
   customerName: string;
@@ -86,8 +99,8 @@ export async function sendCustomerInvoiceReceiptEmail(
       return `
         <tr style="border-bottom: 1px solid #f1f5f9; ${idx % 2 === 1 ? "background-color: #fafbfc;" : ""}">
           <td style="padding: 10px 8px; font-size: 13px; color: #1e293b; font-weight: 600;">
-            ${item.name}
-            ${item.batchNo ? `<br/><span style="font-size: 11px; color: #64748b; font-weight: 400;">Batch: ${item.batchNo} | Exp: ${exp}</span>` : ""}
+            ${escapeHtml(item.name)}
+            ${item.batchNo ? `<br/><span style="font-size: 11px; color: #64748b; font-weight: 400;">Batch: ${escapeHtml(item.batchNo)} | Exp: ${escapeHtml(exp)}</span>` : ""}
           </td>
           <td style="padding: 10px 8px; font-size: 13px; color: #334155; text-align: center;">
             ${item.quantity}
@@ -106,7 +119,7 @@ export async function sendCustomerInvoiceReceiptEmail(
   // Payment Breakdown HTML
   let paymentInfoHtml = `
     <div style="font-size: 12px; color: #475569; margin-top: 8px;">
-      <strong>Payment Mode:</strong> <span style="text-transform: uppercase;">${paymentMethod}</span>
+      <strong>Payment Mode:</strong> <span style="text-transform: uppercase;">${escapeHtml(paymentMethod)}</span>
   `;
   if (paymentMethod === "split" && splitDetails) {
     const parts: string[] = [];
@@ -115,13 +128,13 @@ export async function sendCustomerInvoiceReceiptEmail(
     if (splitDetails.card && splitDetails.card > 0) parts.push(`Card: ₹${splitDetails.card.toFixed(2)}`);
     if (splitDetails.cheque && splitDetails.cheque > 0) parts.push(`Cheque: ₹${splitDetails.cheque.toFixed(2)}`);
     if (splitDetails.credit && splitDetails.credit > 0) parts.push(`Credit: ₹${splitDetails.credit.toFixed(2)}`);
-    paymentInfoHtml += `<br/><span style="color: #64748b; font-size: 11px;">Breakdown: ${parts.join(" | ")}</span>`;
+    paymentInfoHtml += `<br/><span style="color: #64748b; font-size: 11px;">Breakdown: ${escapeHtml(parts.join(" | "))}</span>`;
   }
   if (upiRef) {
-    paymentInfoHtml += `<br/><span>UPI Reference: ${upiRef}</span>`;
+    paymentInfoHtml += `<br/><span>UPI Reference: ${escapeHtml(upiRef)}</span>`;
   }
   if (chequeNo) {
-    paymentInfoHtml += `<br/><span>Cheque No: ${chequeNo}</span>`;
+    paymentInfoHtml += `<br/><span>Cheque No: ${escapeHtml(chequeNo)}</span>`;
   }
   paymentInfoHtml += `</div>`;
 
@@ -131,7 +144,7 @@ export async function sendCustomerInvoiceReceiptEmail(
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Invoice ${invoiceNo}</title>
+        <title>Invoice ${escapeHtml(invoiceNo)}</title>
       </head>
       <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; padding: 24px 12px; margin: 0;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
@@ -139,15 +152,15 @@ export async function sendCustomerInvoiceReceiptEmail(
           <!-- Store Header -->
           <div style="background-color: #1F4E5B; color: #ffffff; padding: 28px 24px; text-align: center;">
             <h1 style="margin: 0 0 6px 0; font-size: 24px; font-weight: 800; letter-spacing: -0.02em;">
-              ${storeName}
+              ${escapeHtml(storeName)}
             </h1>
             <p style="margin: 0; font-size: 12px; color: #cbd5e1; line-height: 1.5;">
-              ${storeAddress}${storePhone ? ` • Ph: ${storePhone}` : ""}
+              ${escapeHtml(storeAddress)}${storePhone ? ` • Ph: ${escapeHtml(storePhone)}` : ""}
             </p>
             ${
               storeGst || storeDl
                 ? `<p style="margin: 4px 0 0 0; font-size: 11px; color: #94a3b8;">
-                    ${storeGst ? `GSTIN: ${storeGst}` : ""} ${storeDl ? `• D.L. No: ${storeDl}` : ""}
+                    ${storeGst ? `GSTIN: ${escapeHtml(storeGst)}` : ""} ${storeDl ? `• D.L. No: ${escapeHtml(storeDl)}` : ""}
                    </p>`
                 : ""
             }
@@ -162,18 +175,18 @@ export async function sendCustomerInvoiceReceiptEmail(
                     Paid Tax Invoice
                   </span>
                   <div style="margin-top: 8px; font-size: 18px; font-weight: 800; color: #0f172a;">
-                    ${invoiceNo}
+                    ${escapeHtml(invoiceNo)}
                   </div>
                   <div style="font-size: 12px; color: #64748b;">
-                    Date: ${dateFormatted}
+                    Date: ${escapeHtml(dateFormatted)}
                   </div>
                 </td>
                 <td style="text-align: right; vertical-align: top;">
                   <span style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 700;">Billed To</span>
                   <div style="font-size: 14px; font-weight: 700; color: #0f172a;">
-                    ${customerName}
+                    ${escapeHtml(customerName)}
                   </div>
-                  ${doctorName ? `<div style="font-size: 11px; color: #475569; margin-top: 4px;">Dr: ${doctorName}</div>` : ""}
+                  ${doctorName ? `<div style="font-size: 11px; color: #475569; margin-top: 4px;">Dr: ${escapeHtml(doctorName)}</div>` : ""}
                 </td>
               </tr>
             </table>
@@ -244,7 +257,7 @@ export async function sendCustomerInvoiceReceiptEmail(
           <!-- Footer Policy & Disclaimer -->
           <div style="padding: 20px 24px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; line-height: 1.5;">
             <p style="margin: 0 0 4px 0; font-weight: 600; color: #64748b;">
-              Thank you for choosing ${storeName}!
+              Thank you for choosing ${escapeHtml(storeName)}!
             </p>
             <p style="margin: 0;">
               Medicines once sold can be returned within 7 days in original unopened packaging along with this invoice.

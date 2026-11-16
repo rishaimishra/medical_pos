@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
+import { canAccessBranch } from "@/lib/rbac";
+import { getTodayMidnightUtc } from "@/lib/config";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAdminRequest(req);
@@ -8,22 +10,37 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
 
+  const { searchParams } = new URL(req.url);
+  const branchParam = searchParams.get("branchId");
+  const requestedBranchId = branchParam && branchParam !== "all" ? parseInt(branchParam, 10) : null;
+  if (requestedBranchId !== null && !isNaN(requestedBranchId) && !canAccessBranch(auth.session, requestedBranchId)) {
+    return NextResponse.json({ success: false, message: "Unauthorized branch access" }, { status: 403 });
+  }
+
   const userStoreId = auth.session.storeId;
-  const userBranchId = auth.session.branchId;
+  const effectiveBranchId = auth.session.branchId ? auth.session.branchId : (requestedBranchId && !isNaN(requestedBranchId) ? requestedBranchId : null);
 
   try {
     const now = new Date();
-    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayMidnight = getTodayMidnightUtc();
     const thirtyDaysAhead = new Date(todayMidnight.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    const branchFilter = userBranchId ? { branchId: userBranchId } : {};
+    const storeSettings = userStoreId
+      ? await prisma.settings.findUnique({ where: { id: userStoreId }, select: { lowQty: true } })
+      : await prisma.settings.findFirst({ select: { lowQty: true } });
+    const lowQtyThreshold = typeof storeSettings?.lowQty === "number" ? storeSettings.lowQty : 10;
+
+    const branchScope = {
+      ...(effectiveBranchId ? { branchId: effectiveBranchId } : {}),
+      ...(userStoreId ? { branch: { storeId: userStoreId } } : {}),
+    };
 
     // 1. Critical expiring batches (<= 30 days)
     const expiringBatches = await prisma.batch.findMany({
       where: {
         quantity: { gt: 0 },
         expiryDate: { gt: todayMidnight, lte: thirtyDaysAhead },
-        ...branchFilter,
+        ...branchScope,
       },
       include: {
         medicine: { select: { name: true } },
@@ -32,11 +49,12 @@ export async function GET(req: NextRequest) {
       take: 5,
     });
 
-    // 2. Out of stock or low stock batches
+    // 2. Out of stock or low stock unexpired batches
     const lowStockBatches = await prisma.batch.findMany({
       where: {
-        quantity: { lte: 10 },
-        ...branchFilter,
+        quantity: { lte: lowQtyThreshold },
+        expiryDate: { gt: todayMidnight },
+        ...branchScope,
       },
       include: {
         medicine: { select: { name: true } },
@@ -49,7 +67,7 @@ export async function GET(req: NextRequest) {
     const pendingPOs = await prisma.purchaseOrder.findMany({
       where: {
         status: { in: ["pending", "price_updated"] },
-        ...branchFilter,
+        ...branchScope,
       },
       include: {
         supplier: { select: { name: true } },
@@ -58,9 +76,10 @@ export async function GET(req: NextRequest) {
       take: 5,
     });
 
-    // 4. Overdue Chronic Patient Refills
+    // 4. Overdue Chronic Patient Refills (active patients only)
     const overdueRefills = await prisma.customer.findMany({
       where: {
+        active: true,
         isChronic: true,
         nextRefillDate: { lte: todayMidnight },
       },

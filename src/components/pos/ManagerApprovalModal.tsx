@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { ShieldCheck, Lock, AlertCircle, KeyRound } from "lucide-react";
 import { toast } from "@/stores/useToastStore";
@@ -11,7 +11,7 @@ interface ManagerApprovalModalProps {
   requestedPercent: number;
   cashierLimit: number;
   itemDescription?: string;
-  onAuthorized: (auth: { managerName: string; managerId: number; percent: number }) => void;
+  onAuthorized: (auth: { managerName: string; managerId: number; percent: number; token?: string }) => void;
 }
 
 export function ManagerApprovalModal({
@@ -26,6 +26,13 @@ export function ManagerApprovalModal({
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Always clear cached manager credentials whenever modal opens or closes
+  useEffect(() => {
+    setUsernameOrEmail("");
+    setPassword("");
+    setError(null);
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,10 +65,13 @@ export function ManagerApprovalModal({
       }
 
       toast.success(data.message || `Discount authorized by ${data.managerName}`);
+      setUsernameOrEmail("");
+      setPassword("");
       onAuthorized({
         managerName: data.managerName,
         managerId: data.managerId,
         percent: requestedPercent,
+        token: data.overrideToken,
       });
       onClose();
     } catch {

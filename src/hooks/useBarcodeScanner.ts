@@ -31,10 +31,16 @@ export function useBarcodeScanner({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (!enabled) return;
+      if (!enabled || e.repeat) return;
 
       // Ignore single modifier keys
       if (["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(e.key)) {
+        return;
+      }
+
+      if (e.key === "Backspace" || e.key === "Escape") {
+        bufferRef.current = "";
+        lastKeyTimeRef.current = 0;
         return;
       }
 
@@ -42,10 +48,11 @@ export function useBarcodeScanner({
       const elapsed = now - lastKeyTimeRef.current;
       lastKeyTimeRef.current = now;
 
-      // Enter or Tab typically signifies end of barcode scan stream
+      // Enter or Tab typically signifies end of barcode scan stream (must arrive within scanner interval)
       if (e.key === "Enter" || e.key === "Tab") {
         const potentialCode = bufferRef.current.trim();
-        if (potentialCode.length >= minLength) {
+        bufferRef.current = "";
+        if (potentialCode.length >= minLength && elapsed <= maxIntervalMs) {
           // Scanner detected! Suppress form submit or default enter behavior
           e.preventDefault();
           e.stopPropagation();
@@ -57,12 +64,11 @@ export function useBarcodeScanner({
             setIsScanning(false);
           });
         }
-        bufferRef.current = "";
         return;
       }
 
       // Printable single character key
-      if (e.key.length === 1) {
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (elapsed > maxIntervalMs) {
           // Human speed or fresh stream, reset buffer
           bufferRef.current = e.key;
@@ -76,11 +82,21 @@ export function useBarcodeScanner({
   );
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      bufferRef.current = "";
+      return;
+    }
+
+    const resetBuffer = () => {
+      bufferRef.current = "";
+      lastKeyTimeRef.current = 0;
+    };
 
     window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("blur", resetBuffer);
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("blur", resetBuffer);
     };
   }, [enabled, handleKeyDown]);
 

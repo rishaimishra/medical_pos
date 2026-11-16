@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useBranchStore } from "@/stores/useBranchStore";
+import { confirmAction } from "@/stores/useConfirmStore";
 
 interface BranchOption {
   id: number;
@@ -477,7 +478,13 @@ export default function UnifiedUserManagementPage() {
     }
 
     const confirmMsg = `Are you sure you want to delete ${item.name} (${item.username || item.phone})? This action will be audited.`;
-    if (!window.confirm(confirmMsg)) return;
+    const confirmed = await confirmAction({
+      title: "Delete User Account?",
+      message: confirmMsg,
+      confirmText: "Delete Account",
+      type: "danger",
+    });
+    if (!confirmed) return;
 
     try {
       setErrorMsg(null);

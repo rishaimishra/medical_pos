@@ -48,11 +48,12 @@ export function CustomerLookupModal({ isOpen, onClose }: CustomerLookupModalProp
   const fetchCustomers = async (query: string) => {
     try {
       setLoading(true);
-      const url = `/api/admin/customers?search=${encodeURIComponent(query)}&limit=15`;
+      const url = `/api/admin/customers?search=${encodeURIComponent(query)}&activeOnly=true&limit=15`;
       const res = await fetch(url, { cache: "no-store" });
       const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setCustomers(json.data);
+      const list = Array.isArray(json.customers) ? json.customers : Array.isArray(json.data) ? json.data : null;
+      if (json.success && list) {
+        setCustomers(list);
         setSelectedIndex(0);
       } else {
         setCustomers([]);
@@ -85,7 +86,7 @@ export function CustomerLookupModal({ isOpen, onClose }: CustomerLookupModalProp
       email: c.email || null,
       address: c.address || null,
       creditLimit: Number(c.creditLimit || 0),
-      currentDue: Number(c.currentDue || 0),
+      currentDue: Number(c.currentDue ?? c.outstandingDue ?? 0),
       isChronic: Boolean(c.isChronic),
     };
 
@@ -120,9 +121,10 @@ export function CustomerLookupModal({ isOpen, onClose }: CustomerLookupModalProp
       });
 
       const json = await res.json();
-      if (json.success && json.data) {
-        toast.success(`Customer ${json.data.name} created successfully!`);
-        handleSelectCustomer(json.data);
+      const created = json.customer || json.data;
+      if (json.success && created) {
+        toast.success(`Customer ${created.name} created successfully!`);
+        handleSelectCustomer(created);
       } else {
         setFormError(json.message || "Failed to create customer");
       }
@@ -240,7 +242,7 @@ export function CustomerLookupModal({ isOpen, onClose }: CustomerLookupModalProp
                   const isSelected = customer?.id === c.id;
                   const isHighlighted = selectedIndex === index + 1;
                   const creditLimit = Number(c.creditLimit || 0);
-                  const currentDue = Number(c.currentDue || 0);
+                  const currentDue = Number(c.currentDue ?? c.outstandingDue ?? 0);
 
                   return (
                     <div

@@ -31,6 +31,8 @@ import {
   Check,
 } from "lucide-react";
 import { useBranchStore } from "@/stores/useBranchStore";
+import { toast } from "@/stores/useToastStore";
+import { confirmAction } from "@/stores/useConfirmStore";
 
 interface SettingsData {
   id?: number;
@@ -560,12 +562,15 @@ export default function AdminSettingsPage() {
 
   const handleDeleteBranch = async (branch: Branch) => {
     if (branch.isMain) {
-      alert("The Main Store cannot be deleted.");
+      toast.warning("The Main Store cannot be deleted.");
       return;
     }
-    const confirmed = window.confirm(
-      `Do you really want to remove "${branch.name}" (${branch.code})?`
-    );
+    const confirmed = await confirmAction({
+      title: "Remove Store Branch?",
+      message: `Do you really want to remove "${branch.name}" (${branch.code})?`,
+      confirmText: "Remove Branch",
+      type: "danger",
+    });
     if (!confirmed) return;
 
     try {
@@ -574,12 +579,13 @@ export default function AdminSettingsPage() {
       });
       const json = await res.json();
       if (json.success) {
+        toast.success(`Branch "${branch.name}" removed.`);
         fetchBranches();
       } else {
-        alert(json.error || "Could not remove store branch");
+        toast.error(json.error || "Could not remove store branch");
       }
     } catch (err: any) {
-      alert("Error: " + err.message);
+      toast.error("Error: " + err.message);
     }
   };
 

@@ -135,18 +135,24 @@ export function SearchableSelect({
     if (e.key === "Escape") {
       e.preventDefault();
       handleClose();
+    } else if (e.key === "Tab") {
+      setIsOpen(false);
+      setSearchTerm("");
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
+      if (filteredOptions.length === 0) return;
       setHighlightedIndex((prev) =>
         prev < filteredOptions.length - 1 ? prev + 1 : 0
       );
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      if (filteredOptions.length === 0) return;
       setHighlightedIndex((prev) =>
         prev > 0 ? prev - 1 : filteredOptions.length - 1
       );
     } else if (e.key === "Enter") {
       e.preventDefault();
+      if (filteredOptions.length === 0) return;
       const current = filteredOptions[highlightedIndex];
       if (current && !current.disabled) {
         handleSelect(current);
@@ -230,14 +236,23 @@ export function SearchableSelect({
 
         <div className="flex items-center gap-1.5 shrink-0">
           {allowClear && selectedOption && !disabled && (
-            <button
-              type="button"
+            <span
+              role="button"
+              tabIndex={0}
               onClick={handleClear}
-              className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onChange(null, undefined);
+                }
+              }}
+              className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
               title="Clear selection"
+              aria-label="Clear selection"
             >
               <X className="w-3.5 h-3.5" />
-            </button>
+            </span>
           )}
           <ChevronDown
             className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${

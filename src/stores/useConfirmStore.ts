@@ -21,6 +21,10 @@ export const useConfirmStore = create<ConfirmState>((set, get) => ({
   options: null,
 
   askConfirm: (options) => {
+    const existing = get().options;
+    if (get().isOpen && existing?.resolve) {
+      existing.resolve(false);
+    }
     return new Promise<boolean>((resolve) => {
       set({
         isOpen: true,

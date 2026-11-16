@@ -27,7 +27,7 @@ export function ReceiptPrintModal({
     }
   };
 
-  const branch = saleData.branch || {};
+  const branch = saleData.branch || saleData.store || {};
   const customer = saleData.customer || null;
   const items = saleData.items || [];
   const grandTotal = Number(saleData.grandTotal || 0);
@@ -46,7 +46,7 @@ export function ReceiptPrintModal({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={onNewSale || onClose}
       title="Invoice Receipt & Thermal Print"
       description={`Invoice: ${saleData.invoiceNo} — Completed Successfully`}
       headerIcon={
@@ -115,7 +115,7 @@ export function ReceiptPrintModal({
               {items.map((item: any, idx: number) => {
                 const medName = item.medicine?.name || item.name || `Item ${idx + 1}`;
                 const batchNo = item.batch?.batchNo || item.batchNo || "-";
-                const lineTotal = Number(item.price || item.mrp * item.quantity);
+                const lineTotal = Number(item.price ?? item.mrp * item.quantity);
 
                 return (
                   <div key={idx} className="py-1 text-[10px]">
@@ -270,16 +270,28 @@ export function ReceiptPrintModal({
           body * {
             visibility: hidden !important;
           }
+          [role="dialog"],
+          [role="dialog"] > div {
+            position: static !important;
+            overflow: visible !important;
+            max-height: none !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
           #pos-thermal-receipt,
           #pos-thermal-receipt * {
             visibility: visible !important;
           }
           #pos-thermal-receipt {
-            position: absolute !important;
+            position: fixed !important;
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
             max-width: 80mm !important;
+            max-height: none !important;
+            overflow: visible !important;
             margin: 0 !important;
             padding: 4mm !important;
             border: none !important;

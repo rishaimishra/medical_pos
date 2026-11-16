@@ -52,12 +52,16 @@ export function BatchPickerModal({
         setError(null);
         const url = `/api/admin/batches?medicineId=${medicineId}&branchId=${
           activeBranch?.id || ""
-        }&stock=in_stock&fefo=true&limit=50`;
+        }&stock=in_stock&excludeExpired=true&fefo=true&limit=50`;
         const res = await fetch(url, { cache: "no-store" });
         const json = await res.json();
 
         if (json.success && Array.isArray(json.data)) {
-          setBatches(json.data);
+          // Strict FEFO & drug safety guard: exclude any expired batches
+          const unexpired = json.data.filter(
+            (b: BatchItemData & { isExpired?: boolean }) => !b.isExpired && b.daysRemaining > 0 && b.quantity > 0
+          );
+          setBatches(unexpired);
         } else {
           setBatches([]);
         }

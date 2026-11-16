@@ -1,7 +1,11 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useId } from "react";
 import { X } from "lucide-react";
+import { useConfirmStore } from "@/stores/useConfirmStore";
+
+// Global stack of open Modal IDs so Escape only closes the topmost modal
+const openModalStack: string[] = [];
 
 export interface ModalProps {
   isOpen: boolean;
@@ -30,11 +34,25 @@ export function Modal({
   className = "",
   headerIcon,
 }: ModalProps) {
+  const modalId = useId();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    openModalStack.push(modalId);
+    return () => {
+      const idx = openModalStack.lastIndexOf(modalId);
+      if (idx !== -1) openModalStack.splice(idx, 1);
+    };
+  }, [isOpen, modalId]);
+
   useEffect(() => {
     if (!isOpen || !closeOnEsc) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (useConfirmStore.getState().isOpen) return;
+        const topId = openModalStack[openModalStack.length - 1];
+        if (topId !== modalId) return;
         e.preventDefault();
         onClose();
       }
@@ -42,7 +60,7 @@ export function Modal({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, closeOnEsc, onClose]);
+  }, [isOpen, closeOnEsc, onClose, modalId]);
 
   if (!isOpen) return null;
 

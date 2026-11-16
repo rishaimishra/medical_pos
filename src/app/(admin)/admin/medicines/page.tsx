@@ -32,6 +32,8 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useBranchStore } from "@/stores/useBranchStore";
+import { toast } from "@/stores/useToastStore";
+import { confirmAction } from "@/stores/useConfirmStore";
 
 interface MedicineItem {
   id: number;
@@ -131,6 +133,26 @@ export default function MedicinesCatalogPage() {
   const [medicines, setMedicines] = useState<MedicineItem[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [stats, setStats] = useState({ totalMedicines: 0, totalBatches: 0, prescriptionCount: 0 });
+
+  // Sync ?search= query param & global header search events
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const initialSearch = new URLSearchParams(window.location.search).get("search");
+    if (initialSearch) {
+      setSearchQuery(initialSearch);
+      setDebouncedSearch(initialSearch);
+    }
+    const handleGlobalSearch = (e: Event) => {
+      const q = (e as CustomEvent<string>).detail;
+      if (typeof q === "string") {
+        setSearchQuery(q);
+        setDebouncedSearch(q);
+        setCurrentPage(1);
+      }
+    };
+    window.addEventListener("admin:global-search", handleGlobalSearch);
+    return () => window.removeEventListener("admin:global-search", handleGlobalSearch);
+  }, []);
 
   // 300ms Debounce
   useEffect(() => {
@@ -302,13 +324,19 @@ export default function MedicinesCatalogPage() {
 
   const handleDeleteMedicine = async (m: MedicineItem) => {
     if (m.stockSummary.batchCount > 0) {
-      window.alert(
+      toast.warning(
         `Safety Protection: Cannot delete "${m.name}" because ${m.stockSummary.batchCount} active/historical batch(es) exist for it. Please clear the batches first.`
       );
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to permanently delete "${m.name}"? This action is audited.`)) {
+    const confirmed = await confirmAction({
+      title: "Delete Medicine?",
+      message: `Are you sure you want to permanently delete "${m.name}"? This action is audited.`,
+      confirmText: "Delete Medicine",
+      type: "danger",
+    });
+    if (!confirmed) {
       return;
     }
 

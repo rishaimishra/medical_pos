@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useId, useEffect } from "react";
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Modal } from "@/components/ui/Modal";
-import { Barcode, Printer, Sliders, RefreshCw } from "lucide-react";
+import { Barcode, Printer } from "lucide-react";
 import { generateBarcodeSvg } from "@/lib/barcode";
 
 interface BarcodePrintModalProps {
@@ -42,9 +43,11 @@ export function BarcodePrintModal({
     }
   }, [isOpen, medicineName, batchNo, expiryDate, mrp, storeName]);
 
-  const formattedExp = exp
-    ? new Date(exp).toLocaleDateString("en-IN", { month: "2-digit", year: "2-digit" })
-    : "12/28";
+  const parsedExp = exp ? new Date(exp) : null;
+  const formattedExp =
+    parsedExp && !isNaN(parsedExp.getTime())
+      ? parsedExp.toLocaleDateString("en-IN", { month: "2-digit", year: "2-digit" })
+      : "N/A";
 
   // Generate Code 128 Barcode SVG
   const barcodeSvgHtml = generateBarcodeSvg(batch || "DRX-000", {
@@ -174,6 +177,18 @@ export function BarcodePrintModal({
                       {n}
                     </button>
                   ))}
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={count}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      if (!isNaN(v)) setCount(Math.max(1, Math.min(200, v)));
+                    }}
+                    title="Custom label quantity"
+                    className="w-14 bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs font-bold text-center text-slate-900 focus:outline-none focus:border-[#1F4E5B]"
+                  />
                 </div>
               </div>
             </div>
@@ -242,48 +257,61 @@ export function BarcodePrintModal({
           </button>
         </div>
 
-        {/* Hidden Printable Label Section for Thermal Printers */}
-        <div id="thermal-barcode-print-area" className="hidden">
-          <style dangerouslySetInnerHTML={{ __html: `
-            @media print {
-              body * { visibility: hidden; }
-              #thermal-barcode-print-area, #thermal-barcode-print-area * { visibility: visible; }
-              #thermal-barcode-print-area {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                display: block !important;
-              }
-              .thermal-label-page {
-                width: 50mm;
-                height: 25mm;
-                padding: 1.5mm;
-                box-sizing: border-box;
-                page-break-after: always;
-                display: flex;
-                flex-direction: column;
-                justify-content: space-between;
-                font-family: system-ui, -apple-system, sans-serif;
-              }
-            }
-          `}} />
-          {Array.from({ length: count }).map((_, i) => (
-            <div key={i} className="thermal-label-page">
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "7pt", fontWeight: "bold" }}>
-                <span>{store}</span>
-                <span>EXP:{formattedExp}</span>
-              </div>
-              <div style={{ textAlign: "center", fontSize: "8pt", fontWeight: "bold", whiteSpace: "nowrap", overflow: "hidden" }}>
-                {medName}
-              </div>
-              <div style={{ textAlign: "center", fontSize: "7pt" }}>
-                B:{batch} | MRP: ₹{parseFloat(price || "0").toFixed(2)}
-              </div>
-              <div style={{ display: "flex", justifyContent: "center" }} dangerouslySetInnerHTML={{ __html: barcodeSvgHtml }} />
-            </div>
-          ))}
-        </div>
+        {/* Hidden Printable Label Section for Thermal & A4 Sheet Printers (Portaled to body to avoid Modal clipping) */}
+        {typeof document !== "undefined" &&
+          createPortal(
+            <div id="thermal-barcode-print-area" className="hidden">
+              <style
+                dangerouslySetInnerHTML={{
+                  __html: `
+                @media print {
+                  @page {
+                    margin: ${labelSize === "sheet24" ? "8mm" : "0"};
+                    ${labelSize === "sheet24" ? "size: A4 portrait;" : ""}
+                  }
+                  body > *:not(#thermal-barcode-print-area) { display: none !important; }
+                  #thermal-barcode-print-area {
+                    display: ${labelSize === "sheet24" ? "grid" : "block"} !important;
+                    ${
+                      labelSize === "sheet24"
+                        ? "grid-template-columns: repeat(3, 1fr); gap: 4mm; width: 100%;"
+                        : "width: 100%;"
+                    }
+                  }
+                  .thermal-label-page {
+                    width: ${labelSize === "38x25" ? "38mm" : labelSize === "50x25" ? "50mm" : "100%"};
+                    height: ${labelSize === "sheet24" ? "32mm" : "25mm"};
+                    padding: 1.5mm;
+                    box-sizing: border-box;
+                    ${labelSize === "sheet24" ? "border: 0.25mm dashed #cbd5e1; break-inside: avoid;" : "page-break-after: always;"}
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    font-family: system-ui, -apple-system, sans-serif;
+                    background: #fff;
+                  }
+                }
+              `,
+                }}
+              />
+              {Array.from({ length: count }).map((_, i) => (
+                <div key={i} className="thermal-label-page">
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: labelSize === "38x25" ? "6pt" : "7pt", fontWeight: "bold" }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60%" }}>{store}</span>
+                    <span>EXP:{formattedExp}</span>
+                  </div>
+                  <div style={{ textAlign: "center", fontSize: labelSize === "38x25" ? "7pt" : "8pt", fontWeight: "bold", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {medName}
+                  </div>
+                  <div style={{ textAlign: "center", fontSize: labelSize === "38x25" ? "6pt" : "7pt" }}>
+                    B:{batch} | MRP: ₹{parseFloat(price || "0").toFixed(2)}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "center", overflow: "hidden" }} dangerouslySetInnerHTML={{ __html: barcodeSvgHtml }} />
+                </div>
+              ))}
+            </div>,
+            document.body
+          )}
       </div>
     </Modal>
   );

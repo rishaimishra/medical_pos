@@ -16,10 +16,17 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const activeOnly = searchParams.get("active") === "true";
+  const storeId = auth.session.storeId;
 
   try {
+    const whereClause: any = {};
+    if (activeOnly) whereClause.active = true;
+    if (storeId) {
+      whereClause.OR = [{ storeId }, { storeId: null }];
+    }
+
     const discounts = await prisma.discount.findMany({
-      where: activeOnly ? { active: true } : undefined,
+      where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
       orderBy: [{ active: "desc" }, { createdAt: "desc" }],
       include: {
         _count: {
@@ -97,10 +104,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const numMinAmount = parseFloat(minAmount) || 0;
+    const parsedMinAmount = minAmount === undefined || minAmount === null || minAmount === "" ? 0 : parseFloat(minAmount);
+    if (isNaN(parsedMinAmount) || parsedMinAmount < 0) {
+      return NextResponse.json(
+        { success: false, error: "Minimum invoice amount cannot be negative" },
+        { status: 400 }
+      );
+    }
+    const numMinAmount = parsedMinAmount;
 
     const discount = await prisma.discount.create({
       data: {
+        storeId: auth.session.storeId ?? null,
         name: name.trim(),
         type,
         value: numValue,

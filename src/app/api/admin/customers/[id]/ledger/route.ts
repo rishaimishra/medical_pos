@@ -40,9 +40,12 @@ export async function GET(
       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
     }
 
-    // 1. Fetch all credit sales
+    // 1. Fetch all credit & split-credit sales
     const creditSales = await prisma.sale.findMany({
-      where: { customerId: id, paymentMethod: "credit" },
+      where: {
+        customerId: id,
+        OR: [{ paymentMethod: "credit" }, { creditAmount: { gt: 0 } }],
+      },
       orderBy: { saleDate: "asc" },
       include: {
         branch: { select: { code: true, name: true } },
@@ -83,13 +86,15 @@ export async function GET(
     }> = [];
 
     for (const s of creditSales) {
+      const cAmt = Number(s.creditAmount || 0);
+      const debitAmt = cAmt > 0 ? cAmt : Number(s.grandTotal);
       rawEntries.push({
         id: `sale-${s.id}`,
         date: new Date(s.saleDate),
         type: "sale",
-        description: `Credit Sale Invoice ${s.invoiceNo}${s.branch ? ` (${s.branch.code})` : ""}`,
+        description: `${s.paymentMethod === "split" ? "Split Credit Sale" : "Credit Sale"} Invoice ${s.invoiceNo}${s.branch ? ` (${s.branch.code})` : ""}`,
         referenceNo: s.invoiceNo,
-        amount: Number(s.grandTotal),
+        amount: debitAmt,
       });
     }
 
@@ -145,7 +150,10 @@ export async function GET(
       }
     }
 
-    const totalDebit = creditSales.reduce((sum, s) => sum + Number(s.grandTotal), 0);
+    const totalDebit = creditSales.reduce((sum, s) => {
+      const cAmt = Number(s.creditAmount || 0);
+      return sum + (cAmt > 0 ? cAmt : Number(s.grandTotal));
+    }, 0);
     const totalCredit = payments.reduce((sum, p) => sum + Number(p.amount), 0);
     const currentDue = Math.max(0, Math.round((totalDebit - totalCredit) * 100) / 100);
     const creditLimit = Number(customer.creditLimit);

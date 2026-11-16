@@ -32,7 +32,7 @@ import { useCartStore, CartItem } from "@/stores/useCartStore";
 import { useBranchStore } from "@/stores/useBranchStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { toast } from "@/stores/useToastStore";
-import { confirmAction } from "@/stores/useConfirmStore";
+import { confirmAction, useConfirmStore } from "@/stores/useConfirmStore";
 
 import { BatchPickerModal, BatchItemData } from "@/components/pos/BatchPickerModal";
 import { CustomerLookupModal } from "@/components/pos/CustomerLookupModal";
@@ -175,12 +175,13 @@ export default function POSBillingPage() {
         const json = await res.json();
         if (res.ok && json.success) {
           const { medicine, batch, availableStock } = json;
+          const batchCap = Number(batch.quantity ?? json.batchStock ?? availableStock);
           const currentItems = useCartStore.getState().items;
           const existing = currentItems.find((i) => i.batchId === batch.id);
-          if (existing && existing.quantity >= availableStock) {
+          if (existing && existing.quantity >= batchCap) {
             playScanErrorBeep();
             toast.warning(
-              `Cannot add more ${medicine.name}. Max available stock (${availableStock}) reached.`
+              `Cannot add more ${medicine.name}. Max available batch stock (${batchCap}) reached.`
             );
             return;
           }
@@ -189,11 +190,12 @@ export default function POSBillingPage() {
             medicineName: medicine.name,
             genericName: medicine.genericName,
             rackLocation: medicine.rackLocation,
+            scheduleType: medicine.scheduleType,
             batchId: batch.id,
             batchNo: batch.batchNo,
             expiryDate: batch.expiryDate,
             quantity: 1,
-            availableStock,
+            availableStock: batchCap,
             unitPrice: batch.mrp,
             taxPercent: medicine.gstPercent || 12,
           });
@@ -211,8 +213,19 @@ export default function POSBillingPage() {
     [activeBranch?.id, addItem]
   );
 
+  const isAnyPosModalOpen =
+    isCustomerModalOpen ||
+    isDiscountModalOpen ||
+    isTenderModalOpen ||
+    isReceiptModalOpen ||
+    Boolean(batchPickerTarget) ||
+    Boolean(itemDiscountTarget) ||
+    isBarcodePrintOpen ||
+    isBarcodeTestModalOpen;
+
   const { lastScanned, isScanning, simulateScan } = useBarcodeScanner({
     onScan: handleBarcodeScanned,
+    enabled: !isAnyPosModalOpen || isBarcodeTestModalOpen,
   });
 
   // 3. Add Medicine with FEFO Auto-Selected Batch (Module 2.1.5 & 2.2.4)
@@ -231,6 +244,7 @@ export default function POSBillingPage() {
       medicineName: med.name,
       genericName: med.genericName,
       rackLocation: med.rackLocation,
+      scheduleType: med.scheduleType,
       batchId: batch.id,
       batchNo: batch.batchNo,
       expiryDate: batch.expiryDate,
@@ -266,13 +280,33 @@ export default function POSBillingPage() {
   // 5. 100% Keyboard-Driven Workflow Shortcuts (Module 2.2.2)
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
-      // Ignore if user is inside an open modal or input dialog
-      const isAnyModalOpen =
+      // Do not trigger any POS shortcut when counter screen is locked
+      if (useAuthStore.getState().isLocked) return;
+
+      const isModalOrDialogOpen =
         isCustomerModalOpen ||
         isDiscountModalOpen ||
         isTenderModalOpen ||
         isReceiptModalOpen ||
-        Boolean(batchPickerTarget);
+        Boolean(batchPickerTarget) ||
+        Boolean(itemDiscountTarget) ||
+        isBarcodePrintOpen ||
+        isBarcodeTestModalOpen ||
+        useConfirmStore.getState().isOpen;
+
+      // Ctrl+P / Cmd+P: Instant Thermal Print (when receipt open) or Tender
+      if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        if (isReceiptModalOpen) {
+          window.print();
+        } else if (!isModalOrDialogOpen && items.length > 0) {
+          setIsTenderModalOpen(true);
+        }
+        return;
+      }
+
+      // Ignore function shortcuts if user is inside an open modal or confirm dialog
+      if (isModalOrDialogOpen) return;
 
       // F2: Focus Search Medicine
       if (e.key === "F2") {
@@ -319,32 +353,19 @@ export default function POSBillingPage() {
         return;
       }
 
-      // Ctrl+P / Cmd+P: Instant Thermal Print & Complete
-      if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+      // ESC: Clear Cart (Prompt) only when no modal/dialog is open
+      if (e.key === "Escape" && items.length > 0) {
         e.preventDefault();
-        if (isReceiptModalOpen) {
-          window.print();
-        } else if (items.length > 0) {
-          setIsTenderModalOpen(true);
-        }
-        return;
-      }
-
-      // ESC: Close Modals or Clear Cart (Prompt)
-      if (e.key === "Escape") {
-        if (!isAnyModalOpen && items.length > 0) {
-          e.preventDefault();
-          const confirmed = await confirmAction({
-            title: "Clear Current Cart?",
-            message: `Are you sure you want to discard all ${items.length} item(s) from the billing counter?`,
-            confirmText: "Yes, Clear Cart",
-            cancelText: "Keep Items",
-            type: "danger",
-          });
-          if (confirmed) {
-            clearCart();
-            toast.info("Billing cart cleared.");
-          }
+        const confirmed = await confirmAction({
+          title: "Clear Current Cart?",
+          message: `Are you sure you want to discard all ${items.length} item(s) from the billing counter?`,
+          confirmText: "Yes, Clear Cart",
+          cancelText: "Keep Items",
+          type: "danger",
+        });
+        if (confirmed) {
+          clearCart();
+          toast.info("Billing cart cleared.");
         }
       }
     };
@@ -358,6 +379,9 @@ export default function POSBillingPage() {
     isTenderModalOpen,
     isReceiptModalOpen,
     batchPickerTarget,
+    itemDiscountTarget,
+    isBarcodePrintOpen,
+    isBarcodeTestModalOpen,
     clearCart,
   ]);
 
@@ -520,25 +544,31 @@ export default function POSBillingPage() {
           </button>
         </div>
 
-        {/* Parked Bills Quick Recall Indicator */}
-        {parkedBills.length > 0 && (
-          <div className="flex items-center gap-2">
-            <div className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-2xl flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5" />
-              <span>{parkedBills.length} Held Bill(s)</span>
+        {/* Parked Bills Quick Recall Indicator (Scoped to Active Branch) */}
+        {(() => {
+          const branchParkedBills = parkedBills.filter(
+            (pb) => !pb.branchId || !activeBranch?.id || pb.branchId === activeBranch.id
+          );
+          if (branchParkedBills.length === 0) return null;
+          return (
+            <div className="flex items-center gap-2">
+              <div className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-2xl flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{branchParkedBills.length} Held Bill(s)</span>
+              </div>
+              {branchParkedBills.slice(0, 2).map((pb) => (
+                <button
+                  key={pb.id}
+                  type="button"
+                  onClick={() => recallParkedBill(pb.id, activeBranch?.id ?? null)}
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Recall {pb.customer?.name || "Walk-in"} ({pb.createdAt})
+                </button>
+              ))}
             </div>
-            {parkedBills.slice(0, 2).map((pb) => (
-              <button
-                key={pb.id}
-                type="button"
-                onClick={() => recallParkedBill(pb.id)}
-                className="px-2.5 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold transition-colors cursor-pointer"
-              >
-                Recall {pb.customer?.name || "Walk-in"} ({pb.createdAt})
-              </button>
-            ))}
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* 2. MAIN 2-COLUMN WORKSPACE: LEFT (70%) CART & SEARCH | RIGHT (30%) TOTALS & TENDER */}
@@ -600,9 +630,8 @@ export default function POSBillingPage() {
                         key={med.id}
                         onClick={() => handleAddMedicine(med)}
                         onMouseEnter={() => setSelectedSearchIndex(index)}
-                        className={`p-3.5 transition-colors cursor-pointer flex items-center justify-between gap-3 ${
-                          isHighlighted ? "bg-teal-50/70" : "hover:bg-slate-50"
-                        }`}
+                        className={`p-3.5 transition-colors cursor-pointer flex items-center justify-between gap-3 ${isHighlighted ? "bg-teal-50/70" : "hover:bg-slate-50"
+                          }`}
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
@@ -683,7 +712,7 @@ export default function POSBillingPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      const id = parkCurrentBill();
+                      const id = parkCurrentBill(activeBranch?.id ?? null);
                       if (id) toast.info("Bill held. You can start a new customer sale.");
                     }}
                     className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -814,9 +843,15 @@ export default function POSBillingPage() {
                                 min={1}
                                 max={item.availableStock}
                                 value={item.quantity}
+                                onFocus={(e) => e.currentTarget.select()}
                                 onChange={(e) => {
+                                  if (e.target.value === "") return;
                                   const val = parseInt(e.target.value, 10);
                                   if (!isNaN(val)) updateQuantity(item.batchId, val);
+                                }}
+                                onBlur={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  updateQuantity(item.batchId, isNaN(val) || val < 1 ? 1 : val);
                                 }}
                                 className="w-11 text-center text-xs font-black text-slate-900 focus:outline-none py-1"
                               />
@@ -824,11 +859,10 @@ export default function POSBillingPage() {
                                 type="button"
                                 disabled={isStockMax}
                                 onClick={() => updateQuantity(item.batchId, item.quantity + 1)}
-                                className={`px-2 py-1 rounded-r-xl transition-colors ${
-                                  isStockMax
+                                className={`px-2 py-1 rounded-r-xl transition-colors ${isStockMax
                                     ? "text-slate-300 cursor-not-allowed bg-slate-50"
                                     : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
-                                }`}
+                                  }`}
                                 title={isStockMax ? "Batch stock cap reached" : "Add one"}
                               >
                                 <Plus className="w-3 h-3" />
@@ -871,11 +905,10 @@ export default function POSBillingPage() {
                               <button
                                 type="button"
                                 onClick={() => setItemDiscountTarget(item)}
-                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                  lineDiscount > 0
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${lineDiscount > 0
                                     ? "bg-amber-100 text-amber-900 hover:bg-amber-200"
                                     : "text-slate-400 hover:text-amber-700 hover:bg-amber-50"
-                                }`}
+                                  }`}
                                 title="Apply item-level discount"
                               >
                                 <Percent className="w-3.5 h-3.5" />
@@ -1058,11 +1091,10 @@ export default function POSBillingPage() {
               type="button"
               disabled={items.length === 0}
               onClick={() => setIsTenderModalOpen(true)}
-              className={`w-full py-4 rounded-2xl text-white font-extrabold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                items.length === 0
+              className={`w-full py-4 rounded-2xl text-white font-extrabold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${items.length === 0
                   ? "bg-slate-300 cursor-not-allowed"
                   : "bg-[#1F4E5B] hover:bg-[#163a44] active:scale-[0.99]"
-              }`}
+                }`}
             >
               <CreditCard className="w-5 h-5" />
               <span>Collect Payment [F4]</span>

@@ -70,7 +70,7 @@ export async function GET(
     const [allSales, allPayments] = await Promise.all([
       prisma.sale.findMany({
         where: { customerId: id },
-        select: { grandTotal: true, paymentMethod: true },
+        select: { grandTotal: true, paymentMethod: true, creditAmount: true },
       }),
       prisma.customerPayment.findMany({
         where: { customerId: id },
@@ -79,9 +79,11 @@ export async function GET(
     ]);
 
     const totalPurchased = allSales.reduce((sum, s) => sum + Number(s.grandTotal), 0);
-    const totalCreditSales = allSales
-      .filter((s) => s.paymentMethod === "credit")
-      .reduce((sum, s) => sum + Number(s.grandTotal), 0);
+    const totalCreditSales = allSales.reduce((sum, s) => {
+      const cAmt = Number(s.creditAmount || 0);
+      if (cAmt > 0) return sum + cAmt;
+      return s.paymentMethod === "credit" ? sum + Number(s.grandTotal) : sum;
+    }, 0);
     const totalPaid = allPayments.reduce((sum, p) => sum + Number(p.amount), 0);
     const outstandingDue = Math.max(0, Math.round((totalCreditSales - totalPaid) * 100) / 100);
     const availableCredit = Math.max(0, Number(customer.creditLimit) - outstandingDue);
