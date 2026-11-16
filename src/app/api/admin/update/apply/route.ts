@@ -19,6 +19,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (auth.session.role !== "admin") {
+      return NextResponse.json(
+        { success: false, error: "Forbidden: Superadmin access required for applying software updates." },
+        { status: 403 }
+      );
+    }
+
     const formData = await req.formData();
     const file = formData.get("package") as File | null;
     const confirmField = formData.get("confirmBackup");

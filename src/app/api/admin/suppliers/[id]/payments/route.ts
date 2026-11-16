@@ -21,6 +21,16 @@ export async function GET(
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
 
+  // Permission Check: Requires manage_purchases or admin/manager/accountant role
+  if (
+    auth.session.role !== "admin" &&
+    auth.session.role !== "manager" &&
+    auth.session.role !== "accountant" &&
+    !hasPermission(auth.session, "manage_purchases")
+  ) {
+    return NextResponse.json({ success: false, message: "Forbidden: Insufficient privileges to view supplier ledger" }, { status: 403 });
+  }
+
   const { id: rawId } = await params;
   const supplierId = parseInt(rawId, 10);
   if (!supplierId || isNaN(supplierId)) {
@@ -73,7 +83,7 @@ export async function GET(
 
     // Add Invoices / Purchase Orders
     for (const po of supplier.purchaseOrders) {
-      if (po.status === "cancelled") continue;
+      if (po.status === "cancelled" || po.status === "draft") continue;
       ledgerEntries.push({
         type: "purchase",
         id: po.id,
@@ -195,31 +205,34 @@ export async function POST(
     }
 
     const poId = body.poId ? parseInt(body.poId, 10) : undefined;
-    if (poId) {
-      const targetPO = await prisma.purchaseOrder.findUnique({ where: { id: poId } });
-      if (targetPO && targetPO.supplierId === supplierId) {
-        const updatedPaid = Math.min(Number(targetPO.total), Number(targetPO.paidAmount || 0) + amount);
-        await prisma.purchaseOrder.update({
-          where: { id: poId },
-          data: { paidAmount: updatedPaid },
-        });
+    const currentUserId = auth.session.userId;
+    const payment = await prisma.$transaction(async (tx) => {
+      if (poId) {
+        const targetPO = await tx.purchaseOrder.findUnique({ where: { id: poId } });
+        if (targetPO && targetPO.supplierId === supplierId) {
+          const updatedPaid = Math.min(Number(targetPO.total), Number(targetPO.paidAmount || 0) + amount);
+          await tx.purchaseOrder.update({
+            where: { id: poId },
+            data: { paidAmount: updatedPaid },
+          });
+        }
       }
-    }
 
-    const payment = await prisma.supplierPayment.create({
-      data: {
-        supplierId,
-        branchId: branchId || null,
-        amount,
-        paymentDate: new Date(paymentDateStr),
-        paymentMethod,
-        referenceNo,
-        notes,
-        createdBy: auth.session.userId,
-      },
-      include: {
-        branch: { select: { code: true, name: true } },
-      },
+      return await tx.supplierPayment.create({
+        data: {
+          supplierId,
+          branchId: branchId || null,
+          amount,
+          paymentDate: new Date(paymentDateStr),
+          paymentMethod,
+          referenceNo,
+          notes,
+          createdBy: currentUserId,
+        },
+        include: {
+          branch: { select: { code: true, name: true } },
+        },
+      });
     });
 
     await logAudit({

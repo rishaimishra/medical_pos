@@ -21,6 +21,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    if (auth.session.role !== "admin") {
+      return NextResponse.json(
+        { success: false, error: "Forbidden: Superadmin access required for database backups." },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
 
     // List past backups

@@ -387,7 +387,8 @@ function GRNDeskContent() {
                     <th className="py-2.5 px-3 text-center w-24">Ordered</th>
                     <th className="py-2.5 px-3 text-center w-28">Inward Qty *</th>
                     <th className="py-2.5 px-3 text-center w-24">Bonus Qty</th>
-                    <th className="py-2.5 px-3 w-32">Batch No *</th>
+                    <th className="py-2.5 px-3 w-32">Batch No</th>
+                    <th className="py-2.5 px-3 w-32">Mfg Date</th>
                     <th className="py-2.5 px-3 w-36">Expiry Date *</th>
                     <th className="py-2.5 px-3 text-right w-24">Cost (₹)</th>
                     <th className="py-2.5 px-3 text-right w-20">Disc %</th>
@@ -450,15 +451,28 @@ function GRNDeskContent() {
                       <td className="py-3 px-3">
                         <input
                           type="text"
-                          required
                           value={l.batchNo}
                           onKeyDown={handleInputKeyDown}
                           onChange={(e) => {
                             const val = e.target.value.toUpperCase();
                             setLines(lines.map((item, i) => (i === idx ? { ...item, batchNo: val } : item)));
                           }}
-                          placeholder="e.g. B-0924"
+                          placeholder="Auto-generate"
                           className="w-full px-2 py-1.5 rounded-lg border border-slate-200 font-mono font-bold focus:outline-none text-[11px]"
+                        />
+                      </td>
+
+                      {/* Mfg Date */}
+                      <td className="py-3 px-3">
+                        <input
+                          type="date"
+                          value={l.mfgDate || ""}
+                          onKeyDown={handleInputKeyDown}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setLines(lines.map((item, i) => (i === idx ? { ...item, mfgDate: val } : item)));
+                          }}
+                          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 font-bold focus:outline-none text-[11px]"
                         />
                       </td>
 

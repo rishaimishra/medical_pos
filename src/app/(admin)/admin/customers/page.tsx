@@ -163,18 +163,25 @@ export default function CustomersPage() {
   const [loadingRefills, setLoadingRefills] = useState(false);
   const [sendingReminderId, setSendingReminderId] = useState<number | null>(null);
   const [reminderToast, setReminderToast] = useState<string | null>(null);
+  const [toastNotification, setToastNotification] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const showToast = (text: string, type: "success" | "error" = "success") => {
+    setToastNotification({ type, text });
+    setTimeout(() => setToastNotification(null), 4000);
+  };
 
   // Fetch Customers
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
     try {
+      const isCreditTab = activeTab === "credit";
       const q = new URLSearchParams({
         page: String(page),
         limit: "25",
         search,
-        chronic: chronicFilter,
-        gender: genderFilter,
-        hasDue: hasDueFilter ? "true" : "false",
+        chronic: isCreditTab ? "all" : chronicFilter,
+        gender: isCreditTab ? "all" : genderFilter,
+        hasDue: isCreditTab ? "true" : (hasDueFilter ? "true" : "false"),
+        sort: isCreditTab ? "due_desc" : "recent",
       });
       const res = await fetch(`/api/admin/customers?${q.toString()}`);
       const json = await res.json();
@@ -188,7 +195,7 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, chronicFilter, genderFilter, hasDueFilter]);
+  }, [page, search, chronicFilter, genderFilter, hasDueFilter, activeTab]);
 
   // Fetch Refills for Chronic Tab
   const fetchRefills = useCallback(async () => {
@@ -324,12 +331,13 @@ export default function CustomersPage() {
       const res = await fetch(`/api/admin/customers/${c.id}`, { method: "DELETE" });
       const json = await res.json();
       if (!res.ok || !json.success) {
-        alert(json.message || "Failed to delete customer");
+        showToast(json.message || "Failed to delete customer", "error");
         return;
       }
+      showToast(`Patient "${c.name}" removed successfully`, "success");
       fetchCustomers();
     } catch (err: any) {
-      alert("Error: " + err.message);
+      showToast("Error: " + err.message, "error");
     }
   };
 
@@ -398,7 +406,7 @@ export default function CustomersPage() {
 
       const json = await res.json();
       if (!res.ok || !json.success) {
-        alert(json.message || "Failed to record payment");
+        showToast(json.message || "Failed to record payment", "error");
         return;
       }
 
@@ -415,7 +423,7 @@ export default function CustomersPage() {
       }
       fetchCustomers();
     } catch (err: any) {
-      alert("Payment error: " + err.message);
+      showToast("Payment error: " + err.message, "error");
     } finally {
       setSubmittingPayment(false);
     }
@@ -439,14 +447,13 @@ export default function CustomersPage() {
 
       const json = await res.json();
       if (json.success) {
-        setReminderToast(json.message || "Refill reminder sent successfully!");
+        showToast(json.message || "Refill reminder sent successfully!", "success");
         fetchRefills();
-        setTimeout(() => setReminderToast(null), 4000);
       } else {
-        alert(json.message || "Failed to send reminder");
+        showToast(json.message || "Failed to send reminder", "error");
       }
     } catch (err: any) {
-      alert("Error sending reminder: " + err.message);
+      showToast("Error sending reminder: " + err.message, "error");
     } finally {
       setSendingReminderId(null);
     }
@@ -483,6 +490,29 @@ export default function CustomersPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* Toast Notification Banner */}
+      {toastNotification && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-2.5 text-xs font-bold transition-all animate-in fade-in slide-in-from-top-2 ${
+            toastNotification.type === "success"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
+          }`}
+        >
+          {toastNotification.type === "success" ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+          )}
+          <span>{toastNotification.text}</span>
+          <button
+            onClick={() => setToastNotification(null)}
+            className="ml-2 p-1 rounded-lg hover:bg-black/5 text-slate-500"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       {/* 1. Header with Title & Action Buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -1574,28 +1604,28 @@ export default function CustomersPage() {
                   <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                     <span className="text-[10px] font-bold text-slate-500 uppercase">Credit Limit</span>
                     <div className="font-extrabold text-sm text-slate-900 mt-0.5">
-                      ₹{ledgerData.summary.creditLimit.toFixed(2)}
+                      ₹{(ledgerData.summary?.creditLimit ?? ledgerData.customer?.creditLimit ?? 0).toFixed(2)}
                     </div>
                   </div>
 
                   <div className="p-3 rounded-xl bg-rose-50 border border-rose-200">
                     <span className="text-[10px] font-bold text-rose-700 uppercase">Total Credit Sales</span>
                     <div className="font-extrabold text-sm text-rose-900 mt-0.5">
-                      ₹{ledgerData.summary.totalCreditSales.toFixed(2)}
+                      ₹{(ledgerData.summary?.totalCreditSales ?? 0).toFixed(2)}
                     </div>
                   </div>
 
                   <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
                     <span className="text-[10px] font-bold text-emerald-700 uppercase">Total Settled</span>
                     <div className="font-extrabold text-sm text-emerald-900 mt-0.5">
-                      ₹{ledgerData.summary.totalSettled.toFixed(2)}
+                      ₹{(ledgerData.summary?.totalSettled ?? 0).toFixed(2)}
                     </div>
                   </div>
 
                   <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
                     <span className="text-[10px] font-bold text-amber-800 uppercase">Current Due Balance</span>
                     <div className="font-extrabold text-base text-amber-950 mt-0.5">
-                      ₹{ledgerData.summary.currentDue.toFixed(2)}
+                      ₹{(ledgerData.summary?.currentDue ?? 0).toFixed(2)}
                     </div>
                   </div>
                 </div>

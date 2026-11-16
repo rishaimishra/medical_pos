@@ -104,6 +104,7 @@ export default function PurchaseOrdersPage() {
   const [suppliersList, setSuppliersList] = useState<any[]>([]);
   const [medicinesList, setMedicinesList] = useState<any[]>([]);
   const [medicineSearch, setMedicineSearch] = useState("");
+  const [isSearchingMeds, setIsSearchingMeds] = useState(false);
   const [filteredMedicines, setFilteredMedicines] = useState<any[]>([]);
   const [poForm, setPoForm] = useState<{
     supplierId: string;
@@ -142,6 +143,13 @@ export default function PurchaseOrdersPage() {
   // Status Action Loader
   const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
   const [sendingAlert, setSendingAlert] = useState(false);
+  const [toastNotification, setToastNotification] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
+
+  const showToast = (text: string, type: "success" | "error" = "success") => {
+    setToastNotification({ type, text });
+    setTimeout(() => setToastNotification(null), 4000);
+  };
 
   const handleTriggerStockAlert = async () => {
     setSendingAlert(true);
@@ -149,12 +157,12 @@ export default function PurchaseOrdersPage() {
       const res = await fetch("/api/admin/notifications/daily-stock-alert?force=true", { method: "POST" });
       const json = await res.json();
       if (json.success) {
-        alert(json.message || "Daily stock alert email sent successfully!");
+        showToast(json.message || "Daily stock alert email sent successfully!", "success");
       } else {
-        alert(json.message || "Failed to dispatch stock alert.");
+        showToast(json.message || "Failed to dispatch stock alert.", "error");
       }
     } catch (err: any) {
-      alert("Error triggering stock alert: " + err.message);
+      showToast("Error triggering stock alert: " + err.message, "error");
     } finally {
       setSendingAlert(false);
     }
@@ -198,8 +206,8 @@ export default function PurchaseOrdersPage() {
       ]);
       const supJson = await supRes.json();
       const medJson = await medRes.json();
-      if (supJson.success) setSuppliersList(supJson.suppliers || []);
-      if (medJson.success) setMedicinesList(medJson.medicines || []);
+      if (supJson.success) setSuppliersList(supJson.suppliers || supJson.data || []);
+      if (medJson.success) setMedicinesList(medJson.medicines || medJson.data || []);
     } catch (err) {
       console.error("Error loading suppliers/medicines:", err);
     }
@@ -232,8 +240,8 @@ export default function PurchaseOrdersPage() {
     } else {
       // Fetch latest batch price if available
       const lastBatch = med.batches?.[0];
-      const price = lastBatch ? Number(lastBatch.purchasePrice) : 0;
-      const mrp = lastBatch ? Number(lastBatch.mrp) : 0;
+      const mrp = lastBatch ? Number(lastBatch.mrp) : (med.stockSummary?.minMrp ? Number(med.stockSummary.minMrp) : 15);
+      const price = lastBatch ? Number(lastBatch.purchasePrice) : Number((mrp * 0.7).toFixed(2)) || 10;
 
       setPoForm({
         ...poForm,
@@ -242,16 +250,17 @@ export default function PurchaseOrdersPage() {
           {
             medicineId: med.id,
             medicineName: med.name,
-            company: med.company,
-            category: med.category,
+            company: med.company || "Generic",
+            category: med.category || "General",
             quantity: 50,
-            price: price || 10,
-            mrp: mrp || 15,
+            price: price,
+            mrp: mrp,
           },
         ],
       });
     }
     setMedicineSearch("");
+    setFilteredMedicines([]);
   };
 
   // Save New PO
@@ -351,19 +360,25 @@ export default function PurchaseOrdersPage() {
   };
 
   // 1-Click Reorder PO
-  const handleReorder = async (po: PurchaseOrderRecord) => {
-    if (!confirm(`Reorder all items from ${po.poNumber} into a new Purchase Order?`)) return;
-    try {
-      const res = await fetch(`/api/admin/purchases/${po.id}/clone`, { method: "POST" });
-      const json = await res.json();
-      if (json.success) {
-        fetchPurchaseOrders();
-      } else {
-        alert(json.message || "Failed to clone PO");
-      }
-    } catch (err) {
-      console.error("Clone error:", err);
-    }
+  const handleReorder = (po: PurchaseOrderRecord) => {
+    setConfirmModal({
+      title: "Reorder Purchase Order",
+      message: `Reorder all items from ${po.poNumber} into a new Purchase Order?`,
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/admin/purchases/${po.id}/clone`, { method: "POST" });
+          const json = await res.json();
+          if (json.success) {
+            showToast(`New PO cloned from ${po.poNumber}`, "success");
+            fetchPurchaseOrders();
+          } else {
+            showToast(json.message || "Failed to clone PO", "error");
+          }
+        } catch (err: any) {
+          showToast("Clone error: " + err.message, "error");
+        }
+      },
+    });
   };
 
   // Update Status
@@ -377,35 +392,119 @@ export default function PurchaseOrdersPage() {
       });
       const json = await res.json();
       if (json.success) {
+        showToast(`PO status updated to ${status}`, "success");
         fetchPurchaseOrders();
       } else {
-        alert(json.message || "Status change failed");
+        showToast(json.message || "Status change failed", "error");
       }
-    } catch (err) {
-      console.error("Status update error:", err);
+    } catch (err: any) {
+      showToast("Status update error: " + err.message, "error");
     } finally {
       setUpdatingStatusId(null);
     }
   };
 
-  // Filter Medicines for search box
+  // Filter Medicines for search box with debounced server search
   useEffect(() => {
     if (!medicineSearch.trim()) {
       setFilteredMedicines([]);
-    } else {
-      const q = medicineSearch.toLowerCase();
-      setFilteredMedicines(
-        medicinesList
-          .filter((m) => m.name.toLowerCase().includes(q) || (m.genericName || "").toLowerCase().includes(q))
-          .slice(0, 8)
-      );
+      setIsSearchingMeds(false);
+      return;
     }
+    setIsSearchingMeds(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/medicines?search=${encodeURIComponent(medicineSearch.trim())}&limit=20`);
+        const json = await res.json();
+        const list = json.medicines || json.data;
+        if (json.success && Array.isArray(list) && list.length > 0) {
+          setFilteredMedicines(list);
+        } else {
+          const q = medicineSearch.toLowerCase();
+          setFilteredMedicines(
+            (medicinesList || [])
+              .filter((m) => m.name.toLowerCase().includes(q) || (m.genericName || "").toLowerCase().includes(q))
+              .slice(0, 8)
+          );
+        }
+      } catch {
+        const q = medicineSearch.toLowerCase();
+        setFilteredMedicines(
+          (medicinesList || [])
+            .filter((m) => m.name.toLowerCase().includes(q) || (m.genericName || "").toLowerCase().includes(q))
+            .slice(0, 8)
+        );
+      } finally {
+        setIsSearchingMeds(false);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
   }, [medicineSearch, medicinesList]);
 
   const grandTotal = poForm.items.reduce((sum, it) => sum + it.price * it.quantity, 0);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
+      {/* Toast Notification Banner */}
+      {toastNotification && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-2.5 text-xs font-bold transition-all animate-in fade-in slide-in-from-top-2 ${
+            toastNotification.type === "success"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
+          }`}
+        >
+          {toastNotification.type === "success" ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+          )}
+          <span>{toastNotification.text}</span>
+          <button
+            onClick={() => setToastNotification(null)}
+            className="ml-2 p-1 rounded-lg hover:bg-black/5 text-slate-500"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">{confirmModal.title}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{confirmModal.message}</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs"
+              >
+                No, Keep
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cb = confirmModal.onConfirm;
+                  setConfirmModal(null);
+                  cb();
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs"
+              >
+                Yes, Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 1. Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs">
         <div className="flex items-center gap-3.5">
@@ -748,13 +847,15 @@ export default function PurchaseOrdersPage() {
                             <Copy className="w-3.5 h-3.5" />
                           </button>
 
-                          {/* Cancel (if unreceived) */}
-                          {po.status !== "received" && po.status !== "cancelled" && (
+                          {/* Cancel (if unreceived and unshipped) */}
+                          {po.status !== "received" && po.status !== "shipped" && po.status !== "cancelled" && (
                             <button
                               onClick={() => {
-                                if (confirm(`Cancel Purchase Order ${po.poNumber}?`)) {
-                                  handleUpdateStatus(po.id, "cancelled");
-                                }
+                                setConfirmModal({
+                                  title: "Cancel Purchase Order",
+                                  message: `Cancel Purchase Order ${po.poNumber}?`,
+                                  onConfirm: () => handleUpdateStatus(po.id, "cancelled"),
+                                });
                               }}
                               title="Cancel Purchase Order"
                               className="p-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 transition-colors"
@@ -872,7 +973,7 @@ export default function PurchaseOrdersPage() {
               </div>
 
               {/* Medicine Picker Bar */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 relative">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                 <label className="font-bold text-slate-700 block">
                   Search & Add Medicines to Order
                 </label>
@@ -883,35 +984,60 @@ export default function PurchaseOrdersPage() {
                     value={medicineSearch}
                     onChange={(e) => setMedicineSearch(e.target.value)}
                     placeholder="Type medicine name or generic composition..."
-                    className="w-full pl-9 pr-4 py-2.5 bg-white text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#0F6E56]/20"
+                    className="w-full pl-9 pr-10 py-2.5 bg-white text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#0F6E56]/20 font-medium"
                   />
-                </div>
+                  {isSearchingMeds && (
+                    <Loader2 className="w-4 h-4 text-[#0F6E56] animate-spin absolute right-3.5 top-1/2 -translate-y-1/2" />
+                  )}
 
-                {/* Dropdown list of results */}
-                {filteredMedicines.length > 0 && (
-                  <div className="absolute left-4 right-4 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 max-h-56 overflow-y-auto divide-y divide-slate-100">
-                    {filteredMedicines.map((m) => (
-                      <div
-                        key={m.id}
-                        onClick={() => handleAddItemToPO(m)}
-                        className="p-3 hover:bg-[#EAF5F0] cursor-pointer flex items-center justify-between text-xs"
-                      >
-                        <div>
-                          <strong className="text-slate-900 block">{m.name}</strong>
-                          <span className="text-[11px] text-slate-500 font-medium">
-                            {m.company} • {m.genericName || m.category}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          className="px-2.5 py-1 rounded-lg bg-[#0F6E56] text-white text-[11px] font-bold"
-                        >
-                          + Add
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  {/* Dropdown: No Results */}
+                  {medicineSearch.trim().length > 0 && !isSearchingMeds && filteredMedicines.length === 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 p-4 text-center text-xs text-slate-400">
+                      No medicines found matching &ldquo;{medicineSearch}&rdquo;
+                    </div>
+                  )}
+
+                  {/* Dropdown: List of matched medicines */}
+                  {filteredMedicines.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-slate-100">
+                      {filteredMedicines.map((m) => {
+                        const batch = m.batches?.[0];
+                        const estCost = batch?.purchasePrice || (m.stockSummary?.minMrp ? (m.stockSummary.minMrp * 0.7).toFixed(2) : "—");
+                        const estMrp = batch?.mrp || m.stockSummary?.minMrp || "—";
+                        return (
+                          <div
+                            key={m.id}
+                            onClick={() => handleAddItemToPO(m)}
+                            className="p-3 hover:bg-[#EAF5F0] cursor-pointer flex items-center justify-between text-xs transition-colors"
+                          >
+                            <div className="pr-2">
+                              <div className="flex items-center gap-2">
+                                <strong className="text-slate-900">{m.name}</strong>
+                                {m.category && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 font-medium">
+                                    {m.category}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
+                                {m.company || "Generic"} {m.genericName ? `• ${m.genericName}` : ""}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block mt-0.5">
+                                Est. Cost: ₹{estCost} | MRP: ₹{estMrp} | In Stock: {m.stockSummary?.totalQuantity ?? 0}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className="shrink-0 px-3 py-1.5 rounded-lg bg-[#0F6E56] hover:bg-[#0b5643] text-white text-[11px] font-bold transition-colors"
+                            >
+                              + Add to PO
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Added Line Items Table */}

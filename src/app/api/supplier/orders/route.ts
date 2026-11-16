@@ -22,9 +22,17 @@ export async function GET(req: NextRequest) {
   try {
     const whereClause: any = {
       supplierId: auth.session.supplierId,
+      status: { not: "draft" },
     };
 
     if (statusParam && statusParam !== "all") {
+      if (statusParam === "draft") {
+        return NextResponse.json({
+          success: true,
+          orders: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        });
+      }
       whereClause.status = statusParam;
     }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
-import { hasPermission } from "@/lib/rbac";
+import { hasPermission, canAccessBranch } from "@/lib/rbac";
 import { sendSupplierPoEmail } from "@/lib/email";
 
 /**
@@ -39,11 +39,22 @@ export async function GET(req: NextRequest) {
   try {
     const whereClause: any = {};
 
-    // Branch scoping
+    // Branch scoping with IDOR protection
+    let targetBranchId: number | undefined;
     if (branchIdParam && branchIdParam !== "all") {
-      whereClause.branchId = parseInt(branchIdParam, 10);
+      const parsedBranch = parseInt(branchIdParam, 10);
+      if (!isNaN(parsedBranch)) {
+        if (!canAccessBranch(auth.session, parsedBranch)) {
+          return NextResponse.json({ success: false, message: "Forbidden: Cannot access requested branch" }, { status: 403 });
+        }
+        targetBranchId = parsedBranch;
+      }
     } else if (auth.session.role !== "admin" && auth.session.branchId) {
-      whereClause.branchId = auth.session.branchId;
+      targetBranchId = auth.session.branchId;
+    }
+
+    if (targetBranchId) {
+      whereClause.branchId = targetBranchId;
     }
 
     if (supplierIdParam && supplierIdParam !== "all") {
@@ -104,8 +115,13 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    // Calculate Summary Stats
+    // Calculate Summary Stats (scoped to branch if filtered)
+    const statsWhere: any = {};
+    if (whereClause.branchId) {
+      statsWhere.branchId = whereClause.branchId;
+    }
     const allForStats = await prisma.purchaseOrder.findMany({
+      where: statsWhere,
       select: { status: true, total: true },
     });
 
@@ -171,7 +187,17 @@ export async function POST(req: NextRequest) {
     const supplierId = parseInt(body.supplierId, 10);
     const branchId = body.branchId ? parseInt(body.branchId, 10) : auth.session.branchId;
     const poDateStr = body.poDate || new Date().toISOString().slice(0, 10);
-    const status = (body.status || "pending").toLowerCase(); // draft or pending
+    const requestedStatus = (body.status || "pending").toLowerCase();
+    if (requestedStatus === "received") {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Cannot create Purchase Order directly as 'received'. Physical goods must be inwarded via the GRN desk.",
+        },
+        { status: 400 }
+      );
+    }
+    const status = requestedStatus === "draft" ? "draft" : "pending";
     const notes = (body.notes || "").trim() || null;
     const items = Array.isArray(body.items) ? body.items : [];
 
@@ -303,7 +329,7 @@ export async function POST(req: NextRequest) {
       ipAddress: getClientIp(req),
     });
 
-    if (supplier.email) {
+    if (supplier.email && status !== "draft") {
       sendSupplierPoEmail({
         type: "created",
         poNumber: newPO.poNumber,

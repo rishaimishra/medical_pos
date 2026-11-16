@@ -108,7 +108,18 @@ async function handleDailyStockAlert(req: NextRequest) {
       expiringBatches,
     });
 
-    // 4. Update lastStockAlertSentAt
+    if (!emailResult.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Failed to dispatch stock alert email: ${emailResult.error || "Unknown error"}`,
+          emailResult,
+        },
+        { status: 500 }
+      );
+    }
+
+    // 4. Update lastStockAlertSentAt ONLY on successful email delivery
     if (settings) {
       await prisma.settings.update({
         where: { id: settings.id },

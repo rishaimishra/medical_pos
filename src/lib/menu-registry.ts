@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Building2,
   SlidersHorizontal,
+  Percent,
   LucideIcon,
 } from "lucide-react";
 import { canAccessPage, hasPermission, PermissionKey, SystemRole } from "./rbac";
@@ -160,6 +161,15 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     requiredPermission: "view_profit_reports",
     status: "in_development",
     description: "GSTR tax summaries, P&L reports, daily cash register",
+  },
+  {
+    id: "discounts",
+    label: "Discount Policies",
+    href: "/admin/discounts",
+    icon: Percent,
+    requiredPermission: "apply_high_discount",
+    status: "ready",
+    description: "Configurable master discount architecture & promotional schemes",
   },
   {
     id: "settings",

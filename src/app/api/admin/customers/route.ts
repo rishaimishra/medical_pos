@@ -4,6 +4,11 @@ import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
 
+function isValidPhone(phone: string): boolean {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15;
+}
+
 /**
  * MODULE 1.13.1: CUSTOMER / PATIENT DIRECTORY & MASTER DATABASE
  * 
@@ -105,13 +110,13 @@ export async function GET(req: NextRequest) {
       whereClause.id = { in: dueCustomerIds };
     }
 
-    const [count, customers] = await Promise.all([
-      prisma.customer.count({ where: whereClause }),
-      prisma.customer.findMany({
+    let count: number;
+    let customers: any[];
+
+    if (sortBy === "due_desc") {
+      // Fetch all matching customers to sort accurately by computed net due
+      const allMatching = await prisma.customer.findMany({
         where: whereClause,
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy,
         include: {
           _count: {
             select: { sales: true, patientMessages: true },
@@ -122,8 +127,37 @@ export async function GET(req: NextRequest) {
             select: { saleDate: true },
           },
         },
-      }),
-    ]);
+      });
+
+      count = allMatching.length;
+      allMatching.sort((a, b) => {
+        const dueA = duesMap.get(a.id) || 0;
+        const dueB = duesMap.get(b.id) || 0;
+        return dueB - dueA;
+      });
+
+      customers = allMatching.slice((page - 1) * limit, page * limit);
+    } else {
+      [count, customers] = await Promise.all([
+        prisma.customer.count({ where: whereClause }),
+        prisma.customer.findMany({
+          where: whereClause,
+          skip: (page - 1) * limit,
+          take: limit,
+          orderBy,
+          include: {
+            _count: {
+              select: { sales: true, patientMessages: true },
+            },
+            sales: {
+              take: 1,
+              orderBy: { saleDate: "desc" },
+              select: { saleDate: true },
+            },
+          },
+        }),
+      ]);
+    }
 
     // Map customer view models with computed metrics
     const customerList = customers.map((c) => {
@@ -163,10 +197,6 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // If sorting by due_desc
-    if (sortBy === "due_desc") {
-      customerList.sort((a, b) => b.outstandingDue - a.outstandingDue);
-    }
 
     return NextResponse.json({
       success: true,
@@ -219,6 +249,10 @@ export async function POST(req: NextRequest) {
 
     if (!phone) {
       return NextResponse.json({ success: false, message: "Customer phone number is required" }, { status: 400 });
+    }
+
+    if (!isValidPhone(phone)) {
+      return NextResponse.json({ success: false, message: "Customer phone number must contain between 10 and 15 digits" }, { status: 400 });
     }
 
     // Duplicate phone prevention

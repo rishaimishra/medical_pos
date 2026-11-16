@@ -162,22 +162,37 @@ export async function POST(req: NextRequest) {
       : "Upcoming";
 
     let emailResult: any = null;
+    let notificationSent = false;
 
     if (channel === "email") {
       if (!customer.email) {
-        return NextResponse.json({ success: false, message: `Patient '${customer.name}' does not have an email address on file.` }, { status: 400 });
-      }
+        if (!advanceCycle) {
+          return NextResponse.json({ success: false, message: `Patient '${customer.name}' does not have an email address on file.` }, { status: 400 });
+        }
+        // If advanceCycle requested without email, advance renewal without emailing
+        emailResult = { success: false, skipped: true, error: "No email on file" };
+      } else {
+        emailResult = await sendCustomerRefillAlertEmail({
+          customerEmail: customer.email,
+          customerName: customer.name,
+          conditions: customer.chronicDiseases || undefined,
+          refillDays: customer.refillDays || undefined,
+          nextRefillDate: dateStr,
+          storeName,
+          storePhone,
+          storeAddress,
+        });
 
-      emailResult = await sendCustomerRefillAlertEmail({
-        customerEmail: customer.email,
-        customerName: customer.name,
-        conditions: customer.chronicDiseases || undefined,
-        refillDays: customer.refillDays || undefined,
-        nextRefillDate: dateStr,
-        storeName,
-        storePhone,
-        storeAddress,
-      });
+        if (!emailResult.success && !advanceCycle) {
+          return NextResponse.json(
+            { success: false, message: `Failed to dispatch refill email: ${emailResult.error || "Unknown error"}` },
+            { status: 500 }
+          );
+        }
+        notificationSent = emailResult.success;
+      }
+    } else {
+      notificationSent = true;
     }
 
     // If advanceCycle is requested, advance nextRefillDate by refillDays (default 30) from today

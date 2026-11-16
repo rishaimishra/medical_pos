@@ -42,7 +42,7 @@ export async function GET(
       },
     });
 
-    if (!po || po.supplierId !== auth.session.supplierId) {
+    if (!po || po.supplierId !== auth.session.supplierId || po.status === "draft") {
       return NextResponse.json({ success: false, message: "Purchase Order not found" }, { status: 404 });
     }
 
@@ -78,7 +78,7 @@ export async function PUT(
       },
     });
 
-    if (!po || po.supplierId !== auth.session.supplierId) {
+    if (!po || po.supplierId !== auth.session.supplierId || po.status === "draft") {
       return NextResponse.json({ success: false, message: "Purchase Order not found" }, { status: 404 });
     }
 
@@ -124,6 +124,18 @@ export async function PUT(
       const existingLine = po.items.find((it) => it.id === itemId);
       if (!existingLine) {
         return NextResponse.json({ success: false, message: `Item ID ${itemId} does not belong to this PO` }, { status: 400 });
+      }
+      const effectiveMrp = entry.mrp !== undefined && !isNaN(parseFloat(String(entry.mrp)))
+        ? parseFloat(String(entry.mrp))
+        : Number(existingLine.mrp);
+      if (effectiveMrp < price) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `Item ID ${itemId}: MRP (₹${effectiveMrp.toFixed(2)}) cannot be less than purchase price (₹${price.toFixed(2)})`,
+          },
+          { status: 400 }
+        );
       }
     }
 

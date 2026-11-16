@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/lib/auth";
-import { APP_VERSION } from "@/lib/config";
+import { getInstalledVersion } from "@/lib/software-update";
 import { listSavedBackups } from "@/lib/backup";
 
 /**
@@ -18,6 +18,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    if (auth.session.role !== "admin") {
+      return NextResponse.json(
+        { success: false, error: "Forbidden: Superadmin access required for software update information." },
+        { status: 403 }
+      );
+    }
+
     const recentBackups = listSavedBackups();
     const lastBackup = recentBackups.length > 0 ? recentBackups[0] : null;
 
@@ -25,7 +32,7 @@ export async function GET(req: NextRequest) {
       success: true,
       data: {
         appName: "Medical POS & Pharmacy Management System",
-        currentVersion: APP_VERSION,
+        currentVersion: getInstalledVersion(),
         environment: process.env.NODE_ENV || "development",
         status: "healthy",
         lastBackupAt: lastBackup?.createdAt || null,
