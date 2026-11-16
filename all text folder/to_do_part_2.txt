@@ -296,27 +296,27 @@ MODULE 2.13: LEDGER EXPORT & INVOICE FORMATTING DETAILS  (from ref: ledger.php, 
 --------------------------------------------------------------------------------
 MODULE 2.14: REGULATORY COMPLIANCE & GST REPORTING
 --------------------------------------------------------------------------------
-2.14.1 [STATUS: PENDING] Schedule H / H1 Prescription Drug Audit Register
+2.14.1 [STATUS: COMPLETED] Schedule H / H1 Prescription Drug Audit Register
        - Dedicated government-compliance register showing: Date, Patient Name & Address, 
          Prescribing Doctor Name & Reg No, Medicine Name, Batch No, Quantity Sold.
 
-2.14.2 [STATUS: PENDING] GST Outward & Inward Summary Reports (GSTR-1 & GSTR-3B)
+2.14.2 [STATUS: COMPLETED] GST Outward & Inward Summary Reports (GSTR-1 & GSTR-3B)
        - Monthly/Quarterly HSN-wise sales summary.
        - Tax breakup reports: Total Taxable Value, CGST Amount, SGST Amount, and IGST Amount.
 
 --------------------------------------------------------------------------------
 MODULE 2.15: BUSINESS INTELLIGENCE, ANALYTICS & DEAD-STOCK REPORTS
 --------------------------------------------------------------------------------
-2.15.1 [STATUS: PENDING] Real-Time Performance Analytics Dashboard
+2.15.1 [STATUS: COMPLETED] Real-Time Performance Analytics Dashboard
        - Live sales graphs (Today, This Week, This Month, Last 12 Months), filterable by Store Branch (`branch_id`) or Consolidated All-Stores view.
        - Top 10 revenue-generating medicines and highest margin products.
        - Payment mode breakdown pie-chart (Cash vs. UPI vs. Card vs. Credit).
 
-2.15.2 [STATUS: PENDING] Profit & Loss (P&L) Engine
+2.15.2 [STATUS: COMPLETED] Profit & Loss (P&L) Engine
        - Calculate real-time gross margin (Selling Price - Purchase Cost) per invoice 
          and overall net profitability after operating expenses.
 
-2.15.3 [STATUS: PENDING] Dead Stock & Slow-Moving Inventory Identification
+2.15.3 [STATUS: COMPLETED] Dead Stock & Slow-Moving Inventory Identification
        - Identify medicines with zero sales in the past 60/90/180 days to prevent capital blockage.
 
 --------------------------------------------------------------------------------
@@ -666,26 +666,26 @@ MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_mes
 --------------------------------------------------------------------------------
 মডিউল ২.১৪: রেগুলেটরি কমপ্লায়েন্স ও জিএসটি রিপোর্ট
 --------------------------------------------------------------------------------
-২.১৪.১ [অবস্থা: পেন্ডিং] শিডিউল এইচ / এইচ১ ড্রাগ অডিট রেজিস্টার
+২.১৪.১ [অবস্থা: সম্পন্ন] শিডিউল এইচ / এইচ১ ড্রাগ অডিট রেজিস্টার
        - সরকারি নিয়ম অনুযায়ী প্রেসক্রিপশন ড্রাগ রেজিস্টার: তারিখ, রোগীর নাম ও ঠিকানা, 
          ডাক্তারের নাম ও রেজিস্ট্রেশন নম্বর, ওষুধের নাম, ব্যাচ ও বিক্রয় সংখ্যা।
 
-২.১৪.২ [অবস্থা: পেন্ডিং] জিএসটি সেলস ও পারচেজ সামারি (GSTR-1 ও GSTR-3B)
+২.১৪.২ [অবস্থা: সম্পন্ন] জিএসটি সেলস ও পারচেজ সামারি (GSTR-1 ও GSTR-3B)
        - মাসিক/ত্রৈমাসিক HSN-ভিত্তিক বিক্রয়ের বিবরণ।
        - ট্যাক্স ব্রেকআপ: করযোগ্য মূল্য, CGST, SGST এবং IGST হিসাব।
 
 --------------------------------------------------------------------------------
 মডিউল ২.১৫: বিজনেস ইন্টেলিজেন্স, অ্যানালিটিক্স ও ডেড-স্টক রিপোর্ট
 --------------------------------------------------------------------------------
-২.১৫.১ [অবস্থা: পেন্ডিং] রিয়েল-টাইম পারফরম্যান্স অ্যানালিটিক্স ড্যাশবোর্ড
+২.১৫.১ [অবস্থা: সম্পন্ন] রিয়েল-টাইম পারফরম্যান্স অ্যানালিটিক্স ড্যাশবোর্ড
        - লাইভ বিক্রয় গ্রাফ (আজ, এই সপ্তাহ, এই মাস, বিগত ১২ মাস), স্টোর ব্রাঞ্চ (`branch_id`) অনুযায়ী ফিল্টার বা সব স্টোরের সমন্বিত ভিউ সহ।
        - সর্বাধিক বিক্রিত ১০টি ওষুধ ও সর্বাধিক লাভজনক আইটেম।
        - পেমেন্ট মোড পাই-চার্ট (ক্যাশ বনাম UPI বনাম কার্ড বনাম বাকি)।
 
-২.১৫.২ [অবস্থা: পেন্ডিং] লাভ ও ক্ষতির হিসাব (Profit & Loss Engine)
+২.১৫.২ [অবস্থা: সম্পন্ন] লাভ ও ক্ষতির হিসাব (Profit & Loss Engine)
        - প্রতিটি বিলে কেনা দাম বনাম বিক্রয় দামের ওপর ভিত্তি করে রিয়েল-টাইম গ্রস ও নেট প্রফিট।
 
-২.১৫.৩ [অবস্থা: পেন্ডিং] ডেড-স্টক ও দীর্ঘদিনের অবিক্রীত ওষুধ শনাক্তকরণ
+২.১৫.৩ [অবস্থা: সম্পন্ন] ডেড-স্টক ও দীর্ঘদিনের অবিক্রীত ওষুধ শনাক্তকরণ
        - বিগত ৬০/৯০/১৮০ দিনে যে ওষুধগুলোর একটিও বিক্রি হয়নি সেগুলো চিহ্নিত করে মূলধন আটকে থাকা রোধ।
 
 --------------------------------------------------------------------------------

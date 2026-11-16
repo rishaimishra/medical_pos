@@ -64,7 +64,7 @@ export function formatPackMetadata(cleanDesc: string, meta: PackMetadata): strin
 // GET: Paginated & Filtered Medicine Master Catalog (Screen 9 & Module 1.6/1.7)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
-  const auth = await verifyAdminRequest(req, { requiredPermission: "manage_medicines" });
+  const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }

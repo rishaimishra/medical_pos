@@ -168,7 +168,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     href: "/admin/reports",
     icon: BarChart3,
     requiredPermission: "view_profit_reports",
-    status: "in_development",
+    status: "ready",
     description: "GSTR tax summaries, P&L reports, daily cash register",
   },
   {

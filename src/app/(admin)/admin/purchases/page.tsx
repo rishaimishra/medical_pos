@@ -195,6 +195,7 @@ export default function PurchaseOrdersPage() {
 
   useEffect(() => {
     fetchPurchaseOrders();
+    loadSuppliersAndMedicines();
   }, [fetchPurchaseOrders]);
 
   // Load suppliers and medicines for manual builder
@@ -216,6 +217,8 @@ export default function PurchaseOrdersPage() {
   // Open New PO Modal
   const handleOpenNewPO = () => {
     loadSuppliersAndMedicines();
+    setMedicineSearch("");
+    setFilteredMedicines([]);
     setPoForm({
       supplierId: suppliersList[0]?.id ? String(suppliersList[0].id) : "",
       branchId: activeBranch ? String(activeBranch.id) : "",
@@ -983,6 +986,9 @@ export default function PurchaseOrdersPage() {
                     type="text"
                     value={medicineSearch}
                     onChange={(e) => setMedicineSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.preventDefault();
+                    }}
                     placeholder="Type medicine name or generic composition..."
                     className="w-full pl-9 pr-10 py-2.5 bg-white text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#0F6E56]/20 font-medium"
                   />
