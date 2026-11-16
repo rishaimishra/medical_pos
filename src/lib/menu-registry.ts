@@ -106,7 +106,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     label: "Sales History",
     href: "/admin/sales",
     icon: Receipt,
-    status: "in_development",
+    status: "ready",
     description: "Invoices, payment modes, customer receipts",
   },
   {
@@ -114,7 +114,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     label: "Sales Returns",
     href: "/admin/returns",
     icon: RotateCcw,
-    status: "in_development",
+    status: "ready",
     description: "Medicine returns and counter refunds",
   },
   {

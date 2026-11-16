@@ -230,22 +230,22 @@ MODULE 2.8: INVOICE PRINT SPEC  (from ref: invoice.php)
 --------------------------------------------------------------------------------
 MODULE 2.9: SALES HISTORY, INVOICE ARCHIVE & DIGITAL SHARING
 --------------------------------------------------------------------------------
-2.9.1 [STATUS: PENDING] Comprehensive Sales History & Search
+2.9.1 [STATUS: COMPLETED] Comprehensive Sales History & Search
       - Filter past invoices by Date Range, Store Branch (`branch_id`), Invoice Number, Customer Name/Phone, 
         Payment Mode, or Cashier.
       - Fast 1-click invoice reprint and PDF export.
 
-2.9.2 [STATUS: PENDING] Digital Invoice Delivery (WhatsApp & SMS)
+2.9.2 [STATUS: COMPLETED] Digital Invoice Delivery (WhatsApp & SMS)
       - Instant sharing of invoice PDF or web link directly to customer's WhatsApp/SMS.
 
 --------------------------------------------------------------------------------
 MODULE 2.10: SALES RETURNS, RESTOCKING & REFUND MANAGEMENT
 --------------------------------------------------------------------------------
-2.10.1 [STATUS: PENDING] Invoice-Linked Returns Processing
+2.10.1 [STATUS: COMPLETED] Invoice-Linked Returns Processing
        - Lookup original sale via invoice barcode or number.
        - Select returned items and return quantities (preventing return of more than purchased).
 
-2.10.2 [STATUS: PENDING] Restock vs. Discard Workflow
+2.10.2 [STATUS: COMPLETED] Restock vs. Discard Workflow
        - Option to return goods to active batch inventory (salable condition) or 
          mark as damaged/discarded.
        - Automated refund calculation and credit note generation.
@@ -253,16 +253,16 @@ MODULE 2.10: SALES RETURNS, RESTOCKING & REFUND MANAGEMENT
 --------------------------------------------------------------------------------
 MODULE 2.11: RETURNS PROCESSING RULES  (from ref: returns.php)
 --------------------------------------------------------------------------------
-2.11.1 [STATUS: PENDING] Return Status Flow
+2.11.1 [STATUS: COMPLETED] Return Status Flow
        - Customer-requested returns arrive as pending; staff can process or reject.
 
-2.11.2 [STATUS: PENDING] Already-Returned Guard
+2.11.2 [STATUS: COMPLETED] Already-Returned Guard
        - Per sale item, block returning more than purchased minus already returned.
 
-2.11.3 [STATUS: PENDING] Discount-Proportional Refund
+2.11.3 [STATUS: COMPLETED] Discount-Proportional Refund
        - Refund = item total - (item total x sale discount ratio).
 
-2.11.4 [STATUS: PENDING] Restock Yes/No Choice
+2.11.4 [STATUS: COMPLETED] Restock Yes/No Choice
        - Yes: add stock back + stock_adjustments row. No (damaged/expired): write off, 
          no stock added.
 
@@ -603,37 +603,37 @@ MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_mes
 --------------------------------------------------------------------------------
 মডিউল ২.৯: বিক্রয়ের ইতিহাস, ইনভয়েস আর্কাইভ ও ডিজিটাল শেয়ারিং
 --------------------------------------------------------------------------------
-২.৯.১ [অবস্থা: পেন্ডিং] বিক্রয়ের ইতিহাস ও অ্যাডভান্সড সার্চ
+২.৯.১ [অবস্থা: সম্পন্ন] বিক্রয়ের ইতিহাস ও অ্যাডভান্সড সার্চ
       - তারিখ, স্টোর ব্রাঞ্চ (`branch_id`), ইনভয়েস নম্বর, গ্রাহকের নাম/মোবাইল বা পেমেন্ট মেথড দিয়ে অতীতের বিল সার্চ।
       - এক ক্লিকে যেকোনো পুরনো বিল রিপ্রিন্ট বা পিডিএফ ডাউনলোড।
 
-২.৯.২ [অবস্থা: পেন্ডিং] ডিজিটাল ইনভয়েস ডেলিভারি (WhatsApp ও SMS)
+২.৯.২ [অবস্থা: সম্পন্ন] ডিজিটাল ইনভয়েস ডেলিভারি (WhatsApp ও SMS)
       - প্রিন্ট রসিদের পাশাপাশি গ্রাহকের মোবাইলে সরাসরি WhatsApp/SMS-এ বিলের ডিজিটাল লিংক পাঠানো।
 
 --------------------------------------------------------------------------------
 মডিউল ২.১০: ওষুধ ফেরত (Sales Return), রিস্টকিং ও রিফান্ড
 --------------------------------------------------------------------------------
-২.১০.১ [অবস্থা: পেন্ডিং] ইনভয়েস-সংযুক্ত রিটার্ন প্রসেসিং
+২.১০.১ [অবস্থা: সম্পন্ন] ইনভয়েস-সংযুক্ত রিটার্ন প্রসেসিং
        - পূর্বের ইনভয়েস নম্বর দিয়ে ওষুধ ফেচ করে ফেরত নেওয়ার ব্যবস্থা।
        - ক্রয়ের অতিরিক্ত সংখ্যা ফেরত প্রতিরোধ করা।
 
-২.১০.২ [অবস্থা: পেন্ডিং] রিস্টক বনাম ড্যামেজড ওয়ার্কফ্লো
+২.১০.২ [অবস্থা: সম্পন্ন] রিস্টক বনাম ড্যামেজড ওয়ার্কফ্লো
        - ফেরত আসা ওষুধ ভালো থাকলে পুনরায় মূল স্টকে যুক্ত করা, নয়তো ড্যামেজড হিসেবে বাতিল করা।
        - স্বয়ংক্রিয় রিফান্ড ক্যালকুলেশন ও ক্রেডিট নোট জেনারেশন।
 
 --------------------------------------------------------------------------------
 মডিউল ২.১১: রিটার্ন প্রসেসিং নিয়ম  (রেফারেন্স: returns.php)
 --------------------------------------------------------------------------------
-২.১১.১ [অবস্থা: পেন্ডিং] রিটার্ন স্ট্যাটাস ফ্লো
+২.১১.১ [অবস্থা: সম্পন্ন] রিটার্ন স্ট্যাটাস ফ্লো
        - কাস্টমারের রিটার্ন অনুরোধ pending হিসেবে আসে; স্টাফ process বা reject করবে।
 
-২.১১.২ [অবস্থা: পেন্ডিং] ইতিমধ্যে-রিটার্ন গার্ড
+২.১১.২ [অবস্থা: সম্পন্ন] ইতিমধ্যে-রিটার্ন গার্ড
        - প্রতি সেল আইটেমে কেনা পরিমাণ থেকে আগে ফেরত দেওয়া বাদে বেশি ফেরত নেওয়া যাবে না।
 
-২.১১.৩ [অবস্থা: পেন্ডিং] ডিসকাউন্ট-আনুপাতিক রিফান্ড
+২.১১.৩ [অবস্থা: সম্পন্ন] ডিসকাউন্ট-আনুপাতিক রিফান্ড
        - রিফান্ড = আইটেম মোট - (আইটেম মোট x সেল ডিসকাউন্ট অনুপাত)।
 
-২.১১.৪ [অবস্থা: পেন্ডিং] রিস্টক হ্যাঁ/না পছন্দ
+২.১১.৪ [অবস্থা: সম্পন্ন] রিস্টক হ্যাঁ/না পছন্দ
        - হ্যাঁ: স্টক ফেরত + stock_adjustments সারি। না (নষ্ট/মেয়াদোত্তীর্ণ): রাইট-অফ, স্টক যোগ হবে না।
 
 --------------------------------------------------------------------------------
