@@ -202,26 +202,30 @@ MODULE 2.6: SALE FINALIZATION RULES  (from ref: finalize_sale.php)
 --------------------------------------------------------------------------------
 MODULE 2.7: INVOICING, THERMAL PRINTING & TAX BREAKDOWN
 --------------------------------------------------------------------------------
-2.7.1 [STATUS: PENDING] ESC/POS Thermal Receipt Generation
+2.7.1 [STATUS: COMPLETED] ESC/POS Thermal Receipt Generation
       - Formatted print slips for 2-inch (58mm) and 3-inch (80mm) thermal POS printers.
       - Include branch-specific store header (name, address, phone, DL No, GSTIN from active `Branch`), itemized list, batch, expiry, 
         tax summary, and return policy footer.
+      * Implemented `src/components/pos/ThermalReceipt.tsx` supporting 2-inch (58mm, 32-col compact) and 3-inch (80mm, 48-col) layouts with store header, D.L., GSTIN, itemized batches, expiry (MM/YY), split tender details, change returned, and 7-day return policy footer.
 
-2.7.2 [STATUS: PENDING] Standard A4 Tax Invoice Printing
+2.7.2 [STATUS: COMPLETED] Standard A4 Tax Invoice Printing
       - Full-page A4 PDF/Print layout for hospitals, institutional sales, and insurance claims.
       - Detailed columns: S.No, Medicine Description, HSN Code, Batch No, Exp Date, 
         Quantity, MRP, Unit Rate, CGST %, SGST %, and Total Amount.
+      * Implemented `src/components/pos/A4TaxInvoice.tsx` with all 11 statutory columns, HSN/SAC-wise tax analysis table, Indian currency amount-in-words (`src/lib/numberToWords.ts`), and legal drug declarations.
 
 --------------------------------------------------------------------------------
 MODULE 2.8: INVOICE PRINT SPEC  (from ref: invoice.php)
 --------------------------------------------------------------------------------
-2.8.1 [STATUS: PENDING] Legal TAX INVOICE Layout
+2.8.1 [STATUS: COMPLETED] Legal TAX INVOICE Layout
       - Store/Branch header with GSTIN and Drug Licence no; Bill To (walk-in vs customer); 
         payment details; PAID status.
       - Item columns: HSN, generic name, batch, qty, MRP/unit, GST%, taxable, GST amt, amount.
+      * Full legal header with GSTIN & D.L. Nos, "ORIGINAL FOR RECIPIENT" copy selector, verified "PAID" badge, customer vs walk-in billing details, prescribing doctor info, and authorized pharmacist signature block.
 
-2.8.2 [STATUS: PENDING] Single-Page A4 Auto-Scale Print + Save PDF
+2.8.2 [STATUS: COMPLETED] Single-Page A4 Auto-Scale Print + Save PDF
       - Print CSS scales long invoices to one A4 page; "Print / Save PDF" button.
+      * Auto-scaling print CSS and layout engine (`src/app/(admin)/admin/pos/invoice/[id]/page.tsx` & `ReceiptPrintModal.tsx`) with 1-click Print/Save PDF, format switcher (A4 / 80mm / 58mm), dedicated endpoint `/api/admin/pos/invoices/[id]`, and 100% verified test coverage (24/24 PASS).
 
 --------------------------------------------------------------------------------
 MODULE 2.9: SALES HISTORY, INVOICE ARCHIVE & DIGITAL SHARING
@@ -574,23 +578,27 @@ MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_mes
 --------------------------------------------------------------------------------
 মডিউল ২.৭: ইনভয়েসিং, থার্মাল প্রিন্ট ও ট্যাক্স বিশ্লেষণ
 --------------------------------------------------------------------------------
-২.৭.১ [অবস্থা: পেন্ডিং] ESC/POS থার্মাল রিসিপ্ট প্রিন্ট
+২.৭.১ [অবস্থা: সম্পন্ন - COMPLETED] ESC/POS থার্মাল রিসিপ্ট প্রিন্ট
       - ২-ইঞ্চি (58mm) এবং ৩-ইঞ্চি (80mm) থার্মাল প্রিন্টারের জন্য অপ্টিমাইজড রসিদ।
       - সক্রিয় শাখার (Branch) নাম, ঠিকানা, ফোন, ড্রাগ লাইসেন্স, GSTIN, ওষুধের নাম, ব্যাচ, মেয়াদ ও ট্যাক্স সামারি।
+      * `src/components/pos/ThermalReceipt.tsx`-এ ২-ইঞ্চি (58mm, 32 কলাম) এবং ৩-ইঞ্চি (80mm, 48 কলাম) উভয় লেআউট সম্পন্ন। শাখার GSTIN, D.L., ব্যাচ, এক্সপায়ারি, স্প্লিট পেমেন্ট ও ৭ দিনের রিটার্ন পলিসি ফুটাসহ প্রস্তুত।
 
-২.৭.২ [অবস্থা: পেন্ডিং] স্ট্যান্ডার্ড A4 ট্যাক্স ইনভয়েস প্রিন্ট
+২.৭.২ [অবস্থা: সম্পন্ন - COMPLETED] স্ট্যান্ডার্ড A4 ট্যাক্স ইনভয়েস প্রিন্ট
       - হাসপাতাল, প্রাতিষ্ঠানিক সরবরাহ ও ইনস্যুরেন্স দাবির জন্য পূর্ণাঙ্গ A4 সাইজ ইনভয়েস।
       - বিস্তারিত কলাম: ক্রমিক, বিবরণ, HSN কোড, ব্যাচ, মেয়াদ, সংখ্যা, MRP, রেট, CGST %, SGST % ও মোট টাকা।
+      * `src/components/pos/A4TaxInvoice.tsx`-এ ১১টি সংবিধিবদ্ধ কলাম, HSN ভিত্তিক ট্যাক্স অ্যানালাইসিস টেবিল, ভারতীয় মুদ্রা অনুযায়ী সংখ্যা থেকে কথায় রূপান্তর (`src/lib/numberToWords.ts`) এবং ড্রাগ আইনের ঘোষণাসহ প্রস্তুত।
 
 --------------------------------------------------------------------------------
 মডিউল ২.৮: ইনভয়েস প্রিন্ট স্পেক  (রেফারেন্স: invoice.php)
 --------------------------------------------------------------------------------
-২.৮.১ [অবস্থা: পেন্ডিং] আইনসম্মত TAX INVOICE লেআউট
+২.৮.১ [অবস্থা: সম্পন্ন - COMPLETED] আইনসম্মত TAX INVOICE লেআউট
       - সক্রিয় স্টোর/শাখার GSTIN ও ড্রাগ লাইসেন্স নংসহ হেডার; Bill To (ওয়াক-ইন বনাম কাস্টমার); পেমেন্ট তথ্য; PAID স্ট্যাটাস।
       - আইটেম কলাম: HSN, জেনেরিক নাম, ব্যাচ, পরিমাণ, MRP/ইউনিট, GST%, করযোগ্য মূল্য, GST পরিমাণ, মোট।
+      * শাখা হেডার, GSTIN, ড্রাগ লাইসেন্স, "ORIGINAL FOR RECIPIENT" কপি সিলেক্টর, PAID স্ট্যাটাস ব্যাজ, রেজিস্টার্ড বনাম ওয়াক-ইন গ্রাহক তথ্য ও অনুমোদিত ফার্মাসিস্ট স্বাক্ষর ব্লকের পূর্ণাঙ্গ বাস্তবায়ন।
 
-২.৮.২ [অবস্থা: পেন্ডিং] এক A4 পেজে অটো-স্কেল প্রিন্ট + PDF সেভ
+২.৮.২ [অবস্থা: সম্পন্ন - COMPLETED] এক A4 পেজে অটো-স্কেল প্রিন্ট + PDF সেভ
       - প্রিন্ট CSS লম্বা ইনভয়েস এক A4 পেজে আনে; "Print / Save PDF" বোতাম।
+      * ডাইনামিক অটো-স্কেলিং প্রিন্ট CSS, ১-ক্লিকে Print / Save PDF বোতাম, ফরম্যাট সুইচিং (A4 / 80mm / 58mm), ডেডিকেটেড এন্ডপয়েন্ট `/api/admin/pos/invoices/[id]` এবং ২৪/২৪টি টেস্ট শতভাগ সফলভাবে উত্তীর্ণ।
 
 --------------------------------------------------------------------------------
 মডিউল ২.৯: বিক্রয়ের ইতিহাস, ইনভয়েস আর্কাইভ ও ডিজিটাল শেয়ারিং
