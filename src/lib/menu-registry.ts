@@ -17,6 +17,7 @@ import {
   Building2,
   SlidersHorizontal,
   Percent,
+  Wallet,
   LucideIcon,
 } from "lucide-react";
 import { canAccessPage, hasPermission, PermissionKey, SystemRole } from "./rbac";
@@ -116,6 +117,14 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     icon: RotateCcw,
     status: "ready",
     description: "Medicine returns and counter refunds",
+  },
+  {
+    id: "financials",
+    label: "Financial Ledger & Z-Report",
+    href: "/admin/financials",
+    icon: Wallet,
+    status: "ready",
+    description: "General income & expense ledger, day-end cash drawer closing",
   },
   {
     id: "purchases",

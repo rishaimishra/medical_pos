@@ -269,11 +269,11 @@ MODULE 2.11: RETURNS PROCESSING RULES  (from ref: returns.php)
 --------------------------------------------------------------------------------
 MODULE 2.12: FINANCIAL LEDGER & DAY-END CASH DRAWER CLOSING
 --------------------------------------------------------------------------------
-2.12.1 [STATUS: PENDING] General Income & Expense Ledger
+2.12.1 [STATUS: COMPLETED] General Income & Expense Ledger
        - Record operational overheads (Electricity, Rent, Staff Salary, Tea/Misc Expenses).
        - Category-based income and expense reporting.
 
-2.12.2 [STATUS: PENDING] Day-End Cash Drawer Reconciliation (Z-Report)
+2.12.2 [STATUS: COMPLETED] Day-End Cash Drawer Reconciliation (Z-Report)
        - End-of-shift register closing tool: Cashier counts and enters physical currency 
          denominations (e.g., ₹500 x 10, ₹200 x 5, etc.).
        - System compares physical cash against recorded sales and flags cash excess or shortage.
@@ -281,15 +281,15 @@ MODULE 2.12: FINANCIAL LEDGER & DAY-END CASH DRAWER CLOSING
 --------------------------------------------------------------------------------
 MODULE 2.13: LEDGER EXPORT & INVOICE FORMATTING DETAILS  (from ref: ledger.php, invoice.php, functions.php)
 --------------------------------------------------------------------------------
-2.13.1 [STATUS: PENDING] Ledger With Party Filter & Export
+2.13.1 [STATUS: COMPLETED] Ledger With Party Filter & Export
        - Entries for sale (credit), purchase (debit), return (debit) with date, ref, 
          party, note; filter by date/customer/supplier; export CSV and Excel; totals.
 
-2.13.2 [STATUS: PENDING] Document Numbering & Amount In Words
+2.13.2 [STATUS: COMPLETED] Document Numbering & Amount In Words
        - Invoice no. (PREFIX-YEAR-00001), PO no. (PO-00001), Return no. (RET-0001); 
          grand total printed in words on invoice.
 
-2.13.3 [STATUS: PENDING] GST-Inclusive MRP Calculation Rule
+2.13.3 [STATUS: COMPLETED] GST-Inclusive MRP Calculation Rule
        - Taxable value = MRP / (1 + GST%); GST amount = MRP - taxable value, per-medicine GST rate; 
          discount applies on the inclusive total; checkout stock revalidation per batch.
 
@@ -639,11 +639,11 @@ MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_mes
 --------------------------------------------------------------------------------
 মডিউল ২.১২: ফিনান্সিয়াল লেজার ও ডে-এন্ড ক্যাশ ক্লোজিং
 --------------------------------------------------------------------------------
-২.১২.১ [অবস্থা: পেন্ডিং] সাধারণ আয় ও ব্যয়ের লেজার
+২.১২.১ [অবস্থা: সম্পন্ন] সাধারণ আয় ও ব্যয়ের লেজার
        - ফার্মাসির দৈনন্দিন খরচ (বিদ্যুৎ বিল, দোকান ভাড়া, কর্মচারীর বেতন, চা-নাশতা ইত্যাদি) রেকর্ড।
        - ক্যাটাগরি অনুযায়ী লাভ-ক্ষতি ও ব্যয়ের রিপোর্ট।
 
-২.১২.২ [অবস্থা: পেন্ডিং] ডে-এন্ড ক্যাশ ড্রয়ার রিকনসিলিয়েশন (Z-Report)
+২.১২.২ [অবস্থা: সম্পন্ন] ডে-এন্ড ক্যাশ ড্রয়ার রিকনসিলিয়েশন (Z-Report)
        - দিনের শেষে শিফট ক্লোজিং: ক্যাশিয়ার ক্যাশ ড্রয়ারের নোট গুনে সফটওয়্যারে এন্ট্রি করবেন 
          (যেমন: ৫০০ টাকার নোট ১০টি, ২০০ টাকার নোট ৫টি ইত্যাদি)।
        - সফটওয়্যারের বিক্রয় হিসাবের সাথে আসল টাকার মিল বা গরমিল তাৎক্ষণিক রিপোর্ট আকারে দেখানো।
@@ -651,15 +651,15 @@ MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_mes
 --------------------------------------------------------------------------------
 মডিউল ২.১৩: লেজার এক্সপোর্ট ও ইনভয়েস ফরম্যাটিং বিবরণ  (রেফারেন্স: ledger.php, invoice.php, functions.php)
 --------------------------------------------------------------------------------
-২.১৩.১ [অবস্থা: পেন্ডিং] পার্টি ফিল্টারসহ লেজার ও এক্সপোর্ট
+২.১৩.১ [অবস্থা: সম্পন্ন] পার্টি ফিল্টারসহ লেজার ও এক্সপোর্ট
        - বিক্রয় (ক্রেডিট), ক্রয় (ডেবিট), রিটার্ন (ডেবিট) এন্ট্রি; তারিখ/কাস্টমার/সাপ্লায়ার ফিল্টার; 
          CSV ও Excel এক্সপোর্ট; মোট হিসাব।
 
-২.১৩.২ [অবস্থা: পেন্ডিং] ডকুমেন্ট নম্বরিং ও কথায় টাকার অঙ্ক
+২.১৩.২ [অবস্থা: সম্পন্ন] ডকুমেন্ট নম্বরিং ও কথায় টাকার অঙ্ক
        - ইনভয়েস নং (PREFIX-YEAR-00001), PO নং (PO-00001), রিটার্ন নং (RET-0001); 
          ইনভয়েসে মোট টাকা কথায় লেখা।
 
-২.১৩.৩ [অবস্থা: পেন্ডিং] GST-ইনক্লুসিভ MRP হিসাবের নিয়ম
+২.১৩.৩ [অবস্থা: সম্পন্ন] GST-ইনক্লুসিভ MRP হিসাবের নিয়ম
        - করযোগ্য মূল্য = MRP / (1 + GST%); GST = MRP - করযোগ্য মূল্য, ওষুধভিত্তিক GST হার; 
          ডিসকাউন্ট ইনক্লুসিভ মোট টাকার ওপর; চেকআউটে ব্যাচভিত্তিক স্টক পুনরায় যাচাই।
 

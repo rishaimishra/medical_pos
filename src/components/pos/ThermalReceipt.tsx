@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { numberToIndianWords } from "@/lib/numberToWords";
 
 export interface ThermalReceiptProps {
   saleData: any;
@@ -212,6 +213,9 @@ export function ThermalReceipt({
         >
           <span>NET PAYABLE:</span>
           <span>₹{grandTotal.toFixed(2)}</span>
+        </div>
+        <div className="pt-0.5 text-[8px] text-slate-600 italic leading-tight text-right break-words">
+          {numberToIndianWords(grandTotal)}
         </div>
       </div>
 

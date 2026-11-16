@@ -46,6 +46,7 @@ export const STAFF_ALLOWED_PAGES = [
   "/admin/grn",
   "/admin/messages",
   "/admin/discounts",
+  "/admin/financials",
 ];
 
 export const ADMIN_ONLY_PAGES = [
