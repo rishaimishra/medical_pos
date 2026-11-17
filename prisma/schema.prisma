@@ -45,10 +45,12 @@ model Settings {
   updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
   createdAt            DateTime  @default(now()) @map("created_at")
 
-  branches  Branch[]
-  users     User[]
-  auditLogs AuditLog[]
-  discounts Discount[]
+  branches           Branch[]
+  users              User[]
+  auditLogs          AuditLog[]
+  discounts          Discount[]
+  expenses           Expense[]
+  cashDrawerClosings CashDrawerClosing[]
 
   @@map("settings")
 }
@@ -78,8 +80,10 @@ model Branch {
   sales            Sale[]
   returns          Return[]
   stockAdjustments StockAdjustment[]
-  customerPayments CustomerPayment[]
-  auditLogs        AuditLog[]
+  customerPayments   CustomerPayment[]
+  auditLogs          AuditLog[]
+  expenses           Expense[]
+  cashDrawerClosings CashDrawerClosing[]
 
   @@unique([storeId, code], name: "uk_store_branch_code")
   @@index([storeId], name: "idx_branches_store")
@@ -117,6 +121,8 @@ model User {
   stockAdjustments      StockAdjustment[]
   patientMessagesOut    PatientMessage[]
   auditLogs             AuditLog[]
+  expenses              Expense[]
+  cashDrawerClosings    CashDrawerClosing[]
 
   @@index([storeId], name: "idx_users_store")
   @@index([role], name: "idx_users_role")
@@ -666,4 +672,72 @@ model PatientMessage {
   @@index([customerId], name: "idx_pm_customer")
   @@index([isRead], name: "idx_pm_is_read")
   @@map("patient_messages")
+}
+
+// ============================================================================
+// 11. FINANCIAL LEDGERS, EXPENSES & CASH DRAWER CLOSING (MODULE 2.12 & 2.13)
+// ============================================================================
+
+// Table: expenses (Operational overheads, store expenses and non-sale revenues)
+model Expense {
+  id           Int      @id @default(autoincrement())
+  voucherNo    String   @unique @map("voucher_no") @db.VarChar(50) // e.g. EXP-2026-00001
+  storeId      Int?     @map("store_id")
+  branchId     Int?     @map("branch_id")
+  userId       Int?     @map("user_id") // Cashier or admin recording the voucher
+  type         String   @default("expense") @db.VarChar(20) // expense, income
+  category     String   @db.VarChar(100) // Electricity, Rent, Salary, Tea, Maintenance, etc.
+  title        String   @db.VarChar(255)
+  amount       Decimal  @db.Decimal(12, 2)
+  paymentMode  String   @default("cash") @map("payment_mode") @db.VarChar(50) // cash, upi, bank_transfer, card, cheque
+  referenceNo  String?  @map("reference_no") @db.VarChar(100) // Bill no / UTR / Cheque
+  payeeOrPayer String?  @map("payee_or_payer") @db.VarChar(255) // Vendor or person name
+  notes        String?  @db.Text
+  expenseDate  DateTime @default(now()) @map("expense_date")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  store  Settings? @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  branch Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user   User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([storeId], name: "idx_expenses_store")
+  @@index([branchId], name: "idx_expenses_branch")
+  @@index([type], name: "idx_expenses_type")
+  @@index([category], name: "idx_expenses_category")
+  @@index([expenseDate], name: "idx_expenses_date")
+  @@map("expenses")
+}
+
+// Table: cash_drawer_closings (End-of-shift & day-end register reconciliation / Z-Report)
+model CashDrawerClosing {
+  id              Int      @id @default(autoincrement())
+  closingNumber   String   @unique @map("closing_number") @db.VarChar(50) // e.g. ZREP-2026-00001
+  storeId         Int?     @map("store_id")
+  branchId        Int?     @map("branch_id")
+  userId          Int?     @map("user_id") // Cashier who closed the shift
+  shiftStart      DateTime @map("shift_start")
+  shiftEnd        DateTime @map("shift_end")
+  openingFloat    Decimal  @default(0.00) @map("opening_float") @db.Decimal(12, 2)
+  cashSales       Decimal  @default(0.00) @map("cash_sales") @db.Decimal(12, 2)
+  cashReturns     Decimal  @default(0.00) @map("cash_returns") @db.Decimal(12, 2)
+  cashExpenses    Decimal  @default(0.00) @map("cash_expenses") @db.Decimal(12, 2)
+  cashIncomes     Decimal  @default(0.00) @map("cash_incomes") @db.Decimal(12, 2)
+  expectedCash    Decimal  @map("expected_cash") @db.Decimal(12, 2) // openingFloat + cashSales - cashReturns - cashExpenses + cashIncomes
+  countedCash     Decimal  @map("counted_cash") @db.Decimal(12, 2)
+  difference      Decimal  @map("difference") @db.Decimal(12, 2) // countedCash - expectedCash
+  status          String   @default("exact") @db.VarChar(20) // exact, excess, shortage
+  denominations   String   @db.Text // JSON string: { "2000": 0, "500": 10, ... }
+  totalSalesCount Int      @default(0) @map("total_sales_count")
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  store  Settings? @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  branch Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user   User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([storeId], name: "idx_cash_closings_store")
+  @@index([branchId], name: "idx_cash_closings_branch")
+  @@index([shiftEnd], name: "idx_cash_closings_shift_end")
+  @@map("cash_drawer_closings")
 }

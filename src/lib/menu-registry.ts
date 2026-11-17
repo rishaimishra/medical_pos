@@ -17,6 +17,7 @@ import {
   Building2,
   SlidersHorizontal,
   Percent,
+  Wallet,
   LucideIcon,
 } from "lucide-react";
 import { canAccessPage, hasPermission, PermissionKey, SystemRole } from "./rbac";
@@ -106,7 +107,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     label: "Sales History",
     href: "/admin/sales",
     icon: Receipt,
-    status: "in_development",
+    status: "ready",
     description: "Invoices, payment modes, customer receipts",
   },
   {
@@ -114,8 +115,16 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     label: "Sales Returns",
     href: "/admin/returns",
     icon: RotateCcw,
-    status: "in_development",
+    status: "ready",
     description: "Medicine returns and counter refunds",
+  },
+  {
+    id: "financials",
+    label: "Financial Ledger & Z-Report",
+    href: "/admin/financials",
+    icon: Wallet,
+    status: "ready",
+    description: "General income & expense ledger, day-end cash drawer closing",
   },
   {
     id: "purchases",
@@ -159,7 +168,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     href: "/admin/reports",
     icon: BarChart3,
     requiredPermission: "view_profit_reports",
-    status: "in_development",
+    status: "ready",
     description: "GSTR tax summaries, P&L reports, daily cash register",
   },
   {
