@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
-import { canAccessBranch } from "@/lib/rbac";
+import { canAccessBranch, hasPermission } from "@/lib/rbac";
 import { getTodayMidnightUtc } from "@/lib/config";
 
 export async function GET(req: NextRequest) {
@@ -13,12 +13,26 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const branchParam = searchParams.get("branchId");
   const requestedBranchId = branchParam && branchParam !== "all" ? parseInt(branchParam, 10) : null;
-  if (requestedBranchId !== null && !isNaN(requestedBranchId) && !canAccessBranch(auth.session, requestedBranchId)) {
+  if (branchParam && branchParam !== "all" && (requestedBranchId === null || isNaN(requestedBranchId))) {
+    return NextResponse.json({ success: false, message: "Invalid branchId" }, { status: 400 });
+  }
+  if (requestedBranchId !== null && !canAccessBranch(auth.session, requestedBranchId)) {
     return NextResponse.json({ success: false, message: "Unauthorized branch access" }, { status: 403 });
   }
 
   const userStoreId = auth.session.storeId;
-  const effectiveBranchId = auth.session.branchId ? auth.session.branchId : (requestedBranchId && !isNaN(requestedBranchId) ? requestedBranchId : null);
+  if (requestedBranchId !== null && userStoreId) {
+    const br = await prisma.branch.findUnique({ where: { id: requestedBranchId }, select: { storeId: true } });
+    if (!br || (br.storeId && br.storeId !== userStoreId)) {
+      return NextResponse.json({ success: false, message: "Forbidden: Branch belongs to another store" }, { status: 403 });
+    }
+  }
+
+  const canSwitch =
+    auth.session.role === "admin" ||
+    hasPermission(auth.session, "switch_branches") ||
+    !auth.session.branchId;
+  const effectiveBranchId = canSwitch ? requestedBranchId : auth.session.branchId;
 
   try {
     const now = new Date();
@@ -35,11 +49,11 @@ export async function GET(req: NextRequest) {
       ...(userStoreId ? { branch: { storeId: userStoreId } } : {}),
     };
 
-    // 1. Critical expiring batches (<= 30 days)
+    // 1. Expired & Critical expiring batches (<= 30 days)
     const expiringBatches = await prisma.batch.findMany({
       where: {
         quantity: { gt: 0 },
-        expiryDate: { gt: todayMidnight, lte: thirtyDaysAhead },
+        expiryDate: { lte: thirtyDaysAhead },
         ...branchScope,
       },
       include: {
@@ -93,9 +107,49 @@ export async function GET(req: NextRequest) {
       take: 5,
     });
 
+    // 5. Pending Return Requests
+    const pendingReturns = await prisma.return.findMany({
+      where: {
+        status: "pending",
+        ...branchScope,
+      },
+      include: {
+        sale: { select: { invoiceNo: true } },
+        customer: { select: { name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+
+    // 6. Unread Supplier Portal Messages
+    const unreadSupplierMessages = await prisma.supplierMessage.findMany({
+      where: {
+        direction: "in",
+        status: "unread",
+      },
+      include: {
+        supplier: { select: { name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+
+    // 7. Unread Patient Prescription Uploads & Order Requests (Module 2.18.2)
+    const unreadPrescriptions = await prisma.patientMessage.findMany({
+      where: {
+        direction: "in",
+        isRead: false,
+      },
+      include: {
+        customer: { select: { id: true, name: true, phone: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+
     const notifications: Array<{
       id: string;
-      type: "expiry" | "stock" | "po" | "refill";
+      type: "expiry" | "stock" | "po" | "refill" | "return" | "message" | "prescription";
       title: string;
       message: string;
       href: string;
@@ -105,12 +159,15 @@ export async function GET(req: NextRequest) {
 
     expiringBatches.forEach((b) => {
       const days = Math.ceil((new Date(b.expiryDate).getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
+      const isExpired = days <= 0;
       notifications.push({
         id: `exp_${b.id}`,
         type: "expiry",
-        title: "Drug Expiring Soon",
-        message: `${b.medicine.name} (Batch: ${b.batchNo}) expires in ${days} day(s). Qty: ${b.quantity}`,
-        href: `/admin/batches?tier=critical_30`,
+        title: isExpired ? "Expired Drug Alert" : "Drug Expiring Soon",
+        message: isExpired
+          ? `${b.medicine.name} (Batch: ${b.batchNo}) expired${days === 0 ? " today" : ` ${Math.abs(days)} day(s) ago`}. Qty: ${b.quantity}`
+          : `${b.medicine.name} (Batch: ${b.batchNo}) expires in ${days} day(s). Qty: ${b.quantity}`,
+        href: isExpired ? `/admin/batches?tier=expired` : `/admin/batches?tier=critical_30`,
         severity: "danger",
         timestamp: b.updatedAt.toISOString(),
       });
@@ -149,6 +206,42 @@ export async function GET(req: NextRequest) {
         href: `/admin/customers?chronic=chronic`,
         severity: "warning",
         timestamp: (c.nextRefillDate || now).toISOString(),
+      });
+    });
+
+    pendingReturns.forEach((ret) => {
+      notifications.push({
+        id: `ret_${ret.id}`,
+        type: "return",
+        title: "Pending Return Approval",
+        message: `${ret.returnNumber} (Invoice ${ret.sale?.invoiceNo || "-"}) for ${ret.customer?.name || "Customer"} — ₹${Number(ret.refundAmount || 0).toFixed(2)} awaits action.`,
+        href: `/admin/returns`,
+        severity: "warning",
+        timestamp: ret.createdAt.toISOString(),
+      });
+    });
+
+    unreadSupplierMessages.forEach((msg) => {
+      notifications.push({
+        id: `smsg_${msg.id}`,
+        type: "message",
+        title: "Supplier Message",
+        message: `${msg.supplier?.name || msg.supplierName || "Supplier"}: ${msg.subject}`,
+        href: `/admin/messages`,
+        severity: "info",
+        timestamp: msg.createdAt.toISOString(),
+      });
+    });
+
+    unreadPrescriptions.forEach((pm) => {
+      notifications.push({
+        id: `rx_${pm.id}`,
+        type: "prescription",
+        title: "New Patient Prescription",
+        message: `${pm.customer?.name || "Patient"} (${pm.customer?.phone || ""}) ${pm.fileName ? `uploaded ${pm.fileName}` : "submitted an order request"}.`,
+        href: `/admin/pos?rxCustomerId=${pm.customerId}&rxMessageId=${pm.id}`,
+        severity: "warning",
+        timestamp: pm.createdAt.toISOString(),
       });
     });
 

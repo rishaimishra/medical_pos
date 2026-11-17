@@ -259,8 +259,22 @@ async function main() {
   assert(Number(closeExactData.closing.difference) === 0, `Discrepancy is ₹0.00 (Got: ${closeExactData.closing.difference})`);
   assert(closeExactData.closing.closingNumber.startsWith("ZREP-"), `Closing number follows ZREP-YYYY-XXXXX format (${closeExactData.closing.closingNumber})`);
 
-  // C. Test Closing with Cash Shortage
-  // Counted = 4000 (short by 499.50)
+  // C. Test Closing Shift 2 with Cash Shortage (verifying Shift 1 sales are not double-counted)
+  // Shift 2 has Opening Float = 500 + new Shift 2 Cash Sale = 4000 -> Expected = 4500; Counted = 4000 (short by 500)
+  await prisma.sale.create({
+    data: {
+      invoiceNo: `INV-SH2-${new Date().getFullYear()}-${runId.toString().slice(-5)}`,
+      customerId: null,
+      saleDate: new Date(),
+      totalAmount: 4000,
+      gstAmount: 428.57,
+      grandTotal: 4000,
+      paymentMethod: "cash",
+      branchId: testBranch.id,
+      createdBy: userId,
+    },
+  });
+
   const closeShortReq = mockRequest("http://localhost:3000/api/admin/cash-drawer/close", "POST", {
     branchId: testBranch.id,
     openingFloat: 500,
@@ -273,7 +287,7 @@ async function main() {
   const closeShortData = await closeShortRes.json();
 
   assert(closeShortData.closing.status === "shortage", `Shortage correctly flagged as 'shortage' (Got: ${closeShortData.closing.status})`);
-  assert(Number(closeShortData.closing.difference) < 0, `Difference is negative for shortage (${closeShortData.closing.difference})`);
+  assert(Number(closeShortData.closing.difference) === -500, `Difference is negative for shortage (Expected -500, Got ${closeShortData.closing.difference})`);
 
   // D. List Past Closings & Single Z-Report View
   const listClosingsReq = mockRequest(`http://localhost:3000/api/admin/cash-drawer/closings?branchId=${testBranch.id}`);
@@ -299,7 +313,7 @@ async function main() {
   const ledgerData = await ledgerRes.json();
 
   assert(ledgerRes.status === 200 && ledgerData.success, "GET /api/admin/ledger returns 200");
-  assert(ledgerData.entries.length >= 4, `Ledger synthesizes multiple domains into unified list (${ledgerData.entries.length} entries)`);
+  assert(ledgerData.entries.length >= 5, `Ledger synthesizes multiple domains into unified list (${ledgerData.entries.length} entries)`);
   assert(ledgerData.summary.totalCredit > 0, `Total Credits aggregated (> 0: ₹${ledgerData.summary.totalCredit})`);
   assert(ledgerData.summary.totalDebit > 0, `Total Debits aggregated (> 0: ₹${ledgerData.summary.totalDebit})`);
 

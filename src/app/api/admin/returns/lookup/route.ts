@@ -75,7 +75,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Branch isolation check
+    // Multi-Tenant & Branch isolation check
+    if (auth.session.storeId && sale.branch?.storeId && sale.branch.storeId !== auth.session.storeId) {
+      return NextResponse.json(
+        { success: false, message: "Forbidden: Cannot process returns for another store" },
+        { status: 403 }
+      );
+    }
     if (sale.branchId && !canAccessBranch(auth.session, sale.branchId)) {
       return NextResponse.json(
         { success: false, message: "Forbidden: Cannot process returns for another branch" },
@@ -84,10 +90,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Module 2.11.3: Discount-Proportional Refund Ratio
-    // If a discount was applied to the bill, refund per item must be discounted proportionally.
+    // SaleItem.price already reflects item-level discounts; apply only remaining bill-level discount ratio
+    // so item-discounted lines are never double-discounted.
     const saleTotal = Number(sale.totalAmount);
     const saleDiscount = Number(sale.discountAmount);
-    const discountRatio = saleTotal > 0 ? saleDiscount / saleTotal : 0;
+    const itemsSubtotal = sale.items.reduce((sum, it) => sum + Number(it.price), 0);
+    const billPayableRatio =
+      itemsSubtotal > 0 ? Math.max(0, Math.min(1, Number(sale.grandTotal) / itemsSubtotal)) : 1;
+    const overallDiscountRatio = saleTotal > 0 ? saleDiscount / saleTotal : 0;
+    const billDiscountRatio = 1 - billPayableRatio;
 
     // Process each line item and enforce Module 2.11.2 (Already-Returned Guard)
     const returnableItems = sale.items.map((it) => {
@@ -98,10 +109,10 @@ export async function GET(req: NextRequest) {
 
       const remainingReturnable = Math.max(0, it.quantity - alreadyReturned);
 
-      // Line unit net price (price per unit after proportional discount)
-      const lineTotalGross = Number(it.price);
-      const unitGrossPrice = it.quantity > 0 ? lineTotalGross / it.quantity : 0;
-      const unitRefundPrice = Number((unitGrossPrice * (1 - discountRatio)).toFixed(2));
+      // Line unit net price (price per unit after item + proportional bill discount)
+      const lineTotalAfterItemDiscount = Number(it.price);
+      const unitAfterItemDiscount = it.quantity > 0 ? lineTotalAfterItemDiscount / it.quantity : 0;
+      const unitRefundPrice = Number((unitAfterItemDiscount * billPayableRatio).toFixed(2));
 
       return {
         saleItemId: it.id,
@@ -119,9 +130,9 @@ export async function GET(req: NextRequest) {
         remainingReturnableQty: remainingReturnable,
         isFullyReturned: remainingReturnable <= 0,
         mrp: Number(it.mrp),
-        unitGrossPrice,
+        unitGrossPrice: unitAfterItemDiscount,
         unitRefundPrice,
-        discountRatioApplied: Number((discountRatio * 100).toFixed(2)),
+        discountRatioApplied: Number((billDiscountRatio * 100).toFixed(2)),
       };
     });
 
@@ -138,7 +149,7 @@ export async function GET(req: NextRequest) {
         discountAmount: Number(sale.discountAmount),
         grandTotal: Number(sale.grandTotal),
         paymentMethod: sale.paymentMethod,
-        discountRatio: Number((discountRatio * 100).toFixed(2)),
+        discountRatio: Number((overallDiscountRatio * 100).toFixed(2)),
         customer: sale.customer,
         branch: sale.branch,
         cashier: sale.creator,

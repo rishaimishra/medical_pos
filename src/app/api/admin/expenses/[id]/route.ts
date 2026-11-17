@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest } from "@/lib/auth";
-import { canAccessBranch } from "@/lib/rbac";
+import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { logAudit, getClientIp } from "@/lib/audit";
 
 /**
@@ -13,6 +13,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
+  }
+
+  if (!canAccessPage(auth.session, "/admin/financials") && !canAccessPage(auth.session, "/admin/reports")) {
+    return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -32,6 +36,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (!expense) {
       return NextResponse.json({ success: false, message: "Expense voucher not found" }, { status: 404 });
+    }
+
+    if (auth.session.storeId && expense.storeId && expense.storeId !== auth.session.storeId) {
+      return NextResponse.json({ success: false, message: "Forbidden: Voucher belongs to another store" }, { status: 403 });
     }
 
     // Branch access check
@@ -55,6 +63,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
 
+  if (!canAccessPage(auth.session, "/admin/financials")) {
+    return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
+  }
+
   const { id } = await params;
   const expenseId = parseInt(id, 10);
   if (isNaN(expenseId)) {
@@ -68,6 +80,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     if (!existing) {
       return NextResponse.json({ success: false, message: "Voucher not found" }, { status: 404 });
+    }
+
+    if (auth.session.storeId && existing.storeId && existing.storeId !== auth.session.storeId) {
+      return NextResponse.json({ success: false, message: "Forbidden: Voucher belongs to another store" }, { status: 403 });
     }
 
     if (existing.branchId && !canAccessBranch(auth.session, existing.branchId)) {

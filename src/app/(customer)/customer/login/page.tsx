@@ -26,6 +26,10 @@ export default function CustomerLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [pendingVerifyIdentifier, setPendingVerifyIdentifier] = useState<string | null>(null);
+  const [resendingVerify, setResendingVerify] = useState(false);
+  const [showForgotHelp, setShowForgotHelp] = useState(false);
+  const [storeContact, setStoreContact] = useState<{ name: string; email: string | null; phone: string | null } | null>(null);
 
   // Login Form (empty defaults - zero prefilled data)
   const [identifier, setIdentifier] = useState("");
@@ -40,6 +44,22 @@ export default function CustomerLoginPage() {
   const [regConfirmPassword, setRegConfirmPassword] = useState("");
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("verified") === "1") {
+        setSuccessMsg("Email verified successfully! You can now sign in.");
+      } else if (sp.get("verifyError")) {
+        setErrorMsg("Verification link is invalid or expired. Enter your email/phone to resend verification.");
+      }
+    }
+
+    fetch("/api/auth/customer?storeContact=1", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json?.success && json?.store) setStoreContact(json.store);
+      })
+      .catch(() => {});
+
     fetch("/api/auth/customer", { cache: "no-store" })
       .then((r) => r.json())
       .then((json) => {
@@ -50,10 +70,38 @@ export default function CustomerLoginPage() {
       .catch(() => {});
   }, [router]);
 
+  const handleResendVerification = async () => {
+    const targetId = pendingVerifyIdentifier || identifier.trim() || regEmail.trim();
+    if (!targetId) {
+      setErrorMsg("Enter your email or mobile number first to resend verification.");
+      return;
+    }
+    setResendingVerify(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/auth/customer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resend_verification", identifier: targetId }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setSuccessMsg(json.message || "Verification link resent! Please check your email inbox.");
+      } else {
+        setErrorMsg(json.message || "Unable to resend verification email.");
+      }
+    } catch {
+      setErrorMsg("Network error while resending verification.");
+    } finally {
+      setResendingVerify(false);
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
+    setPendingVerifyIdentifier(null);
     setLoading(true);
 
     try {
@@ -72,6 +120,9 @@ export default function CustomerLoginPage() {
         setSuccessMsg("Signed in! Opening your account...");
         router.replace("/customer/dashboard");
       } else {
+        if (json.requiresVerification) {
+          setPendingVerifyIdentifier(json.email || identifier.trim());
+        }
         setErrorMsg(json.message || "Could not sign in. Please check your details.");
       }
     } catch {
@@ -85,6 +136,7 @@ export default function CustomerLoginPage() {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
+    setPendingVerifyIdentifier(null);
 
     if (regPassword !== regConfirmPassword) {
       setErrorMsg("Passwords do not match.");
@@ -108,8 +160,18 @@ export default function CustomerLoginPage() {
       const json = await res.json();
 
       if (res.ok && json.success) {
-        setSuccessMsg("Account created! Opening your dashboard...");
-        router.replace("/customer/dashboard");
+        if (json.requiresVerification) {
+          setPendingVerifyIdentifier(json.verificationSentTo || regEmail.trim());
+          setSuccessMsg(
+            json.message ||
+              "Account created! Please verify your email address via the link sent to your inbox before signing in."
+          );
+          setMode("login");
+          setIdentifier(regEmail.trim() || regPhone.trim());
+        } else {
+          setSuccessMsg("Account created! Opening your dashboard...");
+          router.replace("/customer/dashboard");
+        }
       } else {
         setErrorMsg(json.message || "Could not create account.");
       }
@@ -204,6 +266,22 @@ export default function CustomerLoginPage() {
             </div>
           )}
 
+          {pendingVerifyIdentifier && (
+            <div className="mb-4 p-3 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-2 text-xs">
+              <span className="text-amber-900 font-semibold">
+                Didn&apos;t get the verification link for <strong>{pendingVerifyIdentifier}</strong>?
+              </span>
+              <button
+                type="button"
+                disabled={resendingVerify}
+                onClick={handleResendVerification}
+                className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold shrink-0 cursor-pointer disabled:opacity-50"
+              >
+                {resendingVerify ? "Sending..." : "Resend Verify"}
+              </button>
+            </div>
+          )}
+
           {mode === "login" ? (
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-1.5">
@@ -255,6 +333,34 @@ export default function CustomerLoginPage() {
                 <span>{loading ? "Signing In..." : "Sign In to My Account"}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
+
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotHelp((p) => !p)}
+                  className="text-xs font-bold text-[#0F5A47] hover:underline cursor-pointer"
+                >
+                  Forgot Password?
+                </button>
+                {showForgotHelp && (
+                  <div className="mt-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 text-left space-y-1">
+                    <p className="font-bold text-slate-800">
+                      Need a password reset for {storeContact?.name || "Pharmacy"}?
+                    </p>
+                    <p>
+                      Please contact our pharmacy desk directly:{" "}
+                      {storeContact?.email ? (
+                        <a href={`mailto:${storeContact.email}`} className="font-bold text-[#0F5A47] underline">
+                          {storeContact.email}
+                        </a>
+                      ) : (
+                        <strong>pharmacy support email</strong>
+                      )}
+                      {storeContact?.phone ? ` or call ${storeContact.phone}` : ""}.
+                    </p>
+                  </div>
+                )}
+              </div>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-3.5">
@@ -295,15 +401,16 @@ export default function CustomerLoginPage() {
 
                 <div className="space-y-1">
                   <label className="block text-xs font-bold text-slate-700">
-                    Email Address
+                    Email Address *
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="email"
+                      required
                       value={regEmail}
                       onChange={(e) => setRegEmail(e.target.value)}
-                      placeholder="Optional email"
+                      placeholder="Required for verification"
                       className="w-full bg-slate-50 border border-slate-300 focus:border-[#0F5A47] rounded-xl pl-10 pr-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
                     />
                   </div>

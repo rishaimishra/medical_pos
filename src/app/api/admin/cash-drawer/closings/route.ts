@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest } from "@/lib/auth";
-import { canAccessBranch } from "@/lib/rbac";
+import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 
 /**
  * GET /api/admin/cash-drawer/closings
@@ -12,6 +12,10 @@ export async function GET(req: NextRequest) {
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
+  }
+
+  if (!canAccessPage(auth.session, "/admin/financials") && !canAccessPage(auth.session, "/admin/reports")) {
+    return NextResponse.json({ success: false, message: "Forbidden: Access to Z-Reports denied" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);

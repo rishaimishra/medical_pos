@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest } from "@/lib/auth";
-import { canAccessBranch } from "@/lib/rbac";
+import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 
 /**
  * GET /api/admin/cash-drawer/closings/[id]
@@ -12,6 +12,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
+  }
+
+  if (!canAccessPage(auth.session, "/admin/financials") && !canAccessPage(auth.session, "/admin/reports")) {
+    return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -42,6 +46,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (!closing) {
       return NextResponse.json({ success: false, message: "Z-Report closing not found" }, { status: 404 });
+    }
+
+    if (auth.session.storeId && closing.storeId && closing.storeId !== auth.session.storeId) {
+      return NextResponse.json({ success: false, message: "Forbidden: Z-Report belongs to another store" }, { status: 403 });
     }
 
     if (closing.branchId && !canAccessBranch(auth.session, closing.branchId)) {

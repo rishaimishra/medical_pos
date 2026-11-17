@@ -6,6 +6,15 @@ import { prisma } from "./db-transaction";
  * Supports both SendGrid REST API and Standard SMTP (Nodemailer)
  */
 
+export function escapeHtml(input: string | number | null | undefined): string {
+  return String(input ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export interface SmtpConfig {
   host: string;
   port: number;
@@ -468,7 +477,7 @@ export async function sendAccountCredentialsEmail(options: AccountCredentialEmai
 }
 
 export interface SupplierPoEmailOptions {
-  type: "created" | "price_updated" | "confirmed" | "cancelled" | "received";
+  type: "created" | "price_updated" | "confirmed" | "shipped" | "cancelled" | "received";
   poNumber: string;
   supplierName: string;
   supplierEmail: string;
@@ -481,7 +490,7 @@ export interface SupplierPoEmailOptions {
 
 /**
  * MODULE 1.12.5: Sends supplier transactional email alerts for PO lifecycle events
- * (created, price_updated, confirmed, cancelled, received)
+ * (created, price_updated, confirmed, shipped, cancelled, received)
  */
 export async function sendSupplierPoEmail(options: SupplierPoEmailOptions): Promise<EmailResult> {
   const store = options.storeName || "Medical POS Pharmacy";
@@ -511,6 +520,12 @@ export async function sendSupplierPoEmail(options: SupplierPoEmailOptions): Prom
       badgeColor: "#16a34a",
       subject: `[Order Confirmed] PO ${options.poNumber} approved by ${store}`,
       intro: `Purchase Order ${options.poNumber} has been officially approved and confirmed by pharmacy administration. Prices are locked and ready for shipment.`,
+    },
+    shipped: {
+      title: "Purchase Order Dispatched",
+      badgeColor: "#4f46e5",
+      subject: `[Dispatched] Shipment Logged for PO ${options.poNumber}`,
+      intro: `Dispatch details for Purchase Order ${options.poNumber} have been recorded and shared with ${store} receiving desk.`,
     },
     cancelled: {
       title: "Purchase Order Cancelled",

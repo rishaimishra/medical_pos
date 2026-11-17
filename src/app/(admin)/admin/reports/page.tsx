@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { toLocalYMD } from "@/lib/csv";
+import { useAuthStore } from "@/stores/useAuthStore";
 import {
   BarChart3,
   TrendingUp,
@@ -25,6 +27,9 @@ import {
   AlertCircle,
   HelpCircle,
   CheckCircle2,
+  Users,
+  CreditCard,
+  FileSpreadsheet,
 } from "lucide-react";
 
 interface BranchOption {
@@ -34,14 +39,33 @@ interface BranchOption {
 }
 
 export default function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<"analytics" | "pnl" | "deadstock" | "schedule" | "gst">("analytics");
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === "admin";
+  const [activeTab, setActiveTab] = useState<
+    "analytics" | "pnl" | "deadstock" | "schedule" | "gst" | "sales_summary"
+  >("analytics");
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>("all");
 
   // Date filters
+  const getPresetRange = useCallback((preset: "today" | "week" | "month" | "year") => {
+    const now = new Date();
+    const end = toLocalYMD(now);
+    if (preset === "today") return { start: end, end };
+    if (preset === "week") {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 6);
+      return { start: toLocalYMD(d), end };
+    }
+    if (preset === "year") {
+      return { start: toLocalYMD(new Date(now.getFullYear(), 0, 1)), end };
+    }
+    return { start: toLocalYMD(new Date(now.getFullYear(), now.getMonth(), 1)), end };
+  }, []);
+
   const [datePreset, setDatePreset] = useState<"today" | "week" | "month" | "year" | "custom">("month");
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>(() => getPresetRange("month").start);
+  const [endDate, setEndDate] = useState<string>(() => getPresetRange("month").end);
 
   // ==========================================
   // TAB 1: ANALYTICS STATE (2.15.1)
@@ -77,13 +101,21 @@ export default function ReportsPage() {
   const [gstLoading, setGstLoading] = useState(false);
   const [gstData, setGstData] = useState<any | null>(null);
 
+  // ==========================================
+  // TAB 6: ADMIN SALES SUMMARY (2.16.4 - ADMIN ONLY)
+  // ==========================================
+  const [salesSummaryLoading, setSalesSummaryLoading] = useState(false);
+  const [salesSummaryData, setSalesSummaryData] = useState<any | null>(null);
+  const [salesSummaryError, setSalesSummaryError] = useState<string | null>(null);
+
   // Initial load
   useEffect(() => {
     fetch("/api/admin/branches")
       .then((r) => r.json())
       .then((d) => {
-        if (d.success && Array.isArray(d.branches)) {
-          setBranches(d.branches);
+        const list = d.branches || d.data;
+        if (d.success && Array.isArray(list)) {
+          setBranches(list);
         }
       })
       .catch(() => {});
@@ -199,6 +231,31 @@ export default function ReportsPage() {
     }
   }, [selectedBranchId, startDate, endDate]);
 
+  // Fetch Admin Sales Summary (2.16.4)
+  const fetchSalesSummary = useCallback(async () => {
+    if (!isAdmin) return;
+    setSalesSummaryLoading(true);
+    setSalesSummaryError(null);
+    try {
+      const params = new URLSearchParams();
+      if (selectedBranchId !== "all") params.set("branchId", selectedBranchId);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+
+      const res = await fetch(`/api/admin/reports/sales-summary?${params.toString()}`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSalesSummaryData(data);
+      } else {
+        setSalesSummaryError(data.message || "Unable to load sales summary");
+      }
+    } catch (err: any) {
+      setSalesSummaryError(err?.message || "Network error");
+    } finally {
+      setSalesSummaryLoading(false);
+    }
+  }, [isAdmin, selectedBranchId, startDate, endDate]);
+
   // Trigger loading based on active tab
   useEffect(() => {
     if (activeTab === "analytics") fetchAnalytics();
@@ -206,7 +263,8 @@ export default function ReportsPage() {
     else if (activeTab === "deadstock") fetchDeadStock();
     else if (activeTab === "schedule") fetchScheduleDrugs();
     else if (activeTab === "gst") fetchGst();
-  }, [activeTab, fetchAnalytics, fetchPnl, fetchDeadStock, fetchScheduleDrugs, fetchGst]);
+    else if (activeTab === "sales_summary" && isAdmin) fetchSalesSummary();
+  }, [activeTab, isAdmin, fetchAnalytics, fetchPnl, fetchDeadStock, fetchScheduleDrugs, fetchGst, fetchSalesSummary]);
 
   return (
     <div className="space-y-6 select-text max-w-7xl mx-auto pb-12">
@@ -247,52 +305,137 @@ export default function ReportsPage() {
           )}
 
           {/* Export Buttons depending on active tab */}
+          {activeTab === "sales_summary" && isAdmin && (
+            <>
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  if (selectedBranchId !== "all") p.set("branchId", selectedBranchId);
+                  if (startDate) p.set("startDate", startDate);
+                  if (endDate) p.set("endDate", endDate);
+                  p.set("format", "csv");
+                  window.open(`/api/admin/reports/sales-summary/export?${p.toString()}`, "_blank");
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition shadow-2xs"
+              >
+                <Download className="h-3.5 w-3.5 text-slate-500" />
+                Export CSV
+              </button>
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  if (selectedBranchId !== "all") p.set("branchId", selectedBranchId);
+                  if (startDate) p.set("startDate", startDate);
+                  if (endDate) p.set("endDate", endDate);
+                  p.set("format", "xlsx");
+                  window.open(`/api/admin/reports/sales-summary/export?${p.toString()}`, "_blank");
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-2xs"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Export Excel (.xlsx)
+              </button>
+            </>
+          )}
+
           {activeTab === "deadstock" && (
-            <button
-              onClick={() => {
-                const p = new URLSearchParams();
-                p.set("thresholdDays", String(deadStockThreshold));
-                if (selectedBranchId !== "all") p.set("branchId", selectedBranchId);
-                window.open(`/api/admin/reports/dead-stock/export?${p.toString()}`, "_blank");
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition shadow-2xs"
-            >
-              <Download className="h-3.5 w-3.5 text-slate-500" />
-              Export Dead Stock CSV
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  p.set("thresholdDays", String(deadStockThreshold));
+                  if (selectedBranchId !== "all") p.set("branchId", selectedBranchId);
+                  if (deadStockSearch.trim()) p.set("search", deadStockSearch.trim());
+                  window.open(`/api/admin/reports/dead-stock/export?${p.toString()}`, "_blank");
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition shadow-2xs"
+              >
+                <Download className="h-3.5 w-3.5 text-slate-500" />
+                Export CSV
+              </button>
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  p.set("thresholdDays", String(deadStockThreshold));
+                  if (selectedBranchId !== "all") p.set("branchId", selectedBranchId);
+                  if (deadStockSearch.trim()) p.set("search", deadStockSearch.trim());
+                  p.set("format", "xlsx");
+                  window.open(`/api/admin/reports/dead-stock/export?${p.toString()}`, "_blank");
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-2xs"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Export Excel (.xlsx)
+              </button>
+            </>
           )}
 
           {activeTab === "schedule" && (
-            <button
-              onClick={() => {
-                const p = new URLSearchParams();
-                if (scheduleTypeFilter !== "all") p.set("scheduleType", scheduleTypeFilter);
-                if (selectedBranchId !== "all") p.set("branchId", selectedBranchId);
-                if (startDate) p.set("startDate", startDate);
-                if (endDate) p.set("endDate", endDate);
-                window.open(`/api/admin/reports/schedule-drugs/export?${p.toString()}`, "_blank");
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition shadow-2xs"
-            >
-              <Download className="h-3.5 w-3.5 text-slate-500" />
-              Export Form 35 CSV
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  if (scheduleTypeFilter !== "all") p.set("scheduleType", scheduleTypeFilter);
+                  if (selectedBranchId !== "all") p.set("branchId", selectedBranchId);
+                  if (startDate) p.set("startDate", startDate);
+                  if (endDate) p.set("endDate", endDate);
+                  if (scheduleSearch.trim()) p.set("search", scheduleSearch.trim());
+                  window.open(`/api/admin/reports/schedule-drugs/export?${p.toString()}`, "_blank");
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition shadow-2xs"
+              >
+                <Download className="h-3.5 w-3.5 text-slate-500" />
+                Export Form 35 CSV
+              </button>
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  if (scheduleTypeFilter !== "all") p.set("scheduleType", scheduleTypeFilter);
+                  if (selectedBranchId !== "all") p.set("branchId", selectedBranchId);
+                  if (startDate) p.set("startDate", startDate);
+                  if (endDate) p.set("endDate", endDate);
+                  if (scheduleSearch.trim()) p.set("search", scheduleSearch.trim());
+                  p.set("format", "xlsx");
+                  window.open(`/api/admin/reports/schedule-drugs/export?${p.toString()}`, "_blank");
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-2xs"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Export Excel (.xlsx)
+              </button>
+            </>
           )}
 
           {activeTab === "gst" && (
-            <button
-              onClick={() => {
-                const p = new URLSearchParams();
-                if (selectedBranchId !== "all") p.set("branchId", selectedBranchId);
-                if (startDate) p.set("startDate", startDate);
-                if (endDate) p.set("endDate", endDate);
-                window.open(`/api/admin/reports/gst/export?${p.toString()}`, "_blank");
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition shadow-2xs"
-            >
-              <Download className="h-3.5 w-3.5 text-slate-500" />
-              Export GSTR CSV
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  if (selectedBranchId !== "all") p.set("branchId", selectedBranchId);
+                  if (startDate) p.set("startDate", startDate);
+                  if (endDate) p.set("endDate", endDate);
+                  window.open(`/api/admin/reports/gst/export?${p.toString()}`, "_blank");
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition shadow-2xs"
+              >
+                <Download className="h-3.5 w-3.5 text-slate-500" />
+                Export GSTR CSV
+              </button>
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  if (selectedBranchId !== "all") p.set("branchId", selectedBranchId);
+                  if (startDate) p.set("startDate", startDate);
+                  if (endDate) p.set("endDate", endDate);
+                  p.set("format", "xlsx");
+                  window.open(`/api/admin/reports/gst/export?${p.toString()}`, "_blank");
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-2xs"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Export Excel (.xlsx)
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -310,6 +453,19 @@ export default function ReportsPage() {
           <TrendingUp className="h-4 w-4" />
           Analytics &amp; BI (2.15.1)
         </button>
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab("sales_summary")}
+            className={`flex items-center gap-2 px-3.5 py-2.5 font-bold border-b-2 whitespace-nowrap transition ${
+              activeTab === "sales_summary"
+                ? "border-teal-600 text-teal-700 bg-teal-50/50 rounded-t-lg"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <BarChart3 className="h-4 w-4" />
+            Admin Sales Summary (2.16.4)
+          </button>
+        )}
         <button
           onClick={() => setActiveTab("pnl")}
           className={`flex items-center gap-2 px-3.5 py-2.5 font-bold border-b-2 whitespace-nowrap transition ${
@@ -367,9 +523,10 @@ export default function ReportsPage() {
               <button
                 key={preset}
                 onClick={() => {
+                  const rangeDates = getPresetRange(preset);
                   setDatePreset(preset);
-                  setStartDate("");
-                  setEndDate("");
+                  setStartDate(rangeDates.start);
+                  setEndDate(rangeDates.end);
                 }}
                 className={`px-2.5 py-1 rounded-md font-semibold capitalize transition ${
                   datePreset === preset
@@ -1098,6 +1255,297 @@ export default function ReportsPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==========================================================================
+          TAB 6: ADMIN SALES SUMMARY (MODULE 2.16.4 - ADMIN ONLY)
+         ========================================================================== */}
+      {activeTab === "sales_summary" && isAdmin && (
+        <div className="space-y-6">
+          {salesSummaryError && (
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-xs font-semibold text-rose-700">
+              {salesSummaryError}
+            </div>
+          )}
+
+          {/* Top KPI Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Net Revenue ({salesSummaryData?.summary?.invoicesCount ?? 0} bills)
+              </div>
+              <div className="text-2xl font-black text-slate-900 mt-1">
+                {salesSummaryLoading ? "..." : `₹${Number(salesSummaryData?.summary?.netRevenue || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                Gross: ₹{Number(salesSummaryData?.summary?.grossSales || 0).toFixed(2)} • Refunds: ₹{Number(salesSummaryData?.summary?.refunds || 0).toFixed(2)}
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                MoM Growth %
+              </div>
+              <div
+                className={`text-2xl font-black mt-1 ${
+                  (salesSummaryData?.summary?.momGrowthPercent || 0) >= 0 ? "text-emerald-600" : "text-rose-600"
+                }`}
+              >
+                {salesSummaryLoading
+                  ? "..."
+                  : `${(salesSummaryData?.summary?.momGrowthPercent || 0) >= 0 ? "+" : ""}${Number(
+                      salesSummaryData?.summary?.momGrowthPercent || 0
+                    ).toFixed(2)}%`}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                This Month: ₹{Number(salesSummaryData?.summary?.currentMonthRevenue || 0).toFixed(0)} vs Prev: ₹
+                {Number(salesSummaryData?.summary?.previousMonthRevenue || 0).toFixed(0)}
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Daily Average ({salesSummaryData?.range?.daysCount ?? 1}d)
+              </div>
+              <div className="text-2xl font-black text-teal-700 mt-1">
+                {salesSummaryLoading
+                  ? "..."
+                  : `₹${Number(salesSummaryData?.summary?.dailyAverage || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                GST Collected: ₹{Number(salesSummaryData?.summary?.gstAmount || 0).toFixed(2)}
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                COGS Gross Profit ({Number(salesSummaryData?.summary?.grossMarginPercent || 0).toFixed(1)}%)
+              </div>
+              <div className="text-2xl font-black text-emerald-700 mt-1">
+                {salesSummaryLoading
+                  ? "..."
+                  : `₹${Number(salesSummaryData?.summary?.grossProfit || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                COGS: ₹{Number(salesSummaryData?.summary?.cogs || 0).toFixed(2)} • Net Profit: ₹
+                {Number(salesSummaryData?.summary?.netProfit || 0).toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          {/* 12-Month Trend Bar Chart & Payment Method Breakdown */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800">12-Month Net Revenue Trend</h3>
+                  <p className="text-[11px] text-slate-400">Monthly net sales vs COGS gross profit over the trailing 12 months</p>
+                </div>
+                <span className="text-[11px] font-bold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-full">
+                  Admin Exclusive
+                </span>
+              </div>
+
+              {(() => {
+                const months = salesSummaryData?.months || [];
+                const maxM = Math.max(1, ...months.map((m: any) => Math.max(m.netRevenue, m.grossProfit)));
+                return (
+                  <div className="grid grid-cols-12 gap-1.5 items-end h-44 pt-4 border-b border-slate-100 pb-2">
+                    {months.map((m: any) => {
+                      const hRev = Math.max(4, Math.round((m.netRevenue / maxM) * 100));
+                      const hProf = Math.max(2, Math.round((Math.max(0, m.grossProfit) / maxM) * 100));
+                      return (
+                        <div key={m.monthKey} className="flex flex-col items-center justify-end h-full group">
+                          <div className="w-full flex items-end justify-center gap-0.5 flex-1">
+                            <div
+                              title={`${m.label}: Net Revenue ₹${Number(m.netRevenue).toFixed(2)}`}
+                              style={{ height: `${hRev}%` }}
+                              className="w-2.5 sm:w-3 rounded-t bg-teal-700 group-hover:bg-teal-900 transition-all"
+                            />
+                            <div
+                              title={`${m.label}: COGS Profit ₹${Number(m.grossProfit).toFixed(2)}`}
+                              style={{ height: `${hProf}%` }}
+                              className="w-1.5 sm:w-2 rounded-t bg-emerald-400"
+                            />
+                          </div>
+                          <span className="text-[9px] font-semibold text-slate-500 mt-1.5 truncate max-w-full">
+                            {String(m.label).split(" ")[0]}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Payment Method Breakdown */}
+            <div className="lg:col-span-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs">
+              <div className="flex items-center gap-2 mb-4">
+                <CreditCard className="h-4 w-4 text-teal-700" />
+                <h3 className="text-sm font-extrabold text-slate-800">Payment-Method Breakdown</h3>
+              </div>
+
+              <div className="space-y-3">
+                {(salesSummaryData?.paymentMethods || []).length === 0 ? (
+                  <p className="text-xs text-slate-400 py-8 text-center">No payments in selected period.</p>
+                ) : (
+                  (salesSummaryData?.paymentMethods || []).map((pm: any) => (
+                    <div key={pm.method} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-700">
+                          {pm.label} ({pm.count})
+                        </span>
+                        <span className="font-extrabold text-slate-900">
+                          ₹{Number(pm.amount || 0).toFixed(2)} ({Number(pm.percentage || 0).toFixed(1)}%)
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-teal-600"
+                          style={{ width: `${Math.min(100, Math.max(4, pm.percentage))}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 12-Month Summary Table */}
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70">
+              <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+                12-Month Sales &amp; COGS Profit Summary Table
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-extrabold uppercase text-slate-500">
+                    <th className="py-2.5 px-3">Month</th>
+                    <th className="py-2.5 px-3 text-right">Bills</th>
+                    <th className="py-2.5 px-3 text-right">Gross Sales</th>
+                    <th className="py-2.5 px-3 text-right">Refunds</th>
+                    <th className="py-2.5 px-3 text-right">Net Revenue</th>
+                    <th className="py-2.5 px-3 text-right">GST</th>
+                    <th className="py-2.5 px-3 text-right">Discounts</th>
+                    <th className="py-2.5 px-3 text-right">COGS</th>
+                    <th className="py-2.5 px-3 text-right">Gross Profit</th>
+                    <th className="py-2.5 px-3 text-right">Net Profit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                  {(salesSummaryData?.months || []).map((m: any) => (
+                    <tr key={m.monthKey} className="hover:bg-slate-50">
+                      <td className="py-2 px-3 font-sans font-bold text-slate-800">{m.label}</td>
+                      <td className="py-2 px-3 text-right">{m.salesCount}</td>
+                      <td className="py-2 px-3 text-right">₹{Number(m.grossSales).toFixed(2)}</td>
+                      <td className="py-2 px-3 text-right text-rose-600">₹{Number(m.refunds).toFixed(2)}</td>
+                      <td className="py-2 px-3 text-right font-bold text-slate-900">₹{Number(m.netRevenue).toFixed(2)}</td>
+                      <td className="py-2 px-3 text-right">₹{Number(m.gstAmount).toFixed(2)}</td>
+                      <td className="py-2 px-3 text-right">₹{Number(m.discountAmount).toFixed(2)}</td>
+                      <td className="py-2 px-3 text-right">₹{Number(m.cogs).toFixed(2)}</td>
+                      <td className="py-2 px-3 text-right font-bold text-emerald-700">₹{Number(m.grossProfit).toFixed(2)}</td>
+                      <td className={`py-2 px-3 text-right font-bold ${m.netProfit >= 0 ? "text-teal-700" : "text-rose-600"}`}>
+                        ₹{Number(m.netProfit).toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Top 10 Medicines & Top 5 Customers */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70">
+                <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+                  Top 10 Medicines (Selected Period)
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-extrabold uppercase text-slate-500">
+                      <th className="py-2 px-3">#</th>
+                      <th className="py-2 px-3">Medicine</th>
+                      <th className="py-2 px-3 text-right">Net Units</th>
+                      <th className="py-2 px-3 text-right">Net Revenue</th>
+                      <th className="py-2 px-3 text-right">COGS Profit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(salesSummaryData?.topMedicines || []).length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-400">
+                          No medicines sold in selected date range.
+                        </td>
+                      </tr>
+                    ) : (
+                      (salesSummaryData?.topMedicines || []).map((m: any, idx: number) => (
+                        <tr key={m.medicineId} className="hover:bg-slate-50">
+                          <td className="py-2 px-3 font-bold text-slate-500">{idx + 1}</td>
+                          <td className="py-2 px-3">
+                            <div className="font-bold text-slate-800">{m.name}</div>
+                            <div className="text-[10px] text-slate-400">{m.company}</div>
+                          </td>
+                          <td className="py-2 px-3 text-right font-semibold">{m.netUnitsSold}</td>
+                          <td className="py-2 px-3 text-right font-bold text-slate-900">₹{Number(m.netRevenue).toFixed(2)}</td>
+                          <td className="py-2 px-3 text-right font-bold text-emerald-700">₹{Number(m.profit).toFixed(2)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70 flex items-center gap-2">
+                <Users className="h-3.5 w-3.5 text-teal-700" />
+                <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+                  Top 5 Customers (Selected Period)
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-extrabold uppercase text-slate-500">
+                      <th className="py-2 px-3">#</th>
+                      <th className="py-2 px-3">Customer</th>
+                      <th className="py-2 px-3 text-right">Orders</th>
+                      <th className="py-2 px-3 text-right">Net Spend</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(salesSummaryData?.topCustomers || []).length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-8 text-center text-slate-400">
+                          No registered customer purchases in selected range.
+                        </td>
+                      </tr>
+                    ) : (
+                      (salesSummaryData?.topCustomers || []).map((c: any, idx: number) => (
+                        <tr key={c.customerId} className="hover:bg-slate-50">
+                          <td className="py-2 px-3 font-bold text-slate-500">{idx + 1}</td>
+                          <td className="py-2 px-3">
+                            <div className="font-bold text-slate-800">{c.name}</div>
+                            <div className="text-[10px] text-slate-400">{c.phone}</div>
+                          </td>
+                          <td className="py-2 px-3 text-right font-semibold">{c.ordersCount}</td>
+                          <td className="py-2 px-3 text-right font-bold text-slate-900">₹{Number(c.netSpend).toFixed(2)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>

@@ -21,7 +21,12 @@ export async function GET(
     );
   }
 
-  if (!canAccessPage(auth.session, "/admin/pos")) {
+  if (
+    !canAccessPage(auth.session, "/admin/pos") &&
+    !canAccessPage(auth.session, "/admin/sales") &&
+    !canAccessPage(auth.session, "/admin/returns") &&
+    !canAccessPage(auth.session, "/admin/reports")
+  ) {
     return NextResponse.json(
       { success: false, message: "Forbidden: Access to POS invoices denied" },
       { status: 403 }
@@ -82,6 +87,7 @@ export async function GET(
             code: true,
             address: true,
             phone: true,
+            email: true,
             gstNo: true,
             dlNo: true,
             storeId: true,
@@ -112,7 +118,13 @@ export async function GET(
       );
     }
 
-    // Branch Isolation Check
+    // Multi-Tenant & Branch Isolation Check
+    if (auth.session.storeId && sale.branch?.storeId && sale.branch.storeId !== auth.session.storeId) {
+      return NextResponse.json(
+        { success: false, message: "Forbidden: Cannot access invoice from another store" },
+        { status: 403 }
+      );
+    }
     if (sale.branchId && !canAccessBranch(auth.session, sale.branchId)) {
       return NextResponse.json(
         { success: false, message: "Forbidden: Cannot access invoice from another branch" },
@@ -121,7 +133,7 @@ export async function GET(
     }
 
     // Parse split payments if recorded
-    let parsedSplits = null;
+    let parsedSplits: any = null;
     if (sale.splitDetails) {
       try {
         parsedSplits = JSON.parse(sale.splitDetails);
@@ -133,6 +145,8 @@ export async function GET(
     // Fetch fallback store settings if branch doesn't have all details
     const storeSettings = sale.branch?.storeId
       ? await prisma.settings.findUnique({ where: { id: sale.branch.storeId } }).catch(() => null)
+      : auth.session.storeId
+      ? await prisma.settings.findUnique({ where: { id: auth.session.storeId } }).catch(() => null)
       : await prisma.settings.findFirst({ orderBy: { id: "asc" } }).catch(() => null);
 
     return NextResponse.json({
@@ -140,13 +154,15 @@ export async function GET(
       sale: {
         ...sale,
         splitPayments: parsedSplits,
+        cashTendered: parsedSplits?.cashTendered ?? undefined,
+        changeDue: parsedSplits?.changeDue ?? undefined,
         store: {
           name: sale.branch?.name || storeSettings?.storeName || "DRxStore Pharmacy",
           address: sale.branch?.address || storeSettings?.storeAddress || "",
           phone: sale.branch?.phone || storeSettings?.storePhone || "",
           gstNo: sale.branch?.gstNo || storeSettings?.storeGst || "",
           dlNo: sale.branch?.dlNo || storeSettings?.storeDl || "",
-          email: storeSettings?.storeEmail || "",
+          email: sale.branch?.email || storeSettings?.storeEmail || "",
           currency: storeSettings?.currency || "₹",
         },
       },

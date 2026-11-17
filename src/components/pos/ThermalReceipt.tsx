@@ -18,7 +18,15 @@ export function ThermalReceipt({
 }: ThermalReceiptProps) {
   if (!saleData) return null;
 
-  const branch = saleData.branch || saleData.store || {};
+  const rawBranch = saleData.branch || {};
+  const fallbackStore = saleData.store || {};
+  const branch = {
+    name: rawBranch.name || fallbackStore.name || "DRxStore Pharmacy",
+    address: rawBranch.address || fallbackStore.address || "",
+    phone: rawBranch.phone || fallbackStore.phone || "",
+    dlNo: rawBranch.dlNo || fallbackStore.dlNo || "",
+    gstNo: rawBranch.gstNo || fallbackStore.gstNo || "",
+  };
   const customer = saleData.customer || null;
   const items = saleData.items || [];
   const grandTotal = Number(saleData.grandTotal || 0);
@@ -30,9 +38,9 @@ export function ThermalReceipt({
   const sgstAmount = gstAmount / 2;
 
   const isSplit = saleData.paymentMethod === "split";
-  const splits = saleData.splitPayments;
-  const cashTendered = Number(saleData.cashTendered || 0);
-  const changeDue = Number(saleData.changeDue || 0);
+  const splits = saleData.splitPayments || saleData.splitDetails;
+  const cashTendered = Number(saleData.cashTendered ?? splits?.cashTendered ?? 0);
+  const changeDue = Number(saleData.changeDue ?? splits?.changeDue ?? 0);
 
   // Formatter for Expiry Date (MM/YY)
   const formatExpiry = (dateStr?: string | Date) => {
@@ -53,9 +61,8 @@ export function ThermalReceipt({
   return (
     <div
       id={id}
-      className={`mx-auto bg-white border border-slate-300 rounded-xl p-3 shadow-xs font-mono text-slate-900 leading-tight select-text print:border-none print:shadow-none print:p-0 ${
-        is58mm ? "max-w-[220px] text-[9px]" : "max-w-[320px] text-[11px]"
-      } ${className}`}
+      className={`mx-auto bg-white border border-slate-300 rounded-xl p-3 shadow-xs font-mono text-slate-900 leading-tight select-text print:border-none print:shadow-none print:p-0 ${is58mm ? "max-w-[220px] text-[9px]" : "max-w-[320px] text-[11px]"
+        } ${className}`}
       style={{
         width: is58mm ? "58mm" : "80mm",
       }}
@@ -63,9 +70,8 @@ export function ThermalReceipt({
       {/* Store Header */}
       <div className="text-center pb-2 border-b border-dashed border-slate-400 space-y-0.5">
         <h2
-          className={`font-black uppercase tracking-wider ${
-            is58mm ? "text-xs leading-tight" : "text-sm"
-          }`}
+          className={`font-black uppercase tracking-wider ${is58mm ? "text-xs leading-tight" : "text-sm"
+            }`}
         >
           {branch.name || "DRxStore Pharmacy"}
         </h2>
@@ -88,9 +94,8 @@ export function ThermalReceipt({
 
       {/* Invoice Meta */}
       <div
-        className={`py-1.5 border-b border-dashed border-slate-400 space-y-0.5 ${
-          is58mm ? "text-[8.5px]" : "text-[10px]"
-        }`}
+        className={`py-1.5 border-b border-dashed border-slate-400 space-y-0.5 ${is58mm ? "text-[8.5px]" : "text-[10px]"
+          }`}
       >
         <div className="flex justify-between">
           <span>Inv No:</span>
@@ -129,9 +134,8 @@ export function ThermalReceipt({
       {/* Itemized Table */}
       <div className="py-1.5 border-b border-dashed border-slate-400">
         <div
-          className={`flex justify-between font-bold pb-1 uppercase border-b border-dotted border-slate-300 ${
-            is58mm ? "text-[8px]" : "text-[10px]"
-          }`}
+          className={`flex justify-between font-bold pb-1 uppercase border-b border-dotted border-slate-300 ${is58mm ? "text-[8px]" : "text-[10px]"
+            }`}
         >
           <span className="flex-1 truncate">Item</span>
           <span className={is58mm ? "w-7 text-center" : "w-9 text-center"}>Qty</span>
@@ -140,11 +144,11 @@ export function ThermalReceipt({
         </div>
         <div className="divide-y divide-dotted divide-slate-200">
           {items.map((item: any, idx: number) => {
-            const medName = item.medicine?.name || item.name || `Item ${idx + 1}`;
+            const medName = item.medicine?.name || item.medicineName || item.name || `Item ${idx + 1}`;
             const genericName = item.medicine?.genericName || item.genericName || "";
             const batchNo = item.batch?.batchNo || item.batchNo || "-";
             const expDate = formatExpiry(item.batch?.expiryDate || item.expiryDate);
-            const lineTotal = Number(item.price ?? item.mrp * item.quantity);
+            const lineTotal = Number(item.price ?? Number(item.mrp || 0) * Number(item.quantity || 0));
 
             return (
               <div key={idx} className={`py-1 ${is58mm ? "text-[8.5px]" : "text-[10px]"}`}>
@@ -165,9 +169,8 @@ export function ThermalReceipt({
                     ₹{Number(item.mrp).toFixed(2)}
                   </span>
                   <span
-                    className={`${
-                      is58mm ? "w-12" : "w-16"
-                    } text-right font-bold text-slate-900`}
+                    className={`${is58mm ? "w-12" : "w-16"
+                      } text-right font-bold text-slate-900`}
                   >
                     ₹{lineTotal.toFixed(2)}
                   </span>
@@ -180,9 +183,8 @@ export function ThermalReceipt({
 
       {/* Totals & Tax Summary */}
       <div
-        className={`py-1.5 border-b border-dashed border-slate-400 space-y-0.5 ${
-          is58mm ? "text-[8.5px]" : "text-[10px]"
-        }`}
+        className={`py-1.5 border-b border-dashed border-slate-400 space-y-0.5 ${is58mm ? "text-[8.5px]" : "text-[10px]"
+          }`}
       >
         <div className="flex justify-between">
           <span>Items Total (Gross):</span>
@@ -207,9 +209,8 @@ export function ThermalReceipt({
           <span>₹{sgstAmount.toFixed(2)}</span>
         </div>
         <div
-          className={`flex justify-between font-black pt-1 border-t border-slate-400 ${
-            is58mm ? "text-[10px]" : "text-xs"
-          }`}
+          className={`flex justify-between font-black pt-1 border-t border-slate-400 ${is58mm ? "text-[10px]" : "text-xs"
+            }`}
         >
           <span>NET PAYABLE:</span>
           <span>₹{grandTotal.toFixed(2)}</span>
@@ -221,9 +222,8 @@ export function ThermalReceipt({
 
       {/* Payment Settlement Info */}
       <div
-        className={`py-1.5 border-b border-dashed border-slate-400 space-y-0.5 ${
-          is58mm ? "text-[8.5px]" : "text-[10px]"
-        }`}
+        className={`py-1.5 border-b border-dashed border-slate-400 space-y-0.5 ${is58mm ? "text-[8.5px]" : "text-[10px]"
+          }`}
       >
         <div className="flex justify-between font-bold">
           <span>Payment Mode:</span>
@@ -306,9 +306,8 @@ export function ThermalReceipt({
 
       {/* Return Policy & Legal Disclaimer Footer */}
       <div
-        className={`text-center pt-2 text-slate-600 space-y-0.5 ${
-          is58mm ? "text-[7.5px]" : "text-[8.5px]"
-        }`}
+        className={`text-center pt-2 text-slate-600 space-y-0.5 ${is58mm ? "text-[7.5px]" : "text-[8.5px]"
+          }`}
       >
         <p className="font-bold">Thank You For Choosing DRxStore!</p>
         <p>Return policy: Goods returnable within 7 days with bill.</p>

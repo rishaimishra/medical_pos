@@ -156,11 +156,11 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
   },
   {
     id: "messages",
-    label: "Prescription Messages",
+    label: "Messages & Inbox",
     href: "/admin/messages",
     icon: MessageSquare,
-    status: "in_development",
-    description: "Patient prescriptions and supplier order inbox",
+    status: "ready",
+    description: "Supplier messaging channel and patient inbox",
   },
   {
     id: "reports",

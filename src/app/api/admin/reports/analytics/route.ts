@@ -1,41 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAdminRequest } from "@/lib/auth";
-import { canAccessBranch } from "@/lib/rbac";
+import { authorizeReportRequest, getBatchPurchaseCost } from "@/lib/reports";
 
 /**
  * MODULE 2.15.1: Real-Time Performance Analytics & Business Intelligence API
- *
- * Provides:
- * 1. Time-series Sales & Revenue Trends (Today, This Week, This Month, Last 12 Months)
- * 2. Top 10 Revenue-Generating Medicines
- * 3. Highest Margin & Profit Products
- * 4. Payment Mode Breakdown (Cash vs. UPI vs. Card vs. Credit / Baki Khata vs. Split)
- * 5. Branch Performance Comparison
  */
-
 export async function GET(req: NextRequest) {
-  const auth = await verifyAdminRequest(req);
-  if (!auth.authorized || !auth.session) {
-    return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
-  }
-
   const { searchParams } = new URL(req.url);
   const branchIdParam = searchParams.get("branchId");
-  const range = searchParams.get("range") || "month"; // "today" | "week" | "month" | "year" | "custom"
+
+  const authCtx = await authorizeReportRequest(req, branchIdParam);
+  if (!authCtx.authorized) return authCtx.response!;
+
+  const range = searchParams.get("range") || "month";
   const startDateParam = searchParams.get("startDate");
   const endDateParam = searchParams.get("endDate");
 
   try {
-    let targetBranchId: number | null = auth.session.branchId;
-    if (!targetBranchId && branchIdParam && branchIdParam !== "all") {
-      const bId = parseInt(branchIdParam, 10);
-      if (!isNaN(bId) && canAccessBranch(auth.session, bId)) {
-        targetBranchId = bId;
-      }
-    }
-
-    const branchFilter = targetBranchId ? { branchId: targetBranchId } : {};
+    const targetBranchId = authCtx.branchId ?? null;
+    const branchScope = targetBranchId
+      ? { branchId: targetBranchId }
+      : authCtx.storeId
+        ? { branch: { storeId: authCtx.storeId } }
+        : {};
 
     // 1. Resolve Date Range
     const now = new Date();
@@ -49,8 +36,10 @@ export async function GET(req: NextRequest) {
       startDate = new Date(now);
       startDate.setDate(now.getDate() - 6);
       startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
     } else if (range === "year") {
       startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
     } else if (range === "custom" && startDateParam) {
       startDate = new Date(startDateParam);
       startDate.setHours(0, 0, 0, 0);
@@ -59,53 +48,77 @@ export async function GET(req: NextRequest) {
         endDate.setHours(23, 59, 59, 999);
       }
     } else {
-      // "month" default
       startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
     }
 
-    // 2. Fetch Sales in Date Window
-    const sales = await prisma.sale.findMany({
-      where: {
-        ...branchFilter,
-        saleDate: { gte: startDate, lte: endDate },
-      },
-      include: {
-        branch: { select: { id: true, code: true, name: true } },
-        items: {
-          include: {
-            medicine: { select: { id: true, name: true, company: true, category: true } },
-            batch: { select: { purchasePrice: true, mrp: true } },
+    const dbDateRange = {
+      gte: new Date(Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0, 0)),
+      lte: new Date(Date.UTC(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59, 999)),
+    };
+
+    // 2. Fetch Sales & Processed Returns in Date Window
+    const [sales, returns] = await Promise.all([
+      prisma.sale.findMany({
+        where: {
+          ...branchScope,
+          saleDate: dbDateRange,
+        },
+        include: {
+          branch: { select: { id: true, code: true, name: true } },
+          items: {
+            include: {
+              medicine: { select: { id: true, name: true, company: true, category: true } },
+              batch: { select: { purchasePrice: true, mrp: true } },
+            },
           },
         },
-      },
-      orderBy: { saleDate: "asc" },
-    });
-
-    // 3. Fetch Returns in Date Window (to compute Net Realized Revenue)
-    const returns = await prisma.return.findMany({
-      where: {
-        ...branchFilter,
-        status: "processed",
-        createdAt: { gte: startDate, lte: endDate },
-      },
-      select: { refundAmount: true },
-    });
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.return.findMany({
+        where: {
+          ...branchScope,
+          status: "processed",
+          createdAt: { gte: startDate, lte: endDate },
+        },
+        include: {
+          items: {
+            include: {
+              saleItem: {
+                include: {
+                  batch: { select: { purchasePrice: true, mrp: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
 
     const totalRefunds = returns.reduce((acc, r) => acc + Number(r.refundAmount), 0);
 
-    // ==========================================
-    // A. TIME-SERIES REVENUE & INVOICE COUNTS
-    // ==========================================
+    // Compute COGS reversed by restocked returns
+    let returnedRestockCogs = 0;
+    for (const ret of returns) {
+      for (const ri of ret.items) {
+        if (ri.restockAction === "restock") {
+          const unitCost = getBatchPurchaseCost(ri.saleItem?.batch, ri.saleItem?.mrp);
+          returnedRestockCogs += unitCost * ri.quantity;
+        }
+      }
+    }
+
+    // A. Time-Series & KPIs
     const trendMap: Record<string, { label: string; revenue: number; count: number; cogs: number }> = {};
 
-    // Helper: format label based on range
-    const getBucketKey = (d: Date) => {
+    const getBucketKey = (sale: { saleDate: Date; createdAt: Date }) => {
       if (range === "today") {
+        const d = new Date(sale.createdAt || sale.saleDate);
         return `${String(d.getHours()).padStart(2, "0")}:00`;
       } else if (range === "year") {
-        return d.toLocaleString("en-IN", { month: "short", year: "2-digit" });
+        return new Date(sale.saleDate).toLocaleString("en-IN", { month: "short", year: "2-digit" });
       } else {
-        return d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+        return new Date(sale.saleDate).toLocaleDateString("en-IN", { month: "short", day: "numeric" });
       }
     };
 
@@ -113,7 +126,6 @@ export async function GET(req: NextRequest) {
     let totalCogs = 0;
     let totalDiscountTotal = 0;
 
-    // Payment Mode Tally
     const paymentModes: Record<string, number> = {
       cash: 0,
       upi: 0,
@@ -123,7 +135,6 @@ export async function GET(req: NextRequest) {
       split: 0,
     };
 
-    // Product Performance Maps
     const medicineSalesMap: Record<
       number,
       {
@@ -138,7 +149,6 @@ export async function GET(req: NextRequest) {
       }
     > = {};
 
-    // Branch Performance Map
     const branchStatsMap: Record<string, { name: string; code: string; revenue: number; invoices: number }> = {};
 
     for (const sale of sales) {
@@ -146,14 +156,13 @@ export async function GET(req: NextRequest) {
       grossSalesTotal += saleGross;
       totalDiscountTotal += Number(sale.discountAmount);
 
-      const bucket = getBucketKey(sale.saleDate);
+      const bucket = getBucketKey(sale);
       if (!trendMap[bucket]) {
         trendMap[bucket] = { label: bucket, revenue: 0, count: 0, cogs: 0 };
       }
       trendMap[bucket].revenue += saleGross;
       trendMap[bucket].count += 1;
 
-      // Payment mode breakdown
       const mode = (sale.paymentMethod || "cash").toLowerCase();
       if (mode === "split" && sale.splitDetails) {
         try {
@@ -161,6 +170,7 @@ export async function GET(req: NextRequest) {
           paymentModes.cash += Number(splitObj.cash || 0);
           paymentModes.upi += Number(splitObj.upi || 0);
           paymentModes.card += Number(splitObj.card || 0);
+          paymentModes.cheque += Number(splitObj.cheque || 0);
           paymentModes.credit += Number(splitObj.credit || 0);
         } catch {
           paymentModes.cash += saleGross;
@@ -171,7 +181,6 @@ export async function GET(req: NextRequest) {
         paymentModes.cash += saleGross;
       }
 
-      // Branch Stats
       const bKey = String(sale.branchId || 0);
       if (!branchStatsMap[bKey]) {
         branchStatsMap[bKey] = {
@@ -184,10 +193,9 @@ export async function GET(req: NextRequest) {
       branchStatsMap[bKey].revenue += saleGross;
       branchStatsMap[bKey].invoices += 1;
 
-      // Line Items Processing
       for (const item of sale.items) {
         const linePrice = Number(item.price);
-        const purchaseCost = Number(item.batch?.purchasePrice || Number(item.mrp) * 0.7); // Fallback to 70% if unrecorded
+        const purchaseCost = getBatchPurchaseCost(item.batch, item.mrp);
         const lineCost = purchaseCost * item.quantity;
         const lineMargin = linePrice - lineCost;
 
@@ -214,12 +222,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const effectiveCogs = Math.max(0, Math.round((totalCogs - returnedRestockCogs) * 100) / 100);
     const netRealizedRevenue = Math.max(0, Math.round((grossSalesTotal - totalRefunds) * 100) / 100);
-    const overallGrossProfit = Math.round((grossSalesTotal - totalCogs) * 100) / 100;
+    const overallGrossProfit = Math.round((netRealizedRevenue - effectiveCogs) * 100) / 100;
     const overallGrossMarginPercent =
-      grossSalesTotal > 0 ? Math.round((overallGrossProfit / grossSalesTotal) * 10000) / 100 : 0;
+      netRealizedRevenue > 0 ? Math.round((overallGrossProfit / netRealizedRevenue) * 10000) / 100 : 0;
 
-    // Top 10 Revenue Generating Medicines
     const allMeds = Object.values(medicineSalesMap);
     const topRevenueMedicines = [...allMeds]
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
@@ -230,7 +238,6 @@ export async function GET(req: NextRequest) {
         revenueSharePercent: grossSalesTotal > 0 ? Math.round((m.totalRevenue / grossSalesTotal) * 1000) / 10 : 0,
       }));
 
-    // Top High Margin Products
     const topMarginMedicines = [...allMeds]
       .filter((m) => m.totalRevenue > 0)
       .sort((a, b) => b.grossMargin - a.grossMargin)
@@ -241,7 +248,6 @@ export async function GET(req: NextRequest) {
         marginPercent: m.totalRevenue > 0 ? Math.round((m.grossMargin / m.totalRevenue) * 1000) / 10 : 0,
       }));
 
-    // Payment Mode Shares
     const totalPayments = Object.values(paymentModes).reduce((a, b) => a + b, 0);
     const paymentBreakdown = Object.entries(paymentModes).map(([mode, amt]) => ({
       mode: mode.toUpperCase(),
@@ -249,7 +255,6 @@ export async function GET(req: NextRequest) {
       sharePercent: totalPayments > 0 ? Math.round((amt / totalPayments) * 1000) / 10 : 0,
     }));
 
-    // Time-series array
     const trendPoints = Object.values(trendMap).map((t) => ({
       ...t,
       revenue: Math.round(t.revenue * 100) / 100,
@@ -268,7 +273,7 @@ export async function GET(req: NextRequest) {
         grossSales: Math.round(grossSalesTotal * 100) / 100,
         totalRefunds: Math.round(totalRefunds * 100) / 100,
         netRevenue: netRealizedRevenue,
-        cogs: Math.round(totalCogs * 100) / 100,
+        cogs: effectiveCogs,
         grossProfit: overallGrossProfit,
         grossMarginPercent: overallGrossMarginPercent,
         totalInvoices: sales.length,

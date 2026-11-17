@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest } from "@/lib/auth";
-import { canAccessBranch } from "@/lib/rbac";
+import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 import { sendCustomerInvoiceReceiptEmail } from "@/lib/emailReceipt";
 
@@ -20,6 +20,13 @@ export async function POST(
     return NextResponse.json(
       { success: false, message: auth.message || "Unauthorized" },
       { status: auth.status }
+    );
+  }
+
+  if (!canAccessPage(auth.session, "/admin/sales") && !canAccessPage(auth.session, "/admin/pos")) {
+    return NextResponse.json(
+      { success: false, message: "Forbidden: Access to share invoices denied" },
+      { status: 403 }
     );
   }
 
@@ -53,6 +60,13 @@ export async function POST(
       return NextResponse.json({ success: false, message: "Invoice not found" }, { status: 404 });
     }
 
+    if (auth.session.storeId && sale.branch?.storeId && sale.branch.storeId !== auth.session.storeId) {
+      return NextResponse.json(
+        { success: false, message: "Forbidden: Cannot share invoice from another store" },
+        { status: 403 }
+      );
+    }
+
     if (sale.branchId && !canAccessBranch(auth.session, sale.branchId)) {
       return NextResponse.json(
         { success: false, message: "Forbidden: Cannot share invoice from another branch" },
@@ -77,11 +91,13 @@ export async function POST(
     const origin = req.nextUrl.origin || "http://localhost:3000";
     const invoiceWebUrl = `${origin}/admin/pos/invoice/${sale.invoiceNo}`;
 
-    // Clean phone number for WhatsApp / SMS (must contain digits, e.g. 91XXXXXXXXXX)
-    const rawDigits = targetPhone.replace(/\D/g, "");
-    let cleanPhone = rawDigits;
+    // Clean phone number for WhatsApp / SMS (strip leading trunk 0, default India +91 for 10 digits)
+    let cleanPhone = targetPhone.replace(/\D/g, "");
+    if (cleanPhone.length === 11 && cleanPhone.startsWith("0")) {
+      cleanPhone = cleanPhone.slice(1);
+    }
     if (cleanPhone.length === 10) {
-      cleanPhone = "91" + cleanPhone; // Default to India country code if 10-digit
+      cleanPhone = "91" + cleanPhone;
     }
 
     // 1. WhatsApp Delivery

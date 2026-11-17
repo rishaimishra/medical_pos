@@ -322,69 +322,69 @@ MODULE 2.15: BUSINESS INTELLIGENCE, ANALYTICS & DEAD-STOCK REPORTS
 --------------------------------------------------------------------------------
 MODULE 2.16: DASHBOARD & REPORT DETAILS  (from ref: dashboard.php, reports.php)
 --------------------------------------------------------------------------------
-2.16.1 [STATUS: PENDING] Dashboard Widgets
+2.16.1 [STATUS: COMPLETED] Dashboard Widgets
        - Today/Month/Total net revenue (sales - processed refunds), PO counts by status, 
          7-day chart, top 5 medicines (30 days), recent 8 sales, time-based greeting.
 
-2.16.2 [STATUS: PENDING] Alert Banners & Notification Bell
+2.16.2 [STATUS: COMPLETED] Alert Banners & Notification Bell
        - Dismissible expired / low-stock banners; bell dropdown listing alerts.
 
-2.16.3 [STATUS: PENDING] Profit Method Upgrade
+2.16.3 [STATUS: COMPLETED] Profit Method Upgrade
        - Reference uses revenue - received PO totals (crude). We use COGS-based profit 
          (batch purchase price x qty sold).
 
-2.16.4 [STATUS: PENDING] Sales Report Metrics (Admin-Only)
+2.16.4 [STATUS: COMPLETED] Sales Report Metrics (Admin-Only)
        - Month-over-month growth %, daily average, 12-month chart + summary table 
          (sales count, revenue, GST, discount), top 10 medicines, top 5 customers, 
          payment-method breakdown.
 
-2.16.5 [STATUS: PENDING] Report Export (CSV & Excel)
+2.16.5 [STATUS: COMPLETED] Report Export (CSV & Excel)
        - CSV (UTF-8 BOM) and Excel export of reports.
 
 --------------------------------------------------------------------------------
 MODULE 2.17: SUPPLIER SELF-SERVICE PORTAL
 --------------------------------------------------------------------------------
-2.17.1 [STATUS: PENDING] Supplier Order Tracking Dashboard
+2.17.1 [STATUS: COMPLETED] Supplier Order Tracking Dashboard
        - Portal for distributors to view active Purchase Orders issued to them.
        - Ability to confirm orders, update dispatch details, and enter tracking numbers.
 
-2.17.2 [STATUS: PENDING] Supplier Two-Way Messaging Channel
+2.17.2 [STATUS: COMPLETED] Supplier Two-Way Messaging Channel
        - In-app communication channel between pharmacy purchase department and suppliers.
 
 --------------------------------------------------------------------------------
 MODULE 2.18: PATIENT & CUSTOMER PORTAL
 --------------------------------------------------------------------------------
-2.18.1 [STATUS: PENDING] Customer Account & Purchase Archive
+2.18.1 [STATUS: COMPLETED] Customer Account & Purchase Archive
        - Secure portal for patients to view prescription records and download invoices.
 
-2.18.2 [STATUS: PENDING] Digital Prescription Upload & Order Request
+2.18.2 [STATUS: COMPLETED] Digital Prescription Upload & Order Request
        - Patients can upload prescription photo/PDF; pharmacy receives notification 
          in admin dashboard to verify and create cart.
 
 --------------------------------------------------------------------------------
 MODULE 2.19: CUSTOMER PORTAL ACCOUNT LIFECYCLE & RETURN REQUESTS  (from ref: public/customer/*)
 --------------------------------------------------------------------------------
-2.19.1 [STATUS: PENDING] Self-Registration With Mandatory Email Verification
+2.19.1 [STATUS: COMPLETED] Self-Registration With Mandatory Email Verification
        - Register, receive verification link/token, Resend Verify option, unverified 
          accounts cannot log in; separate login with brute-force lockout.
 
-2.19.2 [STATUS: PENDING] Customer Return Request From Portal
+2.19.2 [STATUS: COMPLETED] Customer Return Request From Portal
        - Customer selects own invoice items and submits return request; store is 
          notified by email; staff approves/rejects in Returns module (requested_by = customer).
 
-2.19.3 [STATUS: PENDING] Profile & Password Management
+2.19.3 [STATUS: COMPLETED] Profile & Password Management
        - Edit profile, change password; forgot-password directs to store contact email.
 
 --------------------------------------------------------------------------------
 MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_messages.php, serve_file.php, supplier contact.php)
 --------------------------------------------------------------------------------
-2.20.1 [STATUS: PENDING] Patient Message Inbox (Admin/Staff)
+2.20.1 [STATUS: COMPLETED] Patient Message Inbox (Admin/Staff)
        - Conversation per patient, reply (direction in/out), unread count, mark read, delete.
 
-2.20.2 [STATUS: PENDING] Supplier Message Inbox
+2.20.2 [STATUS: COMPLETED] Supplier Message Inbox
        - Supplier contact form -> admin inbox with unread status, reply, email notification.
 
-2.20.3 [STATUS: PENDING] Secure Prescription File Delivery
+2.20.3 [STATUS: COMPLETED] Secure Prescription File Delivery
        - Uploads (PDF/JPG/PNG/HEIC) stored outside public web path; served only through an 
          authenticated endpoint; staff see all, a customer sees only their own files; 
          sanitized file names.
@@ -691,65 +691,65 @@ MODULE 2.20: MESSAGE INBOXES & SECURE PRESCRIPTION FILES  (from ref: patient_mes
 --------------------------------------------------------------------------------
 মডিউল ২.১৬: ড্যাশবোর্ড ও রিপোর্টের বিস্তারিত  (রেফারেন্স: dashboard.php, reports.php)
 --------------------------------------------------------------------------------
-২.১৬.১ [অবস্থা: পেন্ডিং] ড্যাশবোর্ড উইজেট
+২.১৬.১ [অবস্থা: সম্পন্ন] ড্যাশবোর্ড উইজেট
        - আজ/মাস/মোট নিট আয় (বিক্রয় - প্রসেসড রিফান্ড), স্ট্যাটাস অনুযায়ী PO সংখ্যা, ৭-দিনের চার্ট, 
          টপ ৫ ওষুধ (৩০ দিন), সাম্প্রতিক ৮ বিক্রয়, সময়ভিত্তিক শুভেচ্ছা।
 
-২.১৬.২ [অবস্থা: পেন্ডিং] অ্যালার্ট ব্যানার ও নোটিফিকেশন বেল
+২.১৬.২ [অবস্থা: সম্পন্ন] অ্যালার্ট ব্যানার ও নোটিফিকেশন বেল
        - বন্ধ করা যায় এমন মেয়াদোত্তীর্ণ/লো-স্টক ব্যানার; বেল ড্রপডাউনে অ্যালার্ট তালিকা।
 
-২.১৬.৩ [অবস্থা: পেন্ডিং] লাভের হিসাব উন্নয়ন
+২.১৬.৩ [অবস্থা: সম্পন্ন] লাভের হিসাব উন্নয়ন
        - রেফারেন্স আয় - গৃহীত PO মোট (মোটা হিসাব) ব্যবহার করে। আমরা COGS-ভিত্তিক লাভ (ব্যাচ ক্রয়মূল্য x বিক্রিত পরিমাণ) করব।
 
-২.১৬.৪ [অবস্থা: পেন্ডিং] সেলস রিপোর্ট মেট্রিক্স (শুধু অ্যাডমিন)
+২.১৬.৪ [অবস্থা: সম্পন্ন] সেলস রিপোর্ট মেট্রিক্স (শুধু অ্যাডমিন)
        - মাসওয়ারি বৃদ্ধি %, দৈনিক গড়, ১২-মাসের চার্ট ও সারাংশ টেবিল (বিক্রয় সংখ্যা, আয়, GST, ডিসকাউন্ট), 
          টপ ১০ ওষুধ, টপ ৫ কাস্টমার, পেমেন্ট-পদ্ধতি অনুযায়ী ভাগ।
 
-২.১৬.৫ [অবস্থা: পেন্ডিং] রিপোর্ট এক্সপোর্ট (CSV ও Excel)
+২.১৬.৫ [অবস্থা: সম্পন্ন] রিপোর্ট এক্সপোর্ট (CSV ও Excel)
        - CSV (UTF-8 BOM) ও Excel এক্সপোর্ট।
 
 --------------------------------------------------------------------------------
 মডিউল ২.১৭: সাপ্লায়ার সেলফ-সার্ভিস পোর্টাল
 --------------------------------------------------------------------------------
-২.১৭.১ [অবস্থা: পেন্ডিং] সাপ্লায়ার অর্ডার ট্র্যাকিং ড্যাশবোর্ড
+২.১৭.১ [অবস্থা: সম্পন্ন] সাপ্লায়ার অর্ডার ট্র্যাকিং ড্যাশবোর্ড
        - পরিবেশকরা লগইন করে তাদের দেওয়া পারচেজ অর্ডার দেখতে পারবেন এবং চালানের স্ট্যাটাস আপডেট করবেন।
 
-২.১৭.২ [অবস্থা: পেন্ডিং] সাপ্লায়ার টু-ওয়ে মেসেজিং চ্যানেল
+২.১৭.২ [অবস্থা: সম্পন্ন] সাপ্লায়ার টু-ওয়ে মেসেজিং চ্যানেল
        - ফার্মাসি ও সাপ্লায়ারদের মধ্যে সরাসরি অভ্যন্তরীণ বার্তা আদান-প্রদান।
 
 --------------------------------------------------------------------------------
 মডিউল ২.১৮: পেশেন্ট ও কাস্টমার পোর্টাল
 --------------------------------------------------------------------------------
-২.১৮.১ [অবস্থা: পেন্ডিং] রোগীর অ্যাকাউন্ট ও ক্রয়ের ইতিহাস
+২.১৮.১ [অবস্থা: সম্পন্ন] রোগীর অ্যাকাউন্ট ও ক্রয়ের ইতিহাস
        - রোগীরা তাদের অ্যাকাউন্টে লগইন করে পূর্ববর্তী ইনভয়েস ও প্রেসক্রিপশন দেখতে পারবেন।
 
-২.১৮.২ [অবস্থা: পেন্ডিং] প্রেসক্রিপশন আপলোড ও অর্ডার রিকোয়েস্ট
+২.১৮.২ [অবস্থা: সম্পন্ন] প্রেসক্রিপশন আপলোড ও অর্ডার রিকোয়েস্ট
        - প্রেসক্রিপশনের ছবি আপলোড করলে ফার্মাসিস্টের ড্যাশবোর্ডে নোটিফিকেশন আসা এবং বিল তৈরি করা।
 
 --------------------------------------------------------------------------------
 মডিউল ২.১৯: কাস্টমার পোর্টাল অ্যাকাউন্ট লাইফসাইকেল ও রিটার্ন রিকোয়েস্ট  (রেফারেন্স: public/customer/*)
 --------------------------------------------------------------------------------
-২.১৯.১ [অবস্থা: পেন্ডিং] ইমেইল ভেরিফিকেশন বাধ্যতামূলক সহ নিজে রেজিস্ট্রেশন
+২.১৯.১ [অবস্থা: সম্পন্ন] ইমেইল ভেরিফিকেশন বাধ্যতামূলক সহ নিজে রেজিস্ট্রেশন
        - রেজিস্টার, ভেরিফিকেশন লিংক/টোকেন, Resend Verify, ভেরিফাই ছাড়া লগইন নয়; 
          ব্রুট-ফোর্স লকআউটসহ আলাদা লগইন।
 
-২.১৯.২ [অবস্থা: পেন্ডিং] পোর্টাল থেকে কাস্টমারের রিটার্ন রিকোয়েস্ট
+২.১৯.২ [অবস্থা: সম্পন্ন] পোর্টাল থেকে কাস্টমারের রিটার্ন রিকোয়েস্ট
        - নিজের ইনভয়েসের আইটেম বেছে রিটার্ন অনুরোধ; স্টোরে ইমেইল নোটিফিকেশন; 
          স্টাফ রিটার্ন মডিউলে অনুমোদন/বাতিল করবে।
 
-২.১৯.৩ [অবস্থা: পেন্ডিং] প্রোফাইল ও পাসওয়ার্ড ম্যানেজমেন্ট
+২.১৯.৩ [অবস্থা: সম্পন্ন] প্রোফাইল ও পাসওয়ার্ড ম্যানেজমেন্ট
        - প্রোফাইল এডিট, পাসওয়ার্ড পরিবর্তন; পাসওয়ার্ড ভুলে গেলে স্টোরের ইমেইলে যোগাযোগ।
 
 --------------------------------------------------------------------------------
 মডিউল ২.২০: মেসেজ ইনবক্স ও নিরাপদ প্রেসক্রিপশন ফাইল  (রেফারেন্স: patient_messages.php, serve_file.php, supplier contact.php)
 --------------------------------------------------------------------------------
-২.২০.১ [অবস্থা: পেন্ডিং] পেশেন্ট মেসেজ ইনবক্স (অ্যাডমিন/স্টাফ)
+২.২০.১ [অবস্থা: সম্পন্ন] পেশেন্ট মেসেজ ইনবক্স (অ্যাডমিন/স্টাফ)
        - প্রতি রোগীর আলাদা কথোপকথন, রিপ্লাই, অপঠিত সংখ্যা, পঠিত চিহ্নিত করা, ডিলিট।
 
-২.২০.২ [অবস্থা: পেন্ডিং] সাপ্লায়ার মেসেজ ইনবক্স
+২.২০.২ [অবস্থা: সম্পন্ন] সাপ্লায়ার মেসেজ ইনবক্স
        - সাপ্লায়ারের কন্টাক্ট ফর্ম -> অ্যাডমিন ইনবক্সে অপঠিত স্ট্যাটাস, রিপ্লাই ও ইমেইল নোটিফিকেশন।
 
-২.২০.৩ [অবস্থা: পেন্ডিং] নিরাপদ প্রেসক্রিপশন ফাইল সরবরাহ
+২.২০.৩ [অবস্থা: সম্পন্ন] নিরাপদ প্রেসক্রিপশন ফাইল সরবরাহ
        - আপলোড (PDF/JPG/PNG/HEIC) পাবলিক পাথের বাইরে সংরক্ষণ; শুধু অথেনটিকেটেড এন্ডপয়েন্ট দিয়ে 
          সার্ভ; স্টাফ সব দেখবে, কাস্টমার শুধু নিজের ফাইল; ফাইলের নাম স্যানিটাইজ।
 

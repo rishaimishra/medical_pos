@@ -1,50 +1,17 @@
-import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import {
+  SUPPLIER_COOKIE_NAME,
+  SupplierSessionPayload,
   checkBruteForceLockout,
   clearFailedLoginAttempts,
   hashPassword,
   recordFailedLoginAttempt,
+  signSupplierToken,
   verifyPassword,
+  verifySupplierToken,
 } from "@/lib/auth";
 import { getClientIp } from "@/lib/audit";
-
-const SUPPLIER_COOKIE_NAME = "med_pos_supplier_session";
-const SECRET =
-  process.env.SESSION_SECRET ||
-  process.env.DATABASE_URL ||
-  "med_pos_default_hmac_secret_2026_pharmacy";
-
-export interface SupplierSessionPayload {
-  supplierUserId: number;
-  supplierId: number;
-  name: string;
-  companyName: string;
-  username: string;
-  email: string;
-  phone: string | null;
-  issuedAt: number;
-}
-
-function signSupplierToken(payload: SupplierSessionPayload): string {
-  const dataB64 = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
-  const sig = crypto.createHmac("sha256", SECRET).update(dataB64).digest("base64url");
-  return `${dataB64}.${sig}`;
-}
-
-function verifySupplierToken(token?: string | null): SupplierSessionPayload | null {
-  if (!token || !token.includes(".")) return null;
-  const [dataB64, sig] = token.split(".");
-  if (!dataB64 || !sig) return null;
-  const expected = crypto.createHmac("sha256", SECRET).update(dataB64).digest("base64url");
-  if (sig !== expected) return null;
-  try {
-    return JSON.parse(Buffer.from(dataB64, "base64url").toString("utf8")) as SupplierSessionPayload;
-  } catch {
-    return null;
-  }
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -75,7 +42,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    if (!dbUser || !dbUser.active) {
+    if (!dbUser || !dbUser.active || dbUser.supplierId !== session.supplierId) {
       const res = NextResponse.json({
         success: true,
         authenticated: false,
@@ -245,6 +212,16 @@ export async function POST(req: NextRequest) {
           message: "Supplier account not found.",
         },
         { status: 401 }
+      );
+    }
+
+    if (!supplierUser.active) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Your supplier portal account is inactive. Please contact pharmacy administration.",
+        },
+        { status: 403 }
       );
     }
 

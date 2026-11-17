@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { numberToIndianWords } from "@/lib/numberToWords";
 import { playCashDrawerSound } from "@/lib/audioBeep";
+import { toLocalYMD } from "@/lib/csv";
 
 interface BranchOption {
   id: number;
@@ -95,7 +96,7 @@ export default function FinancialsPage() {
     referenceNo: "",
     payeeOrPayer: "",
     notes: "",
-    expenseDate: new Date().toISOString().slice(0, 10),
+    expenseDate: toLocalYMD(new Date()),
     branchId: "",
   });
   const [submittingExpense, setSubmittingExpense] = useState(false);
@@ -115,9 +116,11 @@ export default function FinancialsPage() {
       cashReturns: number;
       cashExpenses: number;
       cashIncomes: number;
+      cashBakiCollections?: number;
+      cashSupplierPayouts?: number;
       expectedCash: number;
       totalSalesCount: number;
-      otherChannels: { upiSales: number; cardSales: number; creditSales: number };
+      otherChannels: { upiSales: number; cardSales: number; chequeSales?: number; creditSales: number };
     };
   } | null>(null);
 
@@ -158,25 +161,24 @@ export default function FinancialsPage() {
   const applyDatePreset = useCallback((preset: "today" | "yesterday" | "last7" | "thisMonth" | "custom") => {
     setDatePreset(preset);
     const now = new Date();
-    const toYMD = (d: Date) => d.toISOString().slice(0, 10);
 
     if (preset === "today") {
-      setStartDate(toYMD(now));
-      setEndDate(toYMD(now));
+      setStartDate(toLocalYMD(now));
+      setEndDate(toLocalYMD(now));
     } else if (preset === "yesterday") {
       const y = new Date(now);
       y.setDate(y.getDate() - 1);
-      setStartDate(toYMD(y));
-      setEndDate(toYMD(y));
+      setStartDate(toLocalYMD(y));
+      setEndDate(toLocalYMD(y));
     } else if (preset === "last7") {
       const past = new Date(now);
       past.setDate(past.getDate() - 6);
-      setStartDate(toYMD(past));
-      setEndDate(toYMD(now));
+      setStartDate(toLocalYMD(past));
+      setEndDate(toLocalYMD(now));
     } else if (preset === "thisMonth") {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      setStartDate(toYMD(firstDay));
-      setEndDate(toYMD(now));
+      setStartDate(toLocalYMD(firstDay));
+      setEndDate(toLocalYMD(now));
     }
   }, []);
 
@@ -187,8 +189,9 @@ export default function FinancialsPage() {
     fetch("/api/admin/branches")
       .then((r) => r.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.branches)) {
-          setBranches(data.branches);
+        const list = data.branches || data.data;
+        if (data.success && Array.isArray(list)) {
+          setBranches(list);
         }
       })
       .catch(() => {});
@@ -339,8 +342,26 @@ export default function FinancialsPage() {
   // System Expected Cash based on editable opening float
   const currentExpectedCash = useMemo(() => {
     if (!drawerSummary) return 0;
-    const { cashSales, cashReturns, cashExpenses, cashIncomes } = drawerSummary.figures;
-    return Math.round((openingFloat + cashSales - cashReturns - cashExpenses + cashIncomes) * 100) / 100;
+    const {
+      cashSales,
+      cashReturns,
+      cashExpenses,
+      cashIncomes,
+      cashBakiCollections = 0,
+      cashSupplierPayouts = 0,
+    } = drawerSummary.figures;
+    return (
+      Math.round(
+        (openingFloat +
+          cashSales -
+          cashReturns -
+          cashExpenses +
+          cashIncomes +
+          cashBakiCollections -
+          cashSupplierPayouts) *
+          100
+      ) / 100
+    );
   }, [drawerSummary, openingFloat]);
 
   const cashDifference = useMemo(() => {
@@ -460,7 +481,7 @@ export default function FinancialsPage() {
         referenceNo: "",
         payeeOrPayer: "",
         notes: "",
-        expenseDate: new Date().toISOString().slice(0, 10),
+        expenseDate: toLocalYMD(new Date()),
         branchId: "",
       });
       fetchExpenses();
@@ -1220,6 +1241,24 @@ export default function FinancialsPage() {
                       </span>
                     </div>
 
+                    {(drawerSummary?.figures.cashBakiCollections ?? 0) > 0 && (
+                      <div className="flex justify-between py-1 text-slate-700">
+                        <span>6. Cash Baki Khata Collections (+)</span>
+                        <span className="font-bold font-mono text-emerald-700">
+                          +₹{(drawerSummary?.figures.cashBakiCollections || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+
+                    {(drawerSummary?.figures.cashSupplierPayouts ?? 0) > 0 && (
+                      <div className="flex justify-between py-1 text-slate-700">
+                        <span>7. Cash Supplier Payouts (-)</span>
+                        <span className="font-bold font-mono text-rose-700">
+                          -₹{(drawerSummary?.figures.cashSupplierPayouts || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+
                     {/* Total Expected Cash in Drawer */}
                     <div className="flex justify-between pt-2 text-sm font-black text-slate-900">
                       <span>EXPECTED CASH IN DRAWER:</span>
@@ -1280,6 +1319,7 @@ export default function FinancialsPage() {
                       { key: "10", label: "₹10 Notes", mult: 10 },
                       { key: "5", label: "₹5 Notes", mult: 5 },
                       { key: "2", label: "₹2 Notes", mult: 2 },
+                      { key: "1", label: "₹1 Notes", mult: 1 },
                       { key: "2000", label: "₹2000 Notes", mult: 2000 },
                     ].map(({ key, label, mult }) => (
                       <div key={key} className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-1">
@@ -1927,7 +1967,7 @@ export default function FinancialsPage() {
               {activeZReport.denominations && (
                 <div className="py-1 border-b border-dashed border-slate-300 space-y-0.5 text-[9px]">
                   <p className="font-bold text-[10px] uppercase text-slate-600">Physical Breakdown:</p>
-                  {["500", "200", "100", "50", "20", "10", "5", "2000"].map((k) => {
+                  {["2000", "500", "200", "100", "50", "20", "10", "5", "2", "1"].map((k) => {
                     const cnt = activeZReport.denominations[k] || 0;
                     if (cnt <= 0) return null;
                     const mult = parseInt(k, 10);
@@ -1962,7 +2002,7 @@ export default function FinancialsPage() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 print:hidden">
               <button
                 onClick={() => window.print()}
                 className="px-4 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5"
@@ -1973,6 +2013,27 @@ export default function FinancialsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {(viewingExpense || activeZReport) && (
+        <style jsx global>{`
+          @media print {
+            body * {
+              visibility: hidden !important;
+            }
+            #${viewingExpense ? "printable-voucher" : "printable-z-report"},
+            #${viewingExpense ? "printable-voucher" : "printable-z-report"} * {
+              visibility: visible !important;
+            }
+            #${viewingExpense ? "printable-voucher" : "printable-z-report"} {
+              position: fixed !important;
+              left: 8mm !important;
+              top: 8mm !important;
+              width: ${viewingExpense ? "180mm" : "80mm"} !important;
+              background: #fff !important;
+            }
+          }
+        `}</style>
       )}
     </div>
   );

@@ -361,6 +361,13 @@ export default function SupplierLoginPage() {
               </button>
             </form>
           )}
+
+          <div className="mt-5 pt-4 border-t border-slate-100 text-center text-xs text-slate-500">
+            Have a question for pharmacy purchasing?{" "}
+            <Link href="/supplier/contact" className="font-bold text-[#283566] hover:underline">
+              Contact Store Desk
+            </Link>
+          </div>
         </div>
       </div>
     </div>

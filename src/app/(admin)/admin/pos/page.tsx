@@ -27,6 +27,8 @@ import {
   Scan,
   Zap,
   Banknote,
+  FileText,
+  ExternalLink,
 } from "lucide-react";
 import { useCartStore, CartItem } from "@/stores/useCartStore";
 import { useBranchStore } from "@/stores/useBranchStore";
@@ -63,6 +65,8 @@ export default function POSBillingPage() {
     discountAmount,
     discountPercent,
     customer,
+    setCustomer,
+    setDoctor,
     parkedBills,
     parkCurrentBill,
     recallParkedBill,
@@ -108,6 +112,40 @@ export default function POSBillingPage() {
   const [storeUpiId, setStoreUpiId] = useState("drxstore@upi");
   const [masterDiscounts, setMasterDiscounts] = useState<any[]>([]);
   const [todayMetrics, setTodayMetrics] = useState({ salesCount: 0, totalRevenue: 0 });
+
+  // Module 2.18.2: Patient Prescription Requests Queue
+  const [rxQueue, setRxQueue] = useState<any[]>([]);
+  const [rxUnreadCount, setRxUnreadCount] = useState(0);
+  const [isRxModalOpen, setIsRxModalOpen] = useState(false);
+  const [activeRx, setActiveRx] = useState<any | null>(null);
+
+  const fetchRxQueue = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/prescriptions", { cache: "no-store" });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setRxQueue(json.prescriptions || []);
+        setRxUnreadCount(json.unreadCount || 0);
+        if (typeof window !== "undefined") {
+          const sp = new URLSearchParams(window.location.search);
+          const rxMsgId = Number(sp.get("rxMessageId"));
+          if (rxMsgId) {
+            const match = (json.prescriptions || []).find((p: any) => p.id === rxMsgId);
+            if (match) {
+              setActiveRx(match);
+              setIsRxModalOpen(true);
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore silent queue error
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRxQueue();
+  }, [fetchRxQueue]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -528,6 +566,24 @@ export default function POSBillingPage() {
           >
             <Barcode className="w-3.5 h-3.5 text-slate-600" />
             <span>Print Labels</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              fetchRxQueue();
+              setIsRxModalOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-bold hover:bg-indigo-100 transition-colors cursor-pointer"
+            title="Review patient prescription uploads & order requests"
+          >
+            <FileText className="w-3.5 h-3.5 text-indigo-700" />
+            <span>Rx Requests</span>
+            {rxUnreadCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-extrabold">
+                {rxUnreadCount}
+              </span>
+            )}
           </button>
 
           <button
@@ -1266,6 +1322,144 @@ export default function POSBillingPage() {
             >
               Close (Esc)
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 11. MODULE 2.18.2: PATIENT PRESCRIPTION REQUESTS MODAL */}
+      <Modal
+        isOpen={isRxModalOpen}
+        onClose={() => setIsRxModalOpen(false)}
+        title="Patient Prescription & Order Requests"
+        description="Verify uploaded patient prescriptions and load patient directly into POS billing."
+        size="2xl"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+          <div className="md:col-span-5 max-h-96 overflow-y-auto space-y-2 pr-1">
+            {rxQueue.length === 0 ? (
+              <p className="text-xs text-slate-400 py-8 text-center">No prescription requests yet.</p>
+            ) : (
+              rxQueue.map((rx) => (
+                <button
+                  key={rx.id}
+                  type="button"
+                  onClick={() => setActiveRx(rx)}
+                  className={`w-full text-left p-3 rounded-xl border transition cursor-pointer ${
+                    activeRx?.id === rx.id
+                      ? "border-[#1F4E5B] bg-[#EAF2F4]"
+                      : !rx.isRead
+                      ? "border-amber-300 bg-amber-50/70 hover:bg-amber-50"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-extrabold text-slate-900 truncate">
+                      {rx.customer?.name || `Customer #${rx.customerId}`}
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                        rx.isRead ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                      }`}
+                    >
+                      {rx.isRead ? "Reviewed" : "New"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{rx.customer?.phone}</p>
+                  <p className="text-[11px] text-slate-700 line-clamp-2 mt-1">{rx.message}</p>
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="md:col-span-7 border border-slate-200 rounded-2xl p-4 bg-slate-50/60 space-y-3">
+            {!activeRx ? (
+              <div className="h-64 flex items-center justify-center text-xs text-slate-400">
+                Select a prescription request to inspect & bill.
+              </div>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-900">
+                      {activeRx.customer?.name} ({activeRx.customer?.phone})
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Submitted {new Date(activeRx.createdAt).toLocaleString("en-IN")}
+                    </p>
+                  </div>
+                  {activeRx.fileUrl && (
+                    <a
+                      href={activeRx.fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-[#1F4E5B] hover:bg-slate-100"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Open Full File
+                    </a>
+                  )}
+                </div>
+
+                <div className="p-3 rounded-xl bg-white border border-slate-200 text-xs text-slate-700 whitespace-pre-wrap">
+                  {activeRx.message}
+                </div>
+
+                {activeRx.fileUrl && activeRx.fileType?.startsWith("image/") && (
+                  <div className="rounded-xl border border-slate-200 bg-white p-2 overflow-hidden max-h-52 flex items-center justify-center">
+                    <img
+                      src={activeRx.fileUrl}
+                      alt={activeRx.fileName || "Uploaded Prescription"}
+                      className="max-h-48 object-contain rounded"
+                    />
+                  </div>
+                )}
+
+                {activeRx.fileUrl && activeRx.fileType === "application/pdf" && (
+                  <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-xs font-bold text-indigo-800 flex items-center justify-between">
+                    <span>PDF Attached: {activeRx.fileName}</span>
+                    <a href={activeRx.fileUrl} target="_blank" rel="noreferrer" className="underline">
+                      View PDF →
+                    </a>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await fetch("/api/admin/prescriptions", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: activeRx.id, isRead: true }),
+                      });
+                      if (activeRx.customer) {
+                        setCustomer({
+                          id: activeRx.customer.id,
+                          name: activeRx.customer.name,
+                          phone: activeRx.customer.phone,
+                          email: activeRx.customer.email,
+                          address: activeRx.customer.address,
+                          creditLimit: Number(activeRx.customer.creditLimit || 0),
+                          currentDue: Number(activeRx.customer.currentDue || 0),
+                          isChronic: Boolean(activeRx.customer.isChronic),
+                        });
+                      }
+                      const docMatch = String(activeRx.message || "").match(/Prescribing Doctor:\s*([^\n]+)/i);
+                      if (docMatch?.[1]) {
+                        setDoctor(docMatch[1].trim(), "");
+                      }
+                      setIsRxModalOpen(false);
+                      fetchRxQueue();
+                      toast.success(`Patient ${activeRx.customer?.name || ""} loaded to POS counter!`);
+                      setTimeout(() => searchInputRef.current?.focus(), 100);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-[#1F4E5B] hover:bg-[#163a44] text-white text-xs font-extrabold cursor-pointer"
+                  >
+                    Load Patient to POS & Mark Verified
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </Modal>

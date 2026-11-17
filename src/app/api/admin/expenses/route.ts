@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { logAudit, getClientIp } from "@/lib/audit";
@@ -15,6 +15,10 @@ export async function GET(req: NextRequest) {
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
+  }
+
+  if (!canAccessPage(auth.session, "/admin/financials") && !canAccessPage(auth.session, "/admin/reports")) {
+    return NextResponse.json({ success: false, message: "Forbidden: Access to expenses denied" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -175,6 +179,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
 
+  if (!canAccessPage(auth.session, "/admin/financials")) {
+    return NextResponse.json({ success: false, message: "Forbidden: Insufficient privileges to record vouchers" }, { status: 403 });
+  }
+
   try {
     const body = await req.json();
     const {
@@ -203,12 +211,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Amount must be a positive number" }, { status: 400 });
     }
 
-    // Branch resolution
+    // Branch & Store resolution
     let targetBranchId = auth.session.branchId;
     if (!targetBranchId && branchId) {
       const bId = parseInt(String(branchId), 10);
-      if (!isNaN(bId) && canAccessBranch(auth.session, bId)) {
-        targetBranchId = bId;
+      if (isNaN(bId) || !canAccessBranch(auth.session, bId)) {
+        return NextResponse.json({ success: false, message: "Forbidden: Invalid or unauthorized branch" }, { status: 403 });
+      }
+      targetBranchId = bId;
+    }
+
+    if (targetBranchId && auth.session.storeId) {
+      const branchCheck = await prisma.branch.findUnique({
+        where: { id: targetBranchId },
+        select: { storeId: true },
+      });
+      if (!branchCheck || (branchCheck.storeId && branchCheck.storeId !== auth.session.storeId)) {
+        return NextResponse.json({ success: false, message: "Forbidden: Branch belongs to another store" }, { status: 403 });
       }
     }
 
@@ -221,38 +240,46 @@ export async function POST(req: NextRequest) {
       targetBranchId = firstBranch?.id ?? null;
     }
 
-    // Generate Voucher Number: EXP-YYYY-XXXXX
+    // Concurrency-safe EXP-YYYY-XXXXX sequential numbering inside transaction
     const year = new Date().getFullYear();
-    const countThisYear = await prisma.expense.count({
-      where: {
-        createdAt: {
-          gte: new Date(year, 0, 1),
-          lte: new Date(year, 11, 31, 23, 59, 59),
-        },
-      },
-    });
-    const voucherNo = `EXP-${year}-${String(countThisYear + 1).padStart(5, "0")}`;
+    const expPrefix = `EXP-${year}-`;
 
-    const createdExpense = await prisma.expense.create({
-      data: {
-        voucherNo,
-        storeId: auth.session.storeId ?? null,
-        branchId: targetBranchId,
-        userId: auth.session.userId,
-        type: type === "income" ? "income" : "expense",
-        category: category.trim(),
-        title: title.trim(),
-        amount: numericAmount,
-        paymentMode: (paymentMode || "cash").toLowerCase(),
-        referenceNo: referenceNo?.trim() || null,
-        payeeOrPayer: payeeOrPayer?.trim() || null,
-        notes: notes?.trim() || null,
-        expenseDate: expenseDate ? new Date(expenseDate) : new Date(),
-      },
-      include: {
-        branch: { select: { id: true, code: true, name: true } },
-        user: { select: { id: true, name: true } },
-      },
+    const createdExpense = await runInTransaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(2026003)`;
+      const lastExp = await tx.expense.findFirst({
+        where: { voucherNo: { startsWith: expPrefix } },
+        orderBy: { id: "desc" },
+        select: { voucherNo: true },
+      });
+      let nextSeq = 1;
+      if (lastExp?.voucherNo) {
+        const parts = lastExp.voucherNo.split("-");
+        const parsed = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(parsed)) nextSeq = parsed + 1;
+      }
+      const voucherNo = `${expPrefix}${String(nextSeq).padStart(5, "0")}`;
+
+      return await tx.expense.create({
+        data: {
+          voucherNo,
+          storeId: auth.session!.storeId ?? null,
+          branchId: targetBranchId,
+          userId: auth.session!.userId,
+          type: type === "income" ? "income" : "expense",
+          category: category.trim(),
+          title: title.trim(),
+          amount: numericAmount,
+          paymentMode: (paymentMode || "cash").toLowerCase(),
+          referenceNo: referenceNo?.trim() || null,
+          payeeOrPayer: payeeOrPayer?.trim() || null,
+          notes: notes?.trim() || null,
+          expenseDate: expenseDate ? new Date(expenseDate) : new Date(),
+        },
+        include: {
+          branch: { select: { id: true, code: true, name: true } },
+          user: { select: { id: true, name: true } },
+        },
+      });
     });
 
     // Audit Log
@@ -265,7 +292,7 @@ export async function POST(req: NextRequest) {
       branchId: targetBranchId || undefined,
       ipAddress: getClientIp(req),
       details: {
-        voucherNo,
+        voucherNo: createdExpense.voucherNo,
         type: createdExpense.type,
         category: createdExpense.category,
         amount: numericAmount,

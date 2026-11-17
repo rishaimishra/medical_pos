@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, canAccessPage } from "@/lib/rbac";
+import { buildCsvContent } from "@/lib/csv";
 
 /**
  * GET /api/admin/sales/export
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
   const search = (searchParams.get("search") || "").trim();
   const paymentMethod = (searchParams.get("paymentMethod") || "all").toLowerCase();
   const branchParam = searchParams.get("branchId");
+  const cashierParam = searchParams.get("cashierId");
   const startDateStr = searchParams.get("startDate");
   const endDateStr = searchParams.get("endDate");
 
@@ -56,13 +58,18 @@ export async function GET(req: NextRequest) {
       where.paymentMethod = paymentMethod;
     }
 
+    if (cashierParam && cashierParam !== "all") {
+      const cashierId = parseInt(cashierParam, 10);
+      if (!isNaN(cashierId)) {
+        where.createdBy = cashierId;
+      }
+    }
+
     if (startDateStr || endDateStr) {
       where.saleDate = {};
-      if (startDateStr) where.saleDate.gte = new Date(startDateStr);
+      if (startDateStr) where.saleDate.gte = new Date(`${startDateStr}T00:00:00.000Z`);
       if (endDateStr) {
-        const endD = new Date(endDateStr);
-        endD.setHours(23, 59, 59, 999);
-        where.saleDate.lte = endD;
+        where.saleDate.lte = new Date(`${endDateStr}T23:59:59.999Z`);
       }
     }
 
@@ -103,14 +110,6 @@ export async function GET(req: NextRequest) {
       "Cashier",
     ];
 
-    const escapeCsv = (str: string | number | null | undefined) => {
-      const val = String(str ?? "");
-      if (val.includes(",") || val.includes('"') || val.includes("\n")) {
-        return `"${val.replace(/"/g, '""')}"`;
-      }
-      return val;
-    };
-
     const rows = sales.map((s) => {
       const d = new Date(s.createdAt);
       const dateStr = d.toLocaleDateString("en-IN");
@@ -118,24 +117,24 @@ export async function GET(req: NextRequest) {
       const itemsCount = s.items.reduce((sum, it) => sum + it.quantity, 0);
 
       return [
-        escapeCsv(s.invoiceNo),
-        escapeCsv(dateStr),
-        escapeCsv(timeStr),
-        escapeCsv(s.branch?.code || "MAIN"),
-        escapeCsv(s.customer?.name || "Walk-in Customer"),
-        escapeCsv(s.customer?.phone || "-"),
-        escapeCsv(itemsCount),
-        escapeCsv(s.paymentMethod.toUpperCase()),
-        escapeCsv(Number(s.totalAmount).toFixed(2)),
-        escapeCsv(Number(s.discountAmount).toFixed(2)),
-        escapeCsv(Number(s.gstAmount).toFixed(2)),
-        escapeCsv(Number(s.grandTotal).toFixed(2)),
-        escapeCsv(s.doctorName || "-"),
-        escapeCsv(s.creator?.name || s.creator?.username || "-"),
-      ].join(",");
+        s.invoiceNo,
+        dateStr,
+        timeStr,
+        s.branch?.code || "MAIN",
+        s.customer?.name || "Walk-in Customer",
+        s.customer?.phone || "-",
+        itemsCount,
+        s.paymentMethod.toUpperCase(),
+        Number(s.totalAmount).toFixed(2),
+        Number(s.discountAmount).toFixed(2),
+        Number(s.gstAmount).toFixed(2),
+        Number(s.grandTotal).toFixed(2),
+        s.doctorName || "-",
+        s.creator?.name || s.creator?.username || "-",
+      ];
     });
 
-    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+    const csvContent = buildCsvContent(headers, rows);
     const filename = `sales-report-${new Date().toISOString().slice(0, 10)}.csv`;
 
     return new NextResponse(csvContent, {

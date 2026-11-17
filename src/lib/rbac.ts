@@ -127,6 +127,7 @@ export const ROLE_MATRIX: Record<SystemRole, RoleDefinition> = {
       "/admin/customers",
       "/admin/returns",
       "/admin/medicines",
+      "/admin/financials",
     ],
     maxDiscountPercent: 10,
   },

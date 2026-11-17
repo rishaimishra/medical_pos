@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { ReceiptPrintModal } from "@/components/pos/ReceiptPrintModal";
+import { toLocalYMD } from "@/lib/csv";
 
 interface SaleRecord {
   id: number;
@@ -63,8 +64,8 @@ export default function SalesHistoryPage() {
   const [branchFilter, setBranchFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [datePreset, setDatePreset] = useState("today");
-  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(() => toLocalYMD(new Date()));
+  const [endDate, setEndDate] = useState(() => toLocalYMD(new Date()));
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [summary, setSummary] = useState({
@@ -80,6 +81,8 @@ export default function SalesHistoryPage() {
   // Modal states
   const [reprintSale, setReprintSale] = useState<any | null>(null);
   const [shareTargetSale, setShareTargetSale] = useState<SaleRecord | null>(null);
+  const [sharePhone, setSharePhone] = useState("");
+  const [shareEmail, setShareEmail] = useState("");
   const [shareLoading, setShareLoading] = useState(false);
   const [sharePayload, setSharePayload] = useState<any | null>(null);
   const [shareSuccessMsg, setShareSuccessMsg] = useState<string | null>(null);
@@ -98,8 +101,9 @@ export default function SalesHistoryPage() {
     fetch("/api/admin/branches")
       .then((res) => res.json())
       .then((json) => {
-        if (json.success && Array.isArray(json.branches)) {
-          setBranches(json.branches);
+        const list = json.branches || json.data;
+        if (json.success && Array.isArray(list)) {
+          setBranches(list);
         }
       })
       .catch(() => {});
@@ -110,7 +114,7 @@ export default function SalesHistoryPage() {
     setDatePreset(preset);
     setPage(1);
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
+    const todayStr = toLocalYMD(now);
 
     if (preset === "today") {
       setStartDate(todayStr);
@@ -118,18 +122,16 @@ export default function SalesHistoryPage() {
     } else if (preset === "yesterday") {
       const y = new Date();
       y.setDate(y.getDate() - 1);
-      const yStr = y.toISOString().slice(0, 10);
+      const yStr = toLocalYMD(y);
       setStartDate(yStr);
       setEndDate(yStr);
     } else if (preset === "last7") {
       const d7 = new Date();
-      d7.setDate(d7.getDate() - 7);
-      setStartDate(d7.toISOString().slice(0, 10));
+      d7.setDate(d7.getDate() - 6);
+      setStartDate(toLocalYMD(d7));
       setEndDate(todayStr);
     } else if (preset === "this_month") {
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-        .toISOString()
-        .slice(0, 10);
+      const startOfMonth = toLocalYMD(new Date(now.getFullYear(), now.getMonth(), 1));
       setStartDate(startOfMonth);
       setEndDate(todayStr);
     } else if (preset === "all") {
@@ -172,17 +174,18 @@ export default function SalesHistoryPage() {
     fetchSales();
   }, [fetchSales]);
 
-  // Open Digital Share Modal
-  const handleOpenShare = async (sale: SaleRecord) => {
-    setShareTargetSale(sale);
-    setSharePayload(null);
-    setShareSuccessMsg(null);
+  // Prepare share payload for selected sale + optional custom recipient
+  const prepareSharePayload = async (saleId: number, phoneOverride?: string, emailOverride?: string) => {
     setShareLoading(true);
     try {
-      const res = await fetch(`/api/admin/sales/${sale.id}/share`, {
+      const res = await fetch(`/api/admin/sales/${saleId}/share`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: "whatsapp" }),
+        body: JSON.stringify({
+          channel: "whatsapp",
+          recipientPhone: phoneOverride?.trim() || undefined,
+          recipientEmail: emailOverride?.trim() || undefined,
+        }),
       });
       const json = await res.json();
       if (res.ok && json.success) {
@@ -195,9 +198,24 @@ export default function SalesHistoryPage() {
     }
   };
 
+  // Open Digital Share Modal
+  const handleOpenShare = async (sale: SaleRecord) => {
+    setShareTargetSale(sale);
+    setSharePhone(sale.customer?.phone || "");
+    setShareEmail(sale.customer?.email || "");
+    setSharePayload(null);
+    setShareSuccessMsg(null);
+    await prepareSharePayload(sale.id, sale.customer?.phone, sale.customer?.email);
+  };
+
   // Trigger Email Re-send
   const handleReSendEmail = async () => {
     if (!shareTargetSale) return;
+    const targetEmail = shareEmail.trim() || shareTargetSale.customer?.email || "";
+    if (!targetEmail) {
+      setShareSuccessMsg("Please enter a valid recipient email address.");
+      return;
+    }
     setShareLoading(true);
     try {
       const res = await fetch(`/api/admin/sales/${shareTargetSale.id}/share`, {
@@ -205,12 +223,13 @@ export default function SalesHistoryPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           channel: "email",
-          recipientEmail: shareTargetSale.customer?.email,
+          recipientPhone: sharePhone.trim() || undefined,
+          recipientEmail: targetEmail,
         }),
       });
       const json = await res.json();
       if (json.success && json.delivery?.email?.sent) {
-        setShareSuccessMsg("Invoice receipt dispatched successfully via email!");
+        setShareSuccessMsg(`Invoice receipt dispatched successfully to ${targetEmail}!`);
       } else {
         setShareSuccessMsg(
           json.delivery?.email?.error || "Could not deliver email. Verify SMTP settings."
@@ -645,6 +664,25 @@ export default function SalesHistoryPage() {
               </div>
             ) : sharePayload ? (
               <div className="space-y-4">
+                {/* Walk-in / Custom Recipient Phone Override */}
+                <div className="flex flex-wrap items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs">
+                  <input
+                    type="tel"
+                    value={sharePhone}
+                    onChange={(e) => setSharePhone(e.target.value)}
+                    placeholder="Customer WhatsApp / Mobile (e.g. 9876543210)"
+                    className="flex-1 min-w-[180px] px-3 py-1.5 bg-white border border-slate-200 rounded-xl font-medium text-slate-800 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    disabled={shareLoading}
+                    onClick={() => prepareSharePayload(shareTargetSale.id, sharePhone, shareEmail)}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl disabled:opacity-50"
+                  >
+                    Update Link
+                  </button>
+                </div>
+
                 {/* WhatsApp Channel */}
                 <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
                   <div className="flex items-center justify-between">
@@ -681,24 +719,26 @@ export default function SalesHistoryPage() {
                 </div>
 
                 {/* Email Channel */}
-                {shareTargetSale.customer?.email ? (
-                  <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-2xl">
-                    <div className="flex items-center gap-2 text-xs">
-                      <Mail className="w-4 h-4 text-slate-500" />
-                      <span className="font-bold text-slate-700">
-                        {shareTargetSale.customer.email}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={shareLoading}
-                      onClick={handleReSendEmail}
-                      className="px-3 py-1.5 bg-[#1F4E5B] hover:bg-[#163a44] text-white text-xs font-bold rounded-xl disabled:opacity-50"
-                    >
-                      {shareLoading ? "Dispatching..." : "Re-Send Email Receipt"}
-                    </button>
+                <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                  <div className="flex items-center gap-2 text-xs flex-1 min-w-[180px]">
+                    <Mail className="w-4 h-4 text-slate-500 shrink-0" />
+                    <input
+                      type="email"
+                      value={shareEmail}
+                      onChange={(e) => setShareEmail(e.target.value)}
+                      placeholder="Recipient email address..."
+                      className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded-lg font-medium text-slate-700 focus:outline-none"
+                    />
                   </div>
-                ) : null}
+                  <button
+                    type="button"
+                    disabled={shareLoading || !shareEmail.trim()}
+                    onClick={handleReSendEmail}
+                    className="px-3 py-1.5 bg-[#1F4E5B] hover:bg-[#163a44] text-white text-xs font-bold rounded-xl disabled:opacity-50"
+                  >
+                    {shareLoading ? "Dispatching..." : "Send Email Receipt"}
+                  </button>
+                </div>
 
                 {shareSuccessMsg && (
                   <div className="p-3 bg-emerald-100 border border-emerald-200 text-emerald-900 text-xs font-bold rounded-xl flex items-center gap-2">

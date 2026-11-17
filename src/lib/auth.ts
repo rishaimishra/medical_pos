@@ -554,6 +554,12 @@ export interface CustomerSessionPayload {
   issuedAt: number;
 }
 
+export function signSupplierToken(payload: SupplierSessionPayload): string {
+  const dataB64 = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const sig = crypto.createHmac("sha256", SESSION_SECRET).update(dataB64).digest("base64url");
+  return `${dataB64}.${sig}`;
+}
+
 export function verifySupplierToken(token?: string | null): SupplierSessionPayload | null {
   if (!token || !token.includes(".")) return null;
   const [dataB64, sig] = token.split(".");
@@ -585,7 +591,27 @@ export async function verifySupplierRequest(req: NextRequest): Promise<{
       session: null,
     };
   }
+
+  const dbSupUser = await prisma.supplierUser.findUnique({
+    where: { id: session.supplierUserId },
+    select: { active: true, supplierId: true },
+  });
+  if (!dbSupUser || !dbSupUser.active || dbSupUser.supplierId !== session.supplierId) {
+    return {
+      authorized: false,
+      status: 401,
+      message: "Unauthorized: Supplier portal account is inactive",
+      session: null,
+    };
+  }
+
   return { authorized: true, status: 200, session };
+}
+
+export function signCustomerToken(payload: CustomerSessionPayload): string {
+  const dataB64 = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const sig = crypto.createHmac("sha256", SESSION_SECRET).update(dataB64).digest("base64url");
+  return `${dataB64}.${sig}`;
 }
 
 export function verifyCustomerToken(token?: string | null): CustomerSessionPayload | null {
@@ -619,7 +645,31 @@ export async function verifyCustomerRequest(req: NextRequest): Promise<{
       session: null,
     };
   }
-  return { authorized: true, status: 200, session };
+
+  const dbCustomer = await prisma.customer.findUnique({
+    where: { id: session.customerId },
+    select: { active: true, verified: true, name: true, phone: true, email: true, address: true },
+  });
+  if (!dbCustomer || !dbCustomer.active || !dbCustomer.verified) {
+    return {
+      authorized: false,
+      status: 401,
+      message: "Unauthorized: Customer account inactive or unverified",
+      session: null,
+    };
+  }
+
+  return {
+    authorized: true,
+    status: 200,
+    session: {
+      ...session,
+      name: dbCustomer.name,
+      phone: dbCustomer.phone,
+      email: dbCustomer.email,
+      address: dbCustomer.address,
+    },
+  };
 }
 
 export interface DiscountOverrideTokenPayload {

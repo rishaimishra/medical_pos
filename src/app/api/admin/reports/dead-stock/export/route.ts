@@ -1,45 +1,96 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/lib/auth";
+import { authorizeReportRequest, queryDeadStock } from "@/lib/reports";
+import { escapeCsvCell } from "@/lib/csv";
+import { buildXlsxBuffer } from "@/lib/excel";
 
 /**
  * GET /api/admin/reports/dead-stock/export
- * Exports stagnant inventory & dead stock report to CSV.
+ * Exports stagnant inventory & dead stock report to CSV or Excel (.xlsx).
  */
-
 export async function GET(req: NextRequest) {
-  const auth = await verifyAdminRequest(req);
-  if (!auth.authorized || !auth.session) {
-    return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
-  }
+  const { searchParams } = new URL(req.url);
+  const branchIdParam = searchParams.get("branchId");
+  const format = (searchParams.get("format") || "csv").toLowerCase();
+
+  const authCtx = await authorizeReportRequest(req, branchIdParam);
+  if (!authCtx.authorized) return authCtx.response!;
 
   try {
-    const url = new URL(req.url);
-    url.pathname = "/api/admin/reports/dead-stock";
-    url.searchParams.set("limit", "10000");
-    url.searchParams.set("page", "1");
+    const thresholdDays = Math.max(30, parseInt(searchParams.get("thresholdDays") || "90", 10));
+    const search = searchParams.get("search")?.trim() || "";
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        cookie: req.headers.get("cookie") || "",
-        authorization: req.headers.get("authorization") || "",
-      },
-      cache: "no-store",
+    const data = await queryDeadStock({
+      storeId: authCtx.storeId,
+      branchId: authCtx.branchId,
+      thresholdDays,
+      search,
     });
 
-    const data = await response.json();
-    if (!data.success) {
-      return NextResponse.json(
-        { success: false, message: data.message || "Failed to load dead stock report" },
-        { status: 500 }
-      );
+    const records = data.allRecords;
+    const summary = data.summary;
+
+    if (format === "xlsx" || format === "excel") {
+      const xlsxBuf = buildXlsxBuffer([
+        {
+          name: "Dead Stock",
+          headers: [
+            "Medicine Name",
+            "Company",
+            "Dosage Form",
+            "Composition",
+            "Rack Location",
+            "Batch Number",
+            "Stock Qty",
+            "Purchase Cost (INR)",
+            "Unit MRP (INR)",
+            "Blocked Capital (INR)",
+            "Expiry Date",
+            "Days To Expiry",
+            "Aging Category",
+            "Days Since Last Sale",
+            "Store Branch",
+          ],
+          rows: records.map((r: any) => [
+            r.name,
+            r.company,
+            r.category,
+            r.genericName || "-",
+            r.rackLocation,
+            r.batchNumber,
+            r.stockQuantity,
+            Number(r.purchasePrice || 0).toFixed(2),
+            Number(r.mrp || 0).toFixed(2),
+            Number(r.blockedCapital || 0).toFixed(2),
+            new Date(r.expiryDate).toLocaleDateString("en-IN"),
+            r.daysToExpiry,
+            r.agingCategory,
+            r.daysSinceLastSale,
+            `[${r.branch.code}] ${r.branch.name}`,
+          ]),
+        },
+        {
+          name: "Summary",
+          headers: ["Metric", "Value"],
+          rows: [
+            ["Threshold Days", data.thresholdDays],
+            ["Total Stagnant Batches", summary.totalDeadBatches],
+            ["Total Blocked Capital (INR)", Number(summary.totalBlockedCapital || 0).toFixed(2)],
+            ["High Expiry Risk (<90d)", summary.highExpiryRiskCount],
+          ],
+        },
+      ]);
+
+      return new NextResponse(new Uint8Array(xlsxBuf), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="dead_stock_report_${new Date().toISOString().slice(0, 10)}.xlsx"`,
+        },
+      });
     }
 
-    const records = data.records || [];
-    const summary = data.summary || {};
-
     const csvRows: string[] = [];
-
-    csvRows.push(`"DEAD STOCK & STAGNANT INVENTORY REPORT (Threshold: ${data.thresholdDays || 90} Days Without Sales)"`);
+    csvRows.push(`"DEAD STOCK & STAGNANT INVENTORY REPORT (Threshold: ${data.thresholdDays} Days Without Sales)"`);
     csvRows.push(`"Generated On: ${new Date().toLocaleString("en-IN")}"`);
     csvRows.push("");
 
@@ -61,7 +112,7 @@ export async function GET(req: NextRequest) {
         "Days Stagnant / Since Sale",
         "Store Branch",
       ]
-        .map((h) => `"${h}"`)
+        .map((h) => escapeCsvCell(h))
         .join(",")
     );
 
@@ -71,7 +122,7 @@ export async function GET(req: NextRequest) {
         r.name,
         r.company,
         r.category,
-        (r.genericName || "-").replace(/"/g, '""'),
+        r.genericName || "-",
         r.rackLocation,
         r.batchNumber,
         r.stockQuantity,
@@ -85,14 +136,14 @@ export async function GET(req: NextRequest) {
         `[${r.branch.code}] ${r.branch.name}`,
       ];
 
-      csvRows.push(row.map((c) => `"${c}"`).join(","));
+      csvRows.push(row.map((c) => escapeCsvCell(c)).join(","));
     }
 
     csvRows.push("");
     csvRows.push(`"--- REPORT SUMMARY ---"`);
-    csvRows.push(`"Total Stagnant Batches","${summary.totalDeadBatches || records.length}"`);
+    csvRows.push(`"Total Stagnant Batches","${summary.totalDeadBatches}"`);
     csvRows.push(`"Total Blocked Capital (₹)","₹${Number(summary.totalBlockedCapital || 0).toFixed(2)}"`);
-    csvRows.push(`"High Expiry Risk Batches (<90 Days)","${summary.highExpiryRiskCount || 0}"`);
+    csvRows.push(`"High Expiry Risk Batches (<90 Days)","${summary.highExpiryRiskCount}"`);
 
     const csvContent = "\uFEFF" + csvRows.join("\r\n");
 

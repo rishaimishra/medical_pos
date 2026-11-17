@@ -55,6 +55,8 @@ export const ORDERED_MODELS: {
   { modelName: "AuditLog", clientKey: "auditLog", tableName: "audit_logs" },
   { modelName: "SupplierMessage", clientKey: "supplierMessage", tableName: "supplier_messages" },
   { modelName: "PatientMessage", clientKey: "patientMessage", tableName: "patient_messages" },
+  { modelName: "Expense", clientKey: "expense", tableName: "expenses" },
+  { modelName: "CashDrawerClosing", clientKey: "cashDrawerClosing", tableName: "cash_drawer_closings" },
 ];
 
 /**

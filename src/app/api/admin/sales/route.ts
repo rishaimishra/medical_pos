@@ -72,17 +72,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Date Range filter (inclusive)
+    // Date Range filter (inclusive on @db.Date)
     if (startDateStr || endDateStr) {
       where.saleDate = {};
       if (startDateStr) {
-        where.saleDate.gte = new Date(startDateStr);
+        where.saleDate.gte = new Date(`${startDateStr}T00:00:00.000Z`);
       }
       if (endDateStr) {
-        // End of the day
-        const endD = new Date(endDateStr);
-        endD.setHours(23, 59, 59, 999);
-        where.saleDate.lte = endD;
+        where.saleDate.lte = new Date(`${endDateStr}T23:59:59.999Z`);
       }
     }
 
@@ -96,8 +93,8 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    // Parallel queries: Total Count, Summary Aggregation, and Paginated Sales List
-    const [totalCount, salesList, allMatchingSales] = await Promise.all([
+    // Parallel queries: Total Count, Summary Aggregation, Paginated Sales List, and Store Settings fallback
+    const [totalCount, salesList, allMatchingSales, storeSettings] = await Promise.all([
       prisma.sale.count({ where }),
       prisma.sale.findMany({
         where,
@@ -106,10 +103,10 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: "desc" },
         include: {
           customer: {
-            select: { id: true, name: true, phone: true, email: true },
+            select: { id: true, name: true, phone: true, email: true, address: true },
           },
           branch: {
-            select: { id: true, name: true, code: true, phone: true },
+            select: { id: true, name: true, code: true, phone: true, email: true, address: true, gstNo: true, dlNo: true },
           },
           creator: {
             select: { id: true, name: true, username: true },
@@ -117,7 +114,7 @@ export async function GET(req: NextRequest) {
           items: {
             include: {
               medicine: {
-                select: { id: true, name: true, genericName: true, company: true },
+                select: { id: true, name: true, genericName: true, company: true, hsnCode: true, gstPercent: true },
               },
               batch: {
                 select: { id: true, batchNo: true, expiryDate: true },
@@ -139,6 +136,9 @@ export async function GET(req: NextRequest) {
           grandTotal: true,
         },
       }),
+      auth.session.storeId
+        ? prisma.settings.findUnique({ where: { id: auth.session.storeId } }).catch(() => null)
+        : prisma.settings.findFirst({ orderBy: { id: "asc" } }).catch(() => null),
     ]);
 
     const summary = allMatchingSales.reduce(
@@ -152,9 +152,9 @@ export async function GET(req: NextRequest) {
       { totalGross: 0, totalDiscount: 0, totalGst: 0, netSales: 0 }
     );
 
-    // Format sales for response
+    // Format sales for response (includes complete reprint metadata for ThermalReceipt & A4TaxInvoice)
     const formattedSales = salesList.map((sale) => {
-      let splits = null;
+      let splits: any = null;
       if (sale.splitDetails) {
         try {
           splits = JSON.parse(sale.splitDetails);
@@ -172,19 +172,41 @@ export async function GET(req: NextRequest) {
         discountAmount: Number(sale.discountAmount),
         gstAmount: Number(sale.gstAmount),
         grandTotal: Number(sale.grandTotal),
+        creditAmount: Number(sale.creditAmount || 0),
         paymentMethod: sale.paymentMethod,
         splitDetails: splits,
+        splitPayments: splits,
+        cashTendered: splits?.cashTendered ?? undefined,
+        changeDue: splits?.changeDue ?? undefined,
+        upiRef: sale.upiRef,
+        cardLast4: sale.cardLast4,
+        chequeNo: sale.chequeNo,
+        chequeBank: sale.chequeBank,
         doctorName: sale.doctorName,
         doctorRegNo: sale.doctorRegNo,
         customer: sale.customer,
         branch: sale.branch,
+        store: {
+          name: sale.branch?.name || storeSettings?.storeName || "DRxStore Pharmacy",
+          address: sale.branch?.address || storeSettings?.storeAddress || "",
+          phone: sale.branch?.phone || storeSettings?.storePhone || "",
+          gstNo: sale.branch?.gstNo || storeSettings?.storeGst || "",
+          dlNo: sale.branch?.dlNo || storeSettings?.storeDl || "",
+          email: sale.branch?.email || storeSettings?.storeEmail || "",
+          currency: storeSettings?.currency || "₹",
+        },
         cashier: sale.creator,
         itemsCount: sale.items.reduce((sum, it) => sum + it.quantity, 0),
         items: sale.items.map((it) => ({
           id: it.id,
+          name: it.medicine.name,
           medicineName: it.medicine.name,
           genericName: it.medicine.genericName,
           company: it.medicine.company,
+          hsnCode: it.medicine.hsnCode,
+          gstPercent: Number(it.gstPercent),
+          taxableBase: Number(it.taxableBase),
+          gstAmount: Number(it.gstAmount),
           batchNo: it.batch.batchNo,
           expiryDate: it.batch.expiryDate,
           quantity: it.quantity,

@@ -498,6 +498,7 @@ model Return {
   branchId      Int?      @map("branch_id")
   reason        String    @db.Text
   refundAmount  Decimal   @map("refund_amount") @db.Decimal(12, 2)
+  refundMethod  String    @default("cash") @map("refund_method") @db.VarChar(30) // cash, upi, store_credit
   status        String    @default("pending") @db.VarChar(50) // pending, processed, rejected
   stockAdjusted Boolean   @default(false) @map("stock_adjusted")
   requestedBy   String    @default("staff") @map("requested_by") @db.VarChar(50) // staff, customer
@@ -635,7 +636,7 @@ model AuditLog {
 // Table: supplier_messages (Supplier extranet messaging channel)
 model SupplierMessage {
   id           Int       @id @default(autoincrement())
-  supplierId   Int       @map("supplier_id")
+  supplierId   Int?      @map("supplier_id")
   supplierName String?   @map("supplier_name") @db.VarChar(255)
   senderEmail  String?   @map("sender_email") @db.VarChar(255)
   subject      String    @db.VarChar(255)
@@ -646,7 +647,7 @@ model SupplierMessage {
   status       String    @default("unread") @db.VarChar(20) // unread, read, replied
   createdAt    DateTime  @default(now()) @map("created_at")
 
-  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   @@index([supplierId], name: "idx_sm_supplier")
   @@index([status], name: "idx_sm_status")

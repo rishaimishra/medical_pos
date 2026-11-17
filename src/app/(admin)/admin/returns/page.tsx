@@ -87,6 +87,7 @@ function ReturnsContent() {
   const [returnsList, setReturnsList] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState("all");
   const [historySummary, setHistorySummary] = useState({ totalReturns: 0, totalRefundAmount: 0 });
   const [selectedCreditNote, setSelectedCreditNote] = useState<any | null>(null);
 
@@ -135,6 +136,7 @@ function ReturnsContent() {
     try {
       const params = new URLSearchParams();
       if (historySearch.trim()) params.set("search", historySearch.trim());
+      if (historyStatusFilter !== "all") params.set("status", historyStatusFilter);
       const res = await fetch(`/api/admin/returns?${params.toString()}`);
       const json = await res.json();
       if (res.ok && json.success) {
@@ -146,7 +148,25 @@ function ReturnsContent() {
     } finally {
       setHistoryLoading(false);
     }
-  }, [historySearch]);
+  }, [historySearch, historyStatusFilter]);
+
+  const handleReturnStatusAction = async (returnId: number, status: "processed" | "rejected") => {
+    try {
+      const res = await fetch(`/api/admin/returns/${returnId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        fetchReturnsHistory();
+      } else {
+        alert(json.message || `Failed to mark return as ${status}`);
+      }
+    } catch {
+      alert("Network error while updating return status");
+    }
+  };
 
   useEffect(() => {
     if (activeTab === "history") {
@@ -585,7 +605,17 @@ function ReturnsContent() {
               />
             </div>
 
-            <div className="flex items-center gap-4 text-xs font-bold text-slate-600">
+            <div className="flex items-center gap-3 text-xs font-bold text-slate-600 flex-wrap">
+              <select
+                value={historyStatusFilter}
+                onChange={(e) => setHistoryStatusFilter(e.target.value)}
+                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+              >
+                <option value="all">All Statuses</option>
+                <option value="processed">Processed</option>
+                <option value="pending">Pending</option>
+                <option value="rejected">Rejected</option>
+              </select>
               <span>
                 Total Returns: <strong>{historySummary.totalReturns}</strong>
               </span>
@@ -620,6 +650,7 @@ function ReturnsContent() {
                     <th className="py-3 px-4">Customer</th>
                     <th className="py-3 px-4">Branch</th>
                     <th className="py-3 px-4 text-center">Items Returned</th>
+                    <th className="py-3 px-4 text-center">Status / Mode</th>
                     <th className="py-3 px-4 text-right">Refund Amount</th>
                     <th className="py-3 px-4 text-center">Credit Note</th>
                   </tr>
@@ -654,18 +685,54 @@ function ReturnsContent() {
                           {ret.itemsCount} units
                         </span>
                       </td>
+                      <td className="py-3 px-4 text-center">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                            ret.status === "processed"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : ret.status === "pending"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-rose-100 text-rose-800"
+                          }`}
+                        >
+                          {ret.status}
+                        </span>
+                        <span className="block text-[10px] text-slate-400 uppercase mt-0.5">
+                          {ret.refundMethod || "cash"}
+                        </span>
+                      </td>
                       <td className="py-3 px-4 text-right font-black text-rose-600">
                         ₹{ret.refundAmount.toFixed(2)}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedCreditNote(ret)}
-                          className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold flex items-center gap-1 mx-auto"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>View Note</span>
-                        </button>
+                        <div className="inline-flex items-center gap-1">
+                          {ret.status === "pending" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleReturnStatusAction(ret.id, "processed")}
+                                className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleReturnStatusAction(ret.id, "rejected")}
+                                className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCreditNote(ret)}
+                            className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold flex items-center gap-1"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>View Note</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -696,7 +763,7 @@ function ReturnsContent() {
               </button>
             </div>
 
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs font-mono">
+            <div id="printable-credit-note" className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs font-mono">
               <div className="flex justify-between">
                 <span>Credit Note No:</span>
                 <strong>{selectedCreditNote.returnNumber}</strong>
@@ -712,6 +779,12 @@ function ReturnsContent() {
               <div className="flex justify-between">
                 <span>Customer:</span>
                 <span>{selectedCreditNote.customer?.name || "Walk-in Customer"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Refund Method / Status:</span>
+                <span className="uppercase font-bold">
+                  {(selectedCreditNote.refundMethod || "cash")} • {selectedCreditNote.status}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Reason:</span>
@@ -734,7 +807,7 @@ function ReturnsContent() {
               </div>
             </div>
 
-            <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+            <div className="flex justify-between items-center pt-2 border-t border-slate-100 print:hidden">
               <button
                 type="button"
                 onClick={() => window.print()}
@@ -751,6 +824,25 @@ function ReturnsContent() {
                 Close
               </button>
             </div>
+            <style jsx global>{`
+              @media print {
+                body * {
+                  visibility: hidden !important;
+                }
+                #printable-credit-note,
+                #printable-credit-note * {
+                  visibility: visible !important;
+                }
+                #printable-credit-note {
+                  position: fixed !important;
+                  left: 10mm !important;
+                  top: 10mm !important;
+                  right: 10mm !important;
+                  background: #fff !important;
+                  border: 1px solid #cbd5e1 !important;
+                }
+              }
+            `}</style>
           </div>
         </div>
       )}

@@ -18,7 +18,16 @@ export function A4TaxInvoice({
 }: A4TaxInvoiceProps) {
   if (!saleData) return null;
 
-  const branch = saleData.branch || saleData.store || {};
+  const rawBranch = saleData.branch || {};
+  const fallbackStore = saleData.store || {};
+  const branch = {
+    name: rawBranch.name || fallbackStore.name || "DRxStore Pharmacy",
+    address: rawBranch.address || fallbackStore.address || "",
+    phone: rawBranch.phone || fallbackStore.phone || "",
+    email: rawBranch.email || fallbackStore.email || "",
+    dlNo: rawBranch.dlNo || fallbackStore.dlNo || "",
+    gstNo: rawBranch.gstNo || fallbackStore.gstNo || "",
+  };
   const customer = saleData.customer || null;
   const items = saleData.items || [];
   const grandTotal = Number(saleData.grandTotal || 0);
@@ -31,8 +40,15 @@ export function A4TaxInvoice({
   const sgstTotal = gstAmount / 2;
 
   const isSplit = saleData.paymentMethod === "split";
-  const splits = saleData.splitPayments;
+  const splits = saleData.splitPayments || saleData.splitDetails;
   const isPaid = saleData.paymentMethod !== "credit" || Number(saleData.creditAmount || 0) <= 0;
+
+  // Bill-level payable ratio (reconciles item lines with net grandTotal after bill discounts)
+  const itemsSubtotal = items.reduce(
+    (sum: number, it: any) => sum + Number(it.price ?? Number(it.mrp || 0) * Number(it.quantity || 0)),
+    0
+  );
+  const billPayableRatio = itemsSubtotal > 0 ? Math.max(0, Math.min(1, grandTotal / itemsSubtotal)) : 1;
 
   // Format Expiry Date (MM/YYYY)
   const formatExpiry = (dateStr?: string | Date) => {
@@ -62,13 +78,20 @@ export function A4TaxInvoice({
   >();
 
   items.forEach((item: any) => {
-    const hsn = item.medicine?.hsnCode || item.hsnCode || "3004";
-    const lineNet = Number(item.price ?? item.mrp * item.quantity);
-    const gstRate = Number(item.gstPercent ?? 12);
-    const lineTaxable = Number(item.taxableBase ?? lineNet / (1 + gstRate / 100));
-    const lineGst = Number(item.gstAmount ?? lineNet - lineTaxable);
+    const hsn = item.medicine?.hsnCode || item.hsnCode || "30049099";
+    const linePreBillNet = Number(item.price ?? Number(item.mrp || 0) * Number(item.quantity || 0));
+    const lineNet = Math.round(linePreBillNet * billPayableRatio * 100) / 100;
+    const gstRate = Number(item.gstPercent ?? item.medicine?.gstPercent ?? 12);
+    const hasStoredTax =
+      item.taxableBase !== undefined &&
+      item.taxableBase !== null &&
+      item.gstAmount !== undefined &&
+      item.gstAmount !== null;
+    const lineTaxable = hasStoredTax ? Number(item.taxableBase) : lineNetTaxable(lineNet, gstRate);
+    const lineGst = hasStoredTax ? Number(item.gstAmount) : lineNet - lineTaxable;
 
-    const existing = hsnMap.get(hsn) || {
+    const mapKey = `${hsn}|${gstRate}`;
+    const existing = hsnMap.get(mapKey) || {
       hsnCode: hsn,
       taxableValue: 0,
       gstPercent: gstRate,
@@ -82,7 +105,7 @@ export function A4TaxInvoice({
     existing.sgstAmount += lineGst / 2;
     existing.totalGst += lineGst;
 
-    hsnMap.set(hsn, existing);
+    hsnMap.set(mapKey, existing);
   });
 
   const hsnBreakdown = Array.from(hsnMap.values());
@@ -112,9 +135,11 @@ export function A4TaxInvoice({
             <h1 className="text-xl font-black tracking-tight text-slate-900 uppercase">
               {branch.name || "DRxStore Pharmacy"}
             </h1>
-            <p className="text-xs text-slate-600 font-medium leading-relaxed">
-              {branch.address || "Main Healthcare Avenue, Commercial Area"}
-            </p>
+            {branch.address && (
+              <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                {branch.address}
+              </p>
+            )}
             <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-700 pt-0.5">
               {branch.phone && (
                 <span>
@@ -129,10 +154,10 @@ export function A4TaxInvoice({
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-800 font-bold pt-0.5">
               <span>
-                <strong>D.L. No:</strong> {branch.dlNo || "DL-20B/21B-PHARM-2026"}
+                <strong>D.L. No:</strong> {branch.dlNo || "N/A"}
               </span>
               <span>
-                <strong>GSTIN:</strong> {branch.gstNo || "19AAACP1234F1Z5"}
+                <strong>GSTIN:</strong> {branch.gstNo || "N/A"}
               </span>
             </div>
           </div>
@@ -252,15 +277,23 @@ export function A4TaxInvoice({
           </thead>
           <tbody className="divide-y divide-slate-200">
             {items.map((item: any, idx: number) => {
-              const medName = item.medicine?.name || item.name || `Medicine ${idx + 1}`;
+              const medName = item.medicine?.name || item.medicineName || item.name || `Medicine ${idx + 1}`;
               const genericName = item.medicine?.genericName || item.genericName || "";
-              const hsn = item.medicine?.hsnCode || item.hsnCode || "3004";
+              const hsn = item.medicine?.hsnCode || item.hsnCode || "30049099";
               const batchNo = item.batch?.batchNo || item.batchNo || "-";
               const expDate = formatExpiry(item.batch?.expiryDate || item.expiryDate);
-              const lineTotal = Number(item.price ?? item.mrp * item.quantity);
-              const gstRate = Number(item.gstPercent ?? 12);
+              const linePreBillNet = Number(item.price ?? Number(item.mrp || 0) * Number(item.quantity || 0));
+              const lineFinalNet = Math.round(linePreBillNet * billPayableRatio * 100) / 100;
+              const gstRate = Number(item.gstPercent ?? item.medicine?.gstPercent ?? 12);
               const halfGst = (gstRate / 2).toFixed(1);
-              const lineTaxable = Number(item.taxableBase ?? lineNetTaxable(lineTotal, gstRate));
+              const hasStoredTax =
+                item.taxableBase !== undefined &&
+                item.taxableBase !== null &&
+                item.gstAmount !== undefined &&
+                item.gstAmount !== null;
+              const lineTaxable = hasStoredTax
+                ? Number(item.taxableBase)
+                : lineNetTaxable(lineFinalNet, gstRate);
               const unitRate = item.quantity > 0 ? lineTaxable / item.quantity : 0;
 
               return (
@@ -301,7 +334,7 @@ export function A4TaxInvoice({
                     {halfGst}%
                   </td>
                   <td className={`${cellPadding} text-right font-bold text-slate-900 tabular-nums`}>
-                    {lineTotal.toFixed(2)}
+                    {lineFinalNet.toFixed(2)}
                   </td>
                 </tr>
               );

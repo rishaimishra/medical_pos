@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
-import { canAccessBranch } from "@/lib/rbac";
+import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { calculateShiftCashFigures } from "@/lib/cashDrawerServer";
 
 /**
  * MODULE 2.12.2: Day-End Cash Drawer Reconciliation (Z-Report Closing)
- * 
- * End-of-shift register closing tool:
- * 1. Cashier counts and enters physical currency denominations:
- *    ₹2000, ₹500, ₹200, ₹100, ₹50, ₹20, ₹10, ₹5, ₹2, ₹1, and Coins.
- * 2. Compares physical cash against recorded sales/returns/expenses/float.
- * 3. Flags Exact Match, Cash Excess (+₹X), or Cash Shortage (-₹X).
- * 4. Generates Z-Report slip with number ZREP-YYYY-XXXXX and logs audit trail.
  */
 
 const VALID_DENOMINATION_VALUES: Record<string, number> = {
@@ -34,6 +28,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
 
+  if (!canAccessPage(auth.session, "/admin/financials")) {
+    return NextResponse.json({ success: false, message: "Forbidden: Access to close cash drawer denied" }, { status: 403 });
+  }
+
   try {
     const body = await req.json();
     const {
@@ -45,14 +43,23 @@ export async function POST(req: NextRequest) {
       notes,
     } = body;
 
-    // Resolve branch
+    // Resolve & authorize branch
     let targetBranchId: number | null = auth.session.branchId;
     if (!targetBranchId && branchId) {
       const bId = parseInt(String(branchId), 10);
-      if (!isNaN(bId) && canAccessBranch(auth.session, bId)) {
-        targetBranchId = bId;
+      if (isNaN(bId) || !canAccessBranch(auth.session, bId)) {
+        return NextResponse.json({ success: false, message: "Forbidden: Invalid or unauthorized branch" }, { status: 403 });
+      }
+      targetBranchId = bId;
+    }
+
+    if (targetBranchId && auth.session.storeId) {
+      const br = await prisma.branch.findUnique({ where: { id: targetBranchId }, select: { storeId: true } });
+      if (!br || (br.storeId && br.storeId !== auth.session.storeId)) {
+        return NextResponse.json({ success: false, message: "Forbidden: Branch belongs to another store" }, { status: 403 });
       }
     }
+
     if (!targetBranchId) {
       const firstBranch = await prisma.branch.findFirst({
         where: auth.session.storeId ? { storeId: auth.session.storeId } : {},
@@ -83,7 +90,6 @@ export async function POST(req: NextRequest) {
         cleanDenominations[key] = count;
         countedCash += count * multiplier;
       }
-      // Add loose coins / change value
       const coinsVal = Math.max(0, parseFloat(String(denominations.coins || 0)));
       cleanDenominations.coins = coinsVal;
       countedCash += coinsVal;
@@ -91,14 +97,17 @@ export async function POST(req: NextRequest) {
 
     countedCash = Math.round(countedCash * 100) / 100;
 
-    // Resolve shift time boundaries
+    // Resolve shift boundaries
     const shiftEnd = shiftEndParam ? new Date(shiftEndParam) : new Date();
     let shiftStart: Date;
     if (shiftStartParam) {
       shiftStart = new Date(shiftStartParam);
     } else {
       const lastClosing = await prisma.cashDrawerClosing.findFirst({
-        where: targetBranchId ? { branchId: targetBranchId } : {},
+        where: {
+          ...(targetBranchId ? { branchId: targetBranchId } : {}),
+          ...(auth.session.storeId ? { storeId: auth.session.storeId } : {}),
+        },
         orderBy: { shiftEnd: "desc" },
       });
       if (lastClosing) {
@@ -109,122 +118,72 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const branchFilter = targetBranchId ? { branchId: targetBranchId } : {};
-
-    // 2. Query Cash Transactions during Shift
-    const [sales, returns, expenses] = await Promise.all([
-      prisma.sale.findMany({
-        where: {
-          ...branchFilter,
-          saleDate: { gte: shiftStart, lte: shiftEnd },
-        },
-        select: { grandTotal: true, paymentMethod: true, splitDetails: true },
-      }),
-      prisma.return.findMany({
-        where: {
-          ...branchFilter,
-          createdAt: { gte: shiftStart, lte: shiftEnd },
-        },
-        select: { refundAmount: true },
-      }),
-      prisma.expense.findMany({
-        where: {
-          ...branchFilter,
-          paymentMode: "cash",
-          expenseDate: { gte: shiftStart, lte: shiftEnd },
-        },
-        select: { type: true, amount: true },
-      }),
-    ]);
-
-    let cashSales = 0;
-    for (const sale of sales) {
-      const method = (sale.paymentMethod || "cash").toLowerCase();
-      const total = Number(sale.grandTotal);
-      if (method === "cash") {
-        cashSales += total;
-      } else if (method === "split" && sale.splitDetails) {
-        try {
-          const splitObj = typeof sale.splitDetails === "string"
-            ? JSON.parse(sale.splitDetails)
-            : sale.splitDetails;
-          cashSales += Number(splitObj.cash || 0);
-        } catch {
-          cashSales += total;
-        }
-      }
-    }
-
-    let cashReturns = 0;
-    for (const ret of returns) {
-      cashReturns += Number(ret.refundAmount);
-    }
-
-    let cashExpenses = 0;
-    let cashIncomes = 0;
-    for (const exp of expenses) {
-      const amt = Number(exp.amount);
-      if (exp.type === "expense") {
-        cashExpenses += amt;
-      } else if (exp.type === "income") {
-        cashIncomes += amt;
-      }
-    }
+    // 2. Query Cash Transactions during Shift via shared shift helper
+    const figures = await calculateShiftCashFigures({
+      storeId: auth.session.storeId,
+      branchId: targetBranchId,
+      shiftStart,
+      shiftEnd,
+    });
 
     const openingFloat = Math.max(0, parseFloat(String(openingFloatParam || 0)));
 
-    // System Expected Cash Formula
-    const expectedCash = Math.round(
-      (openingFloat + cashSales - cashReturns - cashExpenses + cashIncomes) * 100
-    ) / 100;
+    const totalCashIn = figures.cashSales + figures.cashIncomes + figures.cashBakiCollections;
+    const totalCashOut = figures.cashReturns + figures.cashExpenses + figures.cashSupplierPayouts;
+    const expectedCash = Math.round((openingFloat + totalCashIn - totalCashOut) * 100) / 100;
 
-    // Reconciliation Difference
     const difference = Math.round((countedCash - expectedCash) * 100) / 100;
     let status: "exact" | "excess" | "shortage" = "exact";
     if (difference > 0) status = "excess";
     else if (difference < 0) status = "shortage";
 
-    // 3. Generate Z-Report Number: ZREP-YYYY-XXXXX
+    // 3. Concurrency-safe ZREP-YYYY-XXXXX sequential numbering inside transaction
     const year = new Date().getFullYear();
-    const countThisYear = await prisma.cashDrawerClosing.count({
-      where: {
-        createdAt: {
-          gte: new Date(year, 0, 1),
-          lte: new Date(year, 11, 31, 23, 59, 59),
+    const zrepPrefix = `ZREP-${year}-`;
+
+    const closing = await runInTransaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(2026004)`;
+      const lastZ = await tx.cashDrawerClosing.findFirst({
+        where: { closingNumber: { startsWith: zrepPrefix } },
+        orderBy: { id: "desc" },
+        select: { closingNumber: true },
+      });
+      let nextSeq = 1;
+      if (lastZ?.closingNumber) {
+        const parts = lastZ.closingNumber.split("-");
+        const parsed = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(parsed)) nextSeq = parsed + 1;
+      }
+      const closingNumber = `${zrepPrefix}${String(nextSeq).padStart(5, "0")}`;
+
+      return await tx.cashDrawerClosing.create({
+        data: {
+          closingNumber,
+          storeId: auth.session!.storeId ?? null,
+          branchId: targetBranchId,
+          userId: auth.session!.userId,
+          shiftStart,
+          shiftEnd,
+          openingFloat,
+          cashSales: figures.cashSales,
+          cashReturns: figures.cashReturns,
+          cashExpenses: Math.round((figures.cashExpenses + figures.cashSupplierPayouts) * 100) / 100,
+          cashIncomes: Math.round((figures.cashIncomes + figures.cashBakiCollections) * 100) / 100,
+          expectedCash,
+          countedCash,
+          difference,
+          status,
+          denominations: JSON.stringify(cleanDenominations),
+          totalSalesCount: figures.totalSalesCount,
+          notes: notes?.trim() || null,
         },
-      },
-    });
-    const closingNumber = `ZREP-${year}-${String(countThisYear + 1).padStart(5, "0")}`;
-
-    // 4. Save Record
-    const closing = await prisma.cashDrawerClosing.create({
-      data: {
-        closingNumber,
-        storeId: auth.session.storeId ?? null,
-        branchId: targetBranchId,
-        userId: auth.session.userId,
-        shiftStart,
-        shiftEnd,
-        openingFloat,
-        cashSales: Math.round(cashSales * 100) / 100,
-        cashReturns: Math.round(cashReturns * 100) / 100,
-        cashExpenses: Math.round(cashExpenses * 100) / 100,
-        cashIncomes: Math.round(cashIncomes * 100) / 100,
-        expectedCash,
-        countedCash,
-        difference,
-        status,
-        denominations: JSON.stringify(cleanDenominations),
-        totalSalesCount: sales.length,
-        notes: notes?.trim() || null,
-      },
-      include: {
-        branch: { select: { id: true, code: true, name: true, phone: true, address: true, gstNo: true, dlNo: true } },
-        user: { select: { id: true, name: true, role: true } },
-      },
+        include: {
+          branch: { select: { id: true, code: true, name: true, phone: true, address: true, gstNo: true, dlNo: true } },
+          user: { select: { id: true, name: true, role: true } },
+        },
+      });
     });
 
-    // 5. System Audit Log
     await logAudit({
       storeId: auth.session.storeId ?? null,
       action: "CASH_DRAWER_CLOSED",
@@ -234,12 +193,12 @@ export async function POST(req: NextRequest) {
       branchId: targetBranchId || undefined,
       ipAddress: getClientIp(req),
       details: {
-        closingNumber,
+        closingNumber: closing.closingNumber,
         expectedCash,
         countedCash,
         difference,
         status,
-        salesCount: sales.length,
+        salesCount: figures.totalSalesCount,
       },
     });
 

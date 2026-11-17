@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const [total, orders] = await Promise.all([
+    const [total, orders, allStatusGroups, totalValueAgg] = await Promise.all([
       prisma.purchaseOrder.count({ where: whereClause }),
       prisma.purchaseOrder.findMany({
         where: whereClause,
@@ -61,11 +61,38 @@ export async function GET(req: NextRequest) {
           },
         },
       }),
+      prisma.purchaseOrder.groupBy({
+        by: ["status"],
+        where: { supplierId: auth.session.supplierId, status: { not: "draft" } },
+        _count: { _all: true },
+      }),
+      prisma.purchaseOrder.aggregate({
+        where: { supplierId: auth.session.supplierId, status: { notIn: ["draft", "cancelled"] } },
+        _sum: { total: true },
+      }),
     ]);
+
+    const statusCounts: Record<string, number> = {
+      all: 0,
+      pending: 0,
+      price_updated: 0,
+      confirmed: 0,
+      shipped: 0,
+      received: 0,
+      cancelled: 0,
+    };
+    for (const g of allStatusGroups) {
+      statusCounts.all += g._count._all;
+      statusCounts[g.status] = (statusCounts[g.status] || 0) + g._count._all;
+    }
 
     return NextResponse.json({
       success: true,
       orders,
+      summary: {
+        statusCounts,
+        totalActiveValue: Number(totalValueAgg._sum.total || 0),
+      },
       pagination: {
         total,
         page,
