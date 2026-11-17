@@ -1,0 +1,713 @@
+================================================================================
+           MEDICAL POS & PHARMACY MANAGEMENT SYSTEM — MASTER PLAN
+      PART 3: CEO / SUPER ADMIN CONTROL TOWER, SUBSCRIPTIONS & SAAS ENGINE
+================================================================================
+Target File: all text folder/to_do_part_3.txt
+Platform: Multi-Tenant SaaS Architecture Built on Parts 1 & 2 (Modules 1.1 -> 2.20)
+Format: English Version (Top) | Bengali Version (Bottom)
+Ordering: Strict Dependency-Driven Step-by-Step Build Sequence (Modules 3.1 -> 3.10)
+Status Tracking: Each actionable task is initialized with [STATUS: PENDING]
+
+================================================================================
+================================================================================
+                           PART 3: ENGLISH VERSION
+================================================================================
+================================================================================
+
+--------------------------------------------------------------------------------
+MODULE 3.1: MULTI-TENANT STORE ISOLATION COMPLETION & SAAS DATABASE SCHEMA
+--------------------------------------------------------------------------------
+3.1.1 [STATUS: PENDING] Complete Store-Tenant (`storeId`) Isolation Across Operational Models
+      - Audit existing schema models (`Settings` = Store Tenant) and add nullable
+        indexed `storeId` foreign keys referencing `settings.id` (`onDelete: Cascade`)
+        on legacy un-scoped models: `Medicine`, `Supplier`, `Customer`,
+        `SupplierMessage`, and `PatientMessage`.
+      - Convert global uniqueness constraints (`Customer.phone`, `Customer.email`,
+        `Medicine` search assumptions) to support clean tenant scoping while keeping
+        backward-compatible lookups during migration.
+      - Write an idempotent database backfill script associating pre-existing legacy
+        rows with their owning `Settings.id` via linked `Branch` / `Sale` /
+        `PurchaseOrder` relations or primary store default.
+      - Add store lifecycle columns directly on `Settings`: `storeStatus`
+        (`active`, `trialing`, `grace_period`, `suspended`, `archived`),
+        `suspensionReason`, `suspendedAt`, `ownerName`, `ownerEmail`, `city`, `state`.
+
+3.1.2 [STATUS: PENDING] Platform CEO / Super Admin Users & Configuration Models
+      - Create `PlatformUser` (`platform_users`) completely isolated from store `User`:
+        fields `id`, `name`, `username` (unique), `email` (unique), `password`
+        (BCrypt cost 12), `role` (`ceo`, `platform_admin`, `finance_ops`,
+        `support_viewer`), `active`, `lastLogin`, `createdAt`, `updatedAt`.
+      - Create `PlatformConfig` (`platform_config`) singleton/key-value settings table
+        for SaaS billing defaults: platform legal name, GSTIN, SAC code (`998314`),
+        billing address, default trial days (14), grace period days (7), and encrypted
+        Razorpay gateway credentials/mode (`test` vs `live`) if managed via UI.
+      - Create `PlatformAuditLog` (`platform_audit_logs`) tracking every Super Admin /
+        CEO action, plan change, store suspension, manual grant, impersonation start/stop,
+        and webhook processing result.
+
+3.1.3 [STATUS: PENDING] Subscription Plans, Store Subscriptions, Payments, Invoices & Webhooks Schema
+      - Create `SubscriptionPlan` (`subscription_plans`): `id`, `code` (unique), `name`,
+        `tagline`, `description`, `billingCycle` (`monthly`, `quarterly`, `yearly`,
+        `lifetime`), `intervalCount`, `priceInr` `DECIMAL(10,2)`, `setupFeeInr`,
+        `trialDays`, `isPublic`, `isRecommended`, `isActive`, `sortOrder`,
+        `razorpayPlanId` (unique nullable), `razorpaySyncedAt`, `razorpaySyncStatus`
+        (`pending`, `synced`, `failed`), `razorpaySyncError`,
+        `maxBranches`, `maxStaffUsers`, `maxMedicines`, `maxMonthlyInvoices`,
+        `maxSuppliers`, `maxRxStorageMb` (`-1` = Unlimited), and `featuresJson`
+        (typed boolean feature entitlement flags).
+      - Create `StoreSubscription` (`store_subscriptions`): `id`, `storeId` -> `Settings.id`,
+        `planId` -> `SubscriptionPlan.id`, `status` (`trialing`, `active`, `past_due`,
+        `grace_period`, `cancelled`, `expired`, `suspended`), `billingMode`
+        (`razorpay_subscription`, `razorpay_order`, `manual_grant`),
+        `razorpaySubscriptionId` (unique nullable), `razorpayCustomerId`,
+        `currentPeriodStart`, `currentPeriodEnd`, `trialEndsAt`, `graceEndsAt`,
+        `cancelAtPeriodEnd`, `cancelledAt`, `autoRenew`, `customLimitsJson`
+        (per-store CEO enterprise quota overrides), `customFeaturesJson`,
+        `grantedByPlatformUserId`, `notes`.
+      - Create `SubscriptionPayment` (`subscription_payments`): `id`, `subscriptionId`,
+        `storeId`, `planId`, `invoiceNo` (unique `SUB-INV-YYYY-00001`), `amountSubtotal`,
+        `gstPercent` (18.00), `gstAmount`, `totalAmount`, `currency` (`INR`),
+        `paymentType` (`initial`, `renewal`, `upgrade_proration`, `manual_offline`),
+        `status` (`created`, `authorized`, `captured`, `failed`, `refunded`),
+        `razorpayOrderId`, `razorpayPaymentId`, `razorpaySubscriptionId`,
+        `razorpaySignatureVerified`, `paymentMethod`, `paidAt`, `failureReason`.
+      - Create `RazorpayWebhookEvent` (`razorpay_webhook_events`): `id`, `eventId`
+        (unique idempotency key from `x-razorpay-event-id`), `eventType`,
+        `payloadJson`, `signatureVerified`, `processed`, `processedAt`, `errorMessage`.
+
+--------------------------------------------------------------------------------
+MODULE 3.2: PLATFORM SUPER ADMIN AUTHENTICATION & ISOLATED CONTROL SHELL
+--------------------------------------------------------------------------------
+3.2.1 [STATUS: PENDING] Separate Super Admin Auth Engine & Strict Tenant Boundary
+      - Add `SUPPLIER` / `CUSTOMER` sibling guard `verifySuperAdminRequest(req)` and
+        HMAC-SHA256 signed cookie `med_pos_super_admin_session` inside `src/lib/auth.ts`.
+      - Zero privilege crossover: store `User` accounts (`role === "admin"`) are
+        explicitly rejected (`401`/`403`) on all `/api/super-admin/*` routes, while
+        `PlatformUser` tokens verify live DB `active` status and role permissions.
+      - Add brute-force protection under dedicated context `"super_admin"` (5 attempts /
+        15-min lockout) on `POST /api/auth/super-admin`.
+      - Provide secure initial CEO bootstrap CLI (`scripts/seed-super-admin.ts` or
+        guarded first-CEO setup via `PLATFORM_BOOTSTRAP_KEY` env) never exposed inside
+        store `/setup/wizard`.
+      - Build Dedicated Super Admin Login Page (`src/app/(super-admin)/super-admin/login/page.tsx`
+        at `/super-admin/login`) completely separate from Store `/admin/login`, Supplier
+        `/supplier/login`, and Customer `/customer/login`:
+        * Supports Username or Email + Password login (`POST /api/auth/super-admin`),
+          live session check (`GET /api/auth/super-admin`), logout (`DELETE /api/auth/super-admin`),
+          and Super Admin profile/password change (`PATCH /api/auth/super-admin`).
+        * Includes guarded First-Run CEO Bootstrap tab on `/super-admin/login` (active only
+          when `0` `PlatformUser` rows exist and valid `PLATFORM_BOOTSTRAP_KEY` is provided)
+          plus ability for `ceo` to create/manage additional Super Admin team logins
+          (`platform_admin`, `finance_ops`, `support_viewer`).
+
+3.2.2 [STATUS: PENDING] Super Admin / CEO Portal Shell & Separate Panel Navigation (`/super-admin`)
+      - Build executive dark/teal-accented workspace shell in
+        `src/app/(super-admin)/super-admin/layout.tsx` (following `ui_ux_design_plan.txt`
+        Sentry/Linear data-dense executive aesthetic cleanly separated from store `/admin`).
+      - Organize distinct, focused sidebar panels:
+        1) Executive Overview (`/super-admin/dashboard`)
+        2) Stores Directory (`/super-admin/stores`)
+        3) Branches Explorer (`/super-admin/branches`)
+        4) Plan Architect & Razorpay Sync (`/super-admin/plans`)
+        5) Store Subscriptions (`/super-admin/subscriptions`)
+        6) Billing & Razorpay Payments (`/super-admin/payments`)
+        7) CEO Analytics & Reports (`/super-admin/reports`)
+        8) Platform Audit Logs (`/super-admin/audit-logs`)
+        9) Platform Settings & Razorpay Config (`/super-admin/settings`)
+        10) Global Users & Roles Explorer (`/super-admin/users` — Store Admins, Staff,
+            Suppliers, Patients & Platform Team)
+        11) Platform Broadcasts & Store Announcements (`/super-admin/announcements`)
+      - Include mobile drawer navigation, active role badge, session idle timeout, and
+        global quick-search command bar (`Ctrl+K` / `/`) across Store Name, GSTIN, Code,
+        Branch, and Subscription Invoice IDs.
+
+3.2.3 [STATUS: PENDING] Guarded "Support View / Impersonate Store Admin" Mode
+      - Allow CEO / `platform_admin` to open a time-limited (30-min) support session into
+        a store's `/admin/dashboard` with explicit reason prompt and mandatory persistent
+        red top banner ("CEO Support Session: Viewing <Store Name> — Read/Audit Logged").
+      - Log impersonation start and exit in both `PlatformAuditLog` and the target
+        store's `AuditLog` for compliance transparency.
+
+--------------------------------------------------------------------------------
+MODULE 3.3: SEPARATE MANAGEMENT PANELS — STORES & BRANCHES CONTROL CENTER
+--------------------------------------------------------------------------------
+3.3.1 [STATUS: PENDING] Stores Directory & Lifecycle Management Panel (`/super-admin/stores`)
+      - Paginated, filterable table of all pharmacy tenants (`Settings`): Store Name,
+        Owner Contact, City/State, Active Plan Badge, Subscription Status (`Trialing`,
+        `Active`, `Grace Period`, `Suspended`), Branch Count (`used / limit`), Staff
+        Count (`used / limit`), 30-Day Retail GMV, and Last POS Activity timestamp.
+      - Instant filter pills: `All Stores`, `Active Paid`, `Free Trial`, `Expiring <= 7d`,
+        `Near Quota >= 80%`, `Past Due / Suspended`, `Inactive >= 14d`.
+      - Quick lifecycle actions per store: Activate, Put in Read-Only Grace Mode, Suspend
+        Access (with reason stored on `Settings.suspensionReason`), Extend Trial (+7/+14/+30d),
+        or Grant Custom Plan.
+
+3.3.2 [STATUS: PENDING] Single-Store 360° Deep-Dive Workspace (`/super-admin/stores/[id]`)
+      - Multi-tab Store Inspection Panel giving the CEO complete store visibility:
+        * Tab 1 (`Overview & KPIs`): Store profile (GSTIN, DL, address, currency, SMTP
+          status), Net Revenue Today/30d/All-Time, Invoices Count, Total Inventory Cost.
+        * Tab 2 (`Store Branches`): All branches belonging specifically to this Store
+          (code, MAIN badge, address, DL/GSTIN, active toggle, staff count, stock value,
+          30d sales, last Z-Report closing). Ability to toggle branch active state.
+        * Tab 3 (`Staff & Users`): Read-only list of store `User` accounts, roles, branch
+          assignments, and last login timestamps (reset password / deactivate emergency
+          support button).
+        * Tab 4 (`Subscription & Quota Usage`): Live progress bars (`Branches`, `Staff`,
+          `Medicines`, `Monthly Invoices`, `Suppliers`, `Rx Storage`), current plan
+          entitlement toggles, custom CEO per-store limit/feature overrides, and SaaS
+          payment/invoice history for this store.
+        * Tab 5 (`Store Activity & Audit`): Latest invoices, POs, and security audit logs.
+        * Tab 6 (`Store Inventory, Sales, POs & Returns`): Read-only operational drill-down
+          into this Store's medicine catalog, expiring/low-stock batches, recent POS bills,
+          supplier POs/GRNs, customer Baki Khata dues, and expenses.
+
+3.3.3 [STATUS: PENDING] Global Cross-Store Branches Control Panel (`/super-admin/branches`)
+      - Dedicated master explorer listing all `Branch` outlets across the platform with
+        Store filter dropdown, `MAIN` vs sub-branch filter, Active/Inactive status,
+        State/City, Compliance Check badge (DL 20B/21B & GSTIN populated vs missing),
+        Batch SKU Count, Stock Valuation, 30d Sales Volume, and Last Cash Register Close.
+      - Inline branch inspection drawer allowing CEO to review branch compliance
+        completeness, operational status, and jump straight to the parent Store workspace.
+      - Single-Branch Deep-Dive View (`/super-admin/branches/[id]`): Dedicated branch-level
+        panel showing that specific branch's assigned Staff, Batch Inventory & Expiry Risk,
+        POS Invoices, Returns, Expenses, and Day-End Cash Drawer Z-Report history.
+
+3.3.4 [STATUS: PENDING] Global Users Directory & Platform Broadcasts Panel (`/super-admin/users` & `/super-admin/announcements`)
+      - Cross-tenant User Explorer with separate tabs for: Store Owners/Admins, Branch Staff
+        (Managers/Pharmacists/Cashiers/Accountants), Supplier Portal Accounts (`SupplierUser`),
+        Patient Portal Accounts (`Customer`), and Platform Super Admin Team (`PlatformUser`).
+      - Platform Broadcast Engine: Super Admin can publish targeted announcements (maintenance
+        alerts, GST/regulatory deadlines, plan upgrade offers) that surface directly inside
+        Store Admin Notification Bells (`/api/admin/notifications`) and top banners.
+
+--------------------------------------------------------------------------------
+MODULE 3.4: SUBSCRIPTION PLAN ARCHITECT & RECOMMENDED SAAS TIER BLUEPRINT
+--------------------------------------------------------------------------------
+3.4.1 [STATUS: PENDING] Standardized Feature Entitlement & Resource Limit Registries
+      - Create `src/lib/saasFeatures.ts` defining canonical **12 Feature Entitlement Keys**
+        covering every operational pillar built in Parts 1 & 2:
+        1) `posBilling` — Core FEFO POS Billing, Barcode Scan & Invoices
+        2) `salesAndReturnsCore` — Sales History, Discount-Proportional Returns & Prints
+        3) `bakiKhataCreditLedger` — Customer Credit Limits & Baki Khata Settlement Ledger
+        4) `purchasesAndGrn` — Procurement POs & GRN Stock Receiving
+        5) `multiBranchManagement` — Multiple Outlets, Branch Switcher & Consolidated View
+        6) `supplierPortalAndGrn` — External Supplier Self-Service Portal & Tracking
+        7) `patientPortalAndRxQueue` — Customer Portal, Digital Rx Upload & Chronic Refills
+        8) `twoWayMessagingInboxes` — Patient Inbox, Supplier Inbox & Contact Form Routing
+        9) `gstAndRegulatoryReports` — GSTR-1, GSTR-3B & Schedule H/H1 Drug Register
+        10) `advancedBiAndProfitReports` — Admin Sales Summary, COGS P&L, MoM Growth & Dead Stock
+        11) `excelAndCsvExports` — Multi-Sheet OpenXML `.xlsx` & CSV Report/Ledger Exports
+        12) `customDiscountsAndDayEndClose` — Discount Policies, Overrides, Cash Z-Report & Auto Backups/Alerts
+        13) `bulkMedicineImport` — Bulk CSV/Excel Medicine Catalog Import & Template Engine
+        14) `barcodeAndThermalLabels` — Code 128 Barcode Sticker Generation & Thermal Label Print
+        15) `expenseAndFinancialLedger` — Operational Income/Expense Vouchers & Party Financial Ledger
+        16) `auditAndBackupCompliance` — Tamper-Proof Security Audit Trail, Email Alerts & 1-Click DB Backups
+      - Define **6 Quantified Quota Resource Keys** (plus optional extended caps; `-1` = Unlimited):
+        * `maxBranches` | `maxStaffUsers` | `maxMedicines`
+        * `maxMonthlyInvoices` | `maxSuppliers` | `maxRxStorageMb`
+        * Extended Caps: `maxCustomers` (Patient Registry Cap) | `maxDiscountSchemes` (Active Promo Cap)
+
+3.4.2 [STATUS: PENDING] Recommended 4-Tier SaaS Blueprint & Seeding
+      - Seed four production-calibrated pharmacy tiers (editable/extensible by Super Admin):
+        1) **Trial Plan (`FREE_TRIAL`)** — Rs 0 / 14 Days:
+           - 1 Branch, 5 Staff, 2,500 Medicines, 1,000 Monthly Invoices, 50 Suppliers, 250 MB Rx Storage.
+           - Full platform preview (all core + Growth features unlocked for 14 days).
+        2) **Starter Clinic (`STARTER`)** — Rs 799/mo (or Rs 7,990/yr):
+           - Limits: `1` Branch, `3` Staff, `2,000` Medicines, `1,000` Monthly Invoices, `25` Suppliers, `250 MB` Rx Storage.
+           - Enabled: Core POS, Purchases & GRN, Basic Returns, Customer Baki Khata.
+           - Locked: Multi-Branch, Supplier Portal, Patient Portal, Messaging Inboxes,
+             GST/Schedule H1 Compliance, COGS BI/Dead Stock, Excel Exports, Z-Report/Promo Campaigns.
+        3) **Growth Pharmacy (`GROWTH` — Recommended)** — Rs 1,999/mo (or Rs 19,990/yr):
+           - Limits: `3` Branches, `15` Staff, `15,000` Medicines, `10,000` Monthly Invoices, `150` Suppliers, `2,048 MB` Rx Storage.
+           - Enabled: All Starter features + Multi-Branch, Supplier Portal, Patient Portal,
+             Two-Way Inboxes, GSTR-1/3B & Schedule H1, COGS P&L BI, Excel `.xlsx` Exports,
+             Discounts & Z-Report Reconciliation.
+        4) **Enterprise Chain (`ENTERPRISE`)** — Rs 4,999/mo (or Rs 49,990/yr):
+           - Limits: Unlimited (`-1`) Branches, Staff, Medicines, Monthly Invoices,
+             Suppliers, and `25,600 MB` (25 GB) / Unlimited Rx Storage.
+           - Enabled: All 12 Feature Keys + Priority Custom Overrides & Audit/Backup Tools.
+
+3.4.3 [STATUS: PENDING] Super Admin Plan Builder UI & CRUD API (`/super-admin/plans`)
+      - Build `GET/POST /api/super-admin/plans` and `PUT/PATCH/DELETE /api/super-admin/plans/[id]`.
+      - Interactive Plan Builder card + modal/drawer with: Code, Display Name, Tagline,
+        Billing Cycle (`monthly`, `quarterly`, `yearly`, `lifetime`), Price (INR) + GST note,
+        Trial Days, Recommended Highlight toggle, Public Visibility toggle (for secret
+        Enterprise deals), 6 Numeric Quota Inputs (`Unlimited` quick toggle), and grouped
+        12-Feature Toggle Matrix with live subscriber impact count before saving.
+      - Safe Archival Rule: plans with active `StoreSubscription` rows cannot be hard-deleted;
+        instead Super Admin marks `isActive = false` / `isPublic = false` so existing
+        subscribers remain grandfathered cleanly without breaking renewals.
+
+--------------------------------------------------------------------------------
+MODULE 3.5: RAZORPAY PLAN SYNC, CHECKOUT & IDEMPOTENT WEBHOOK ENGINE
+--------------------------------------------------------------------------------
+3.5.1 [STATUS: PENDING] Razorpay REST Client & Plan-to-Razorpay Bidirectional Sync Engine
+      - Create `src/lib/razorpay.ts` implementing authenticated Razorpay REST API calls
+        (`Basic Auth` using `RAZORPAY_KEY_ID` + `RAZORPAY_KEY_SECRET`, zero fragile vendor
+        lock-in or official SDK wrapper cleanly abstracted) + HMAC-SHA256 verification.
+      - Automatic Plan Sync on Create / Manual "Sync to Razorpay" Trigger:
+        * Maps `SubscriptionPlan` billing cycle (`monthly -> monthly/1`, `quarterly -> monthly/3`,
+          `yearly -> yearly/1`) and amount in **paise** (`Math.round(price * 100)`) to
+          Razorpay `POST /v1/plans`.
+        * Stores returned `razorpayPlanId` (`plan_xxxx`), `razorpaySyncedAt`, and sets
+          `razorpaySyncStatus = "synced"` (or captures exact API error in `razorpaySyncError`
+          with 1-click "Retry Razorpay Sync" in UI).
+      - Immutable Billing Field Versioning Rule (Real-World Razorpay Constraint):
+        * Because Razorpay Plans do not allow mutating price/currency/period on an existing
+          `plan_id`, editing **quotas or feature flags** updates only our local DB immediately,
+          whereas changing `priceInr` or `billingCycle` creates a fresh Razorpay Plan version
+          and links the updated plan cleanly for new purchases while preserving old plans
+          for existing subscriptions.
+      - Add bulk "Reconcile All Plans with Razorpay" action pulling `GET /v1/plans` to
+        verify parity.
+
+3.5.2 [STATUS: PENDING] Store Subscription Checkout & Crypto Signature Verification
+      - Build Store checkout APIs (`POST /api/admin/billing/checkout` and
+        `POST /api/admin/billing/verify`):
+        * Flow A (Auto-Renewing Subscription): Creates/reuses Razorpay Customer, creates a
+          Razorpay Subscription (`POST /v1/subscriptions` linked to `plan.razorpayPlanId`),
+          and returns `{ subscriptionId, razorpayKeyId }` for Razorpay Checkout modal.
+        * Flow B (One-Time Order / Annual / Prorated Upgrade): Creates a GST-inclusive
+          Razorpay Order (`POST /v1/orders` in paise) and creates pending
+          `SubscriptionPayment` record.
+      - Verification Endpoint: Validates `razorpay_signature` via `crypto.timingSafeEqual`
+        against `HMAC_SHA256(razorpay_payment_id + "|" + (razorpay_order_id or razorpay_subscription_id), secret)`.
+      - Inside atomic `runInTransaction()`: activates `StoreSubscription` (extending
+        `currentPeriodStart`/`currentPeriodEnd`), resets `Settings.storeStatus = "active"`,
+        marks `SubscriptionPayment.status = "captured"`, issues sequential GST Tax Invoice
+        `SUB-INV-YYYY-00001`, and logs audit trail.
+
+3.5.3 [STATUS: PENDING] Idempotent Razorpay Webhook Processor (`/api/webhooks/razorpay`)
+      - Implement public webhook receiver verifying `x-razorpay-signature` header using raw
+        request body (`await req.text()`) and `RAZORPAY_WEBHOOK_SECRET` via `timingSafeEqual`.
+      - Enforce strict replay protection using `RazorpayWebhookEvent` (`eventId` from
+        `x-razorpay-event-id`): ignore duplicate deliveries idempotently (`200 OK`).
+      - Handle core lifecycle events automatically inside DB transactions:
+        * `subscription.authenticated` / `subscription.activated` -> mark subscription `active`
+        * `subscription.charged` / `invoice.paid` -> advance `currentPeriodEnd`, create
+          renewal `SubscriptionPayment` + `SUB-INV-...` GST invoice, clear grace period
+        * `subscription.pending` / `payment.failed` -> transition to `grace_period` (7 days)
+          & email Store Owner payment retry alert
+        * `subscription.halted` / `subscription.cancelled` -> update status and downgrade /
+          lock gated modules cleanly after period end
+        * `refund.processed` -> update payment `refunded` status cleanly.
+
+3.5.4 [STATUS: PENDING] Manual / Enterprise Offline Grant, Trial Extension & Refunds Panel
+      - Allow Platform CEO (`ceo` / `platform_admin`) to assign any plan manually (for
+        bank NEFT/RTGS/Cheque annual enterprise contracts), extend trial/grace expiry dates,
+        apply custom store-level quota overrides (`customLimitsJson`), or record offline
+        payments synced to `SUB-INV-...` invoices.
+
+--------------------------------------------------------------------------------
+MODULE 3.6: PLAN-WISE ENTITLEMENT ENGINE & FULL-STACK FEATURE/COUNT GATING
+--------------------------------------------------------------------------------
+3.6.1 [STATUS: PENDING] Centralized Entitlement Resolver & Live Quota Counter (`src/lib/entitlements.ts`)
+      - Build `getStoreEntitlements(storeId)` resolving effective features & limits by
+        merging: active `StoreSubscription.plan` + store-level CEO overrides
+        (`customFeaturesJson` / `customLimitsJson`) + subscription status (`trialing` /
+        `active` / `grace_period` -> open; `expired` / `suspended` / `cancelled-past-end`
+        -> locked to Read-Only / Billing recovery).
+      - Cache resolved entitlements in-memory per `storeId` with short TTL (e.g. 15s) and
+        immediate invalidation helper (`invalidateStoreEntitlements(storeId)`) triggered
+        whenever a plan updates, subscription activates, or CEO suspends a store.
+      - Implement `requireStoreFeature(storeId, featureKey)` and `checkStoreQuota(storeId, resource)`
+        returning consistent HTTP `402 Payment Required` (or `403` for external portals) with
+        structured JSON: `{ success: false, upgradeRequired: true, reason, featureKey,
+        resource, currentPlanCode, used, limit, message }`.
+
+3.6.2 [STATUS: PENDING] Backend API Feature Gating Across Existing Modules 1.1 -> 2.20
+      - Guard every gated store/portal API route cleanly without breaking core safety:
+        * `multiBranchManagement`: `POST /api/admin/branches`, multi-branch consolidated views
+        * `supplierPortalAndGrn`: `/api/admin/purchases/*`, `/api/admin/grn`, `/api/supplier/*`
+          (also returns clean maintenance/unavailable notice if supplier's target store plan
+          lacks this feature)
+        * `patientPortalAndRxQueue`: `/api/admin/prescriptions`, `/api/customer/prescriptions`,
+          `/api/customer/refills`, `/api/customer/returns`
+        * `twoWayMessagingInboxes`: `/api/admin/patient-messages`, `/api/admin/messages`,
+          `/api/customer/messages`, `/api/supplier/messages`
+        * `gstAndRegulatoryReports`: `/api/admin/reports/gst*`, `/api/admin/reports/schedule-drugs*`
+        * `advancedBiAndProfitReports`: `/api/admin/reports/sales-summary` (excluding `/export`),
+          `/api/admin/reports/dead-stock`
+        * `excelAndCsvExports`: `/api/admin/reports/*/export`, `/api/admin/ledger/export`
+        * `customDiscountsAndDayEndClose`: `/api/admin/discounts*`, `/api/admin/cash-drawer*`
+        * `bakiKhataCreditLedger`: customer credit limit / Baki payments & `/api/admin/customers/[id]/payments`
+        * Audit & Backup: `/api/admin/audit-logs`, `/api/admin/backup`.
+      - Expose sanitized public store entitlement summary on `/api/admin/billing/status` (for
+        authenticated Store Admin/Staff) so UI mirrors exact backend lock state.
+
+3.6.3 [STATUS: PENDING] Server-Side Hard/Soft Count Limit Enforcement
+      - Wire `checkStoreQuota(storeId, resource)` atomically inside creation/billing endpoints:
+        * `POST /api/admin/branches` -> count `prisma.branch.count({ where: { storeId } }) < maxBranches`
+        * `POST /api/admin/users` -> count active `prisma.user.count({ where: { storeId, active: true } }) < maxStaffUsers`
+        * `POST /api/admin/medicines` -> count store medicines `< maxMedicines`
+        * `POST /api/admin/suppliers` -> count store suppliers `< maxSuppliers`
+        * `POST /api/admin/pos` -> count calendar-month invoices (`Branch: { storeId }`) against
+          `maxMonthlyInvoices` (emit warning header `X-Quota-Warning: 85%` above 80%, block
+          with `402` only past hard limit + configured grace buffer so counters don't lock
+          mid-checkout silently)
+        * `POST /api/customer/prescriptions` -> verify stored bytes against `maxRxStorageMb`.
+
+3.6.4 [STATUS: PENDING] Graceful Lifecycle Protection (Trial Expiry, Grace Period & Suspended Store)
+      - **Active / Trialing:** All plan features & quotas active; subtle trial countdown pill
+        when `<= 5 days` remain.
+      - **Grace Period (7 days post-failed renewal or expiry):** Amber persistent alert banner;
+        existing POS sales continue uninterrupted for patient care while new high-tier
+        exports/additions prompt upgrade, avoiding catastrophic mid-day counter lockouts.
+      - **Expired / Hard Suspended Store:** Only `/admin/billing` (to renew/pay) and existing
+        Read-Only Compliance Exports (CSV/Audit) remain accessible; POS creation, user
+        creation, and new mutations return HTTP `402`/`403` with clear renewal link.
+
+--------------------------------------------------------------------------------
+MODULE 3.7: STORE ADMIN SUBSCRIPTION PORTAL & UI LOCK / UPGRADE EXPERIENCE
+--------------------------------------------------------------------------------
+3.7.1 [STATUS: PENDING] Store Admin Subscription & Plan Purchase Portal (`/admin/billing`)
+      - Build clean, transparent billing dashboard inside Store Admin (accessible to `admin`
+        role; staff see read-only current tier or Billing Contact prompt):
+        * Active Plan Hero Card: Plan name, Status pill (`Active`, `Trialing`, `Past Due`),
+          Current period end / Next Razorpay auto-debit date, Auto-Renew toggle.
+        * Live Usage Meters Grid: Visual progress bars (Green < 70%, Amber 70–94%, Red >= 95%)
+          for Branches, Staff Users, Medicines Catalog, Monthly Invoices, Suppliers, and Storage.
+        * Plan Comparison & Purchase Grid: Monthly vs Yearly toggle (highlighting annual savings),
+          clear feature checklists, count limits, Recommended badge, and interactive
+          **"Subscribe / Upgrade via Razorpay"** button launching Razorpay Standard Checkout JS.
+
+3.7.2 [STATUS: PENDING] Self-Serve Plan Changes, Cancellation & GST Tax Invoices
+      - Support Upgrade (with transparent remaining-days proration credit calculation or
+        immediate checkout), Downgrade-at-Period-End scheduling (warning if current branches/users
+        exceed target plan quota!), and Cancellation (`cancelAtPeriodEnd` toggle synced with
+        Razorpay `POST /v1/subscriptions/:id/cancel`).
+      - Payment History & Printable SaaS GST Invoices (`SUB-INV-...` showing Store GSTIN vs
+        Platform GSTIN, SAC `998314`, taxable base, CGST 9% + SGST 9% / IGST 18%, total).
+
+3.7.3 [STATUS: PENDING] Frontend Feature-Lock UX (`<FeatureGate />` & Locked Navigation)
+      - Update `/admin/layout.tsx` and Zustand subscription store (`useSubscriptionStore.ts`)
+        to load `entitlements` alongside session context.
+      - Sidebar UX: Features not included in the Store's current plan display a muted Lock icon
+        and "PRO" / tier pill instead of disappearing confusingly; clicking opens a sleek
+        `<UpgradeRequiredModal />` explaining what the feature does and linking straight to
+        `/admin/billing?highlight=<featureKey>`.
+      - Inline `<FeatureGate feature="..." quotaResource="...">` component wrapping buttons and
+        page bodies (e.g. "Export .xlsx", "Add New Branch", "Open Patient Inbox",
+        "View Sales Summary BI") — if unlocked, renders cleanly; if locked or `402` received,
+        renders crisp Locked Feature Empty State + 1-click "Upgrade Plan" CTA.
+
+3.7.4 [STATUS: PENDING] Onboarding Integration with Setup Wizard (`/setup/wizard`)
+      - On `confirm_finalize` in `/api/setup/route.ts`, atomically create the Store's initial
+        `StoreSubscription` (`FREE_TRIAL` for 14 days — or configured platform default trial plan)
+        so every newly onboarded pharmacy immediately receives working entitlements & welcome
+        trial countdown email.
+
+--------------------------------------------------------------------------------
+MODULE 3.8: CEO EXECUTIVE COMMAND DASHBOARD (`/super-admin/dashboard`)
+--------------------------------------------------------------------------------
+3.8.1 [STATUS: PENDING] Core SaaS Financial KPI Cards & MRR / ARR Metrics
+      - Real-time CEO executive strip powered by `GET /api/super-admin/dashboard`:
+        * **MRR (Monthly Recurring Revenue)** — normalized monthly value across Monthly,
+          Quarterly (`/3`), and Yearly (`/12`) active subscriptions.
+        * **ARR (Annual Run Rate)** — `MRR * 12`.
+        * **Net Collected Revenue (MTD & All-Time)** — actual captured `SubscriptionPayment`
+          minus refunds (pre-GST & GST breakdown).
+        * **Active Paid Stores vs Trialing Stores vs Past-Due vs Churned**.
+        * **Trial-to-Paid Conversion Rate %**, **Monthly Logo Churn Rate %**, and **ARPU**
+          (Average Revenue Per Paid Store).
+
+3.8.2 [STATUS: PENDING] Platform-Wide Operational Pulse & Retail GMV Overview
+      - Aggregated telemetry across all pharmacy stores:
+        * Total Pharmacy GMV processed on platform (Today / 30d / All-Time retail `Sale.grandTotal`).
+        * Total Invoices Issued & Total Patient Rx Uploads handled across platform.
+        * Razorpay Payment Success vs Failed Renewal Rate & Webhook Queue Health badge.
+
+3.8.3 [STATUS: PENDING] Actionable CEO Intelligence Feeds (Churn Risk & Upsell Pipeline)
+      - **Upsell Leads Widget:** Stores currently using `>= 80%` of `maxBranches`,
+        `maxStaffUsers`, or `maxMonthlyInvoices` (ready to upgrade tier!).
+      - **At-Risk / Churn Alert Widget:** Active or Trial stores with `0` POS sales in the last
+        14 days, upcoming trial expiry within 72 hours, or failed Razorpay renewals in Grace Period.
+      - **Recent Platform Feed:** Latest Store registrations, latest plan upgrades/purchases,
+        and recent failed webhook/gateway events.
+
+--------------------------------------------------------------------------------
+MODULE 3.9: CEO-LEVEL BI REPORTS, ANALYTICS & MULTI-SHEET EXPORTS (`/super-admin/reports`)
+--------------------------------------------------------------------------------
+3.9.1 [STATUS: PENDING] SaaS Revenue, 12-Month MRR Movement & Plan Tier Breakdown Report
+      - Monthly SaaS Revenue & MRR bridge over trailing 12 months (`New MRR`, `Expansion /
+        Upgrade MRR`, `Churned / Downgrade MRR`, `Net Ending MRR`).
+      - Plan Tier Distribution chart & table (`Starter` vs `Growth` vs `Enterprise`: subscriber
+        count, % share of MRR, average tenure, conversion rate).
+      - Razorpay Settlement & SaaS Tax Liability Summary (Total Taxable SaaS Sales + 18% GST
+        collected for GSTR-1 reconciliation of the platform company).
+
+3.9.2 [STATUS: PENDING] Store & Branch Performance Leaderboard Reports
+      - Cross-Store Leaderboard filterable by Date Range, State/City, Plan Tier, and Sort KPI:
+        Store Name, Branches Count, Plan Tier, Monthly Invoices, Gross Retail GMV, Average
+        Basket Size, Inventory Valuation, Portal Adoption Score (`Supplier Portal` +
+        `Patient Portal` usage), and Growth % vs prior period.
+      - Cross-Branch Top Outlets table highlighting highest-throughput individual pharmacy
+        counters and branches missing compliance credentials (`DL`/`GSTIN`).
+      - Consolidated & Store-Wise / Branch-Wise Financial P&L Report: Gross Retail Sales,
+        Refunds, Net Revenue, COGS, Gross Margin %, Operating Expenses, Net Profit, and Cash
+        vs UPI vs Card vs Credit split across all stores or filtered to a single Store/Branch.
+      - Cross-Store Inventory Risk & Regulatory Compliance Report: Total Expired Stock Value,
+        Expiring <=30d/90d Batches, Dead Stock (60/90/180d) per Store/Branch, Schedule H/H1
+        prescription compliance rate, and Customer Baki Khata / Supplier Payable exposure.
+
+3.9.3 [STATUS: PENDING] Platform Capacity, Storage & Feature Adoption Telemetry Report
+      - Feature Utilization Matrix across paying stores (e.g. % of Growth stores actively using
+        `Schedule H1`, `Cash Z-Report`, `Patient Rx Portal`, `Supplier Portal`) to guide product
+        decisions & upsell campaigns.
+      - Database & Storage Footprint per Store (Medicine rows, Invoice rows, Prescription file
+        bytes on disk) with top-consumer alerts.
+
+3.9.4 [STATUS: PENDING] CEO Executive Report Exports (CSV UTF-8 BOM & Multi-Sheet `.xlsx`)
+      - Dedicated `GET /api/super-admin/reports/export?type=...&format=csv|xlsx` supporting
+        CEO Board Pack exports reusing hardened `buildXlsxBuffer` (formula-injection safe,
+        deduplicated <=31-char sheet tabs) and UTF-8 BOM CSV:
+        * Workbook Tabs: `Executive Summary`, `12M MRR & Revenue`, `Plan Tier Breakdown`,
+          `Stores Health & Quota Matrix`, `Branches Directory`, `Upsell & Churn Pipeline`,
+          `SaaS Payment Ledger`.
+
+--------------------------------------------------------------------------------
+MODULE 3.10: SUPER ADMIN SECURITY, AUDIT LOGS & END-TO-END VERIFICATION SUITE
+--------------------------------------------------------------------------------
+3.10.1 [STATUS: PENDING] Platform Security Hardening & Razorpay Secret Protection
+       - Ensure `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET` are never returned in any API
+         response (mask to last 4 chars `••••••••1a2b` in `/super-admin/settings`), enforce CSRF/origin
+         checks & strict input validation on all billing mutations, and guarantee constant-time
+         signature comparison on all webhooks and checkout verifications.
+       - Prevent tenant leakage: audit all Store-level APIs (`Medicine`, `Supplier`, `Customer`,
+         `PatientMessage`, `SupplierMessage`) to enforce `storeId` filtering once Module 3.1 lands.
+
+3.10.2 [STATUS: PENDING] Global Platform & Cross-Store Audit Trail (`/super-admin/audit-logs`)
+       - Searchable unified log viewer allowing CEO/Super Admin to inspect both
+         `PlatformAuditLog` (plan edits, Razorpay syncs, manual grants, suspensions,
+         impersonations) and Store security events (`AuditLog` filterable by Store/Branch/Action),
+         with CSV/Excel forensic export.
+
+3.10.3 [STATUS: PENDING] Automated Phase 3 Real-DB & Razorpay Mock Integration Suite
+       - Create `scripts/test-real-api-phase-3.ts` verifying every flow end-to-end against live
+         PostgreSQL:
+         1) Auth separation (Store Admin rejected `401/403` on `/api/super-admin/*`; CEO session
+            isolated cleanly).
+         2) Stores & Branches panels returning accurate multi-store/branch rollups without cross-store
+            contamination.
+         3) Plan CRUD & mocked Razorpay `POST /v1/plans` sync + immutable price-versioning logic.
+         4) Checkout order creation + HMAC-SHA256 signature verification activating subscription &
+            issuing GST invoice `SUB-INV-...`.
+         5) Idempotent Razorpay Webhook replay handling (`x-razorpay-event-id` duplicate rejection,
+            `subscription.charged` renewal, `payment.failed` -> `grace_period`).
+         6) Plan-wise feature gating (`402` when Starter calls Growth-only BI/Excel/Supplier/Patient
+            APIs; `200` after upgrading to Growth/Enterprise) and count limit blocks (`maxBranches`,
+            `maxStaffUsers`, `maxMedicines`, `maxMonthlyInvoices`).
+         7) CEO Financial KPIs (`MRR`, `ARR`, `Churn`, `Upsell Leads`) and multi-sheet `.xlsx` export.
+
+================================================================================
+                PART 3: BENGALI VERSION (বাংলা সংস্করণ)
+================================================================================
+
+Target File: all text folder/to_do_part_3.txt
+ধারা: মডুলার ও ডিপেন্ডেন্সি-ভিত্তিক ধাপে ধাপে নির্মাণ পরিকল্পনা (মডিউল ৩.১ -> ৩.১০)
+
+--------------------------------------------------------------------------------
+মডিউল ৩.১: মাল্টি-টেন্যান্ট স্টোর আইসোলেশন সম্পূর্ণকরণ ও SaaS ডাটাবেস স্কিমা
+--------------------------------------------------------------------------------
+৩.১.১ [অবস্থা: বাকি - PENDING] সব অপারেশনাল মডেলে `storeId` স্কোপিং সম্পূর্ণ করা
+      - `Medicine`, `Supplier`, `Customer`, `SupplierMessage`, ও `PatientMessage` টেবিলে
+        `Settings.id` রেফারেন্সিং `storeId` ফরেন কি যোগ করা ও পুরোনো ডাটার ব্যাকফিল স্ক্রিপ্ট।
+      - `Settings` টেবিলে স্টোরের অবস্থা (`storeStatus`: `active`, `trialing`, `grace_period`,
+        `suspended`, `archived`), `suspensionReason`, ও মালিকের তথ্য যোগ করা।
+
+৩.১.২ [অবস্থা: বাকি - PENDING] প্ল্যাটফর্ম CEO / সুপার অ্যাডমিন ইউজার ও কনফিগ মডেল
+      - স্টোর ইউজার থেকে সম্পূর্ণ আলাদা `PlatformUser` (`ceo`, `platform_admin`,
+        `finance_ops`, `support_viewer`), `PlatformConfig` (SaaS GST/SAC, ট্রায়াল দিন,
+        গ্রেস দিন, Razorpay মোড) এবং `PlatformAuditLog` টেবিল তৈরি।
+
+৩.১.৩ [অবস্থা: বাকি - PENDING] সাবস্ক্রিপশন প্ল্যান, স্টোর সাবস্ক্রিপশন, পেমেন্ট ও ওয়েবহুক স্কিমা
+      - `SubscriptionPlan` (মূল্য, বিলিং সাইকেল, `razorpayPlanId`, ৬টি কাউন্ট লিমিট ও
+        ১২টি ফিচার ফ্ল্যাগ), `StoreSubscription`, `SubscriptionPayment` (`SUB-INV-...` ১৮% GST
+        ইনভয়েসসহ) এবং রিপ্লে-প্রতিরোধী `RazorpayWebhookEvent` টেবিল নির্মাণ।
+
+--------------------------------------------------------------------------------
+মডিউল ৩.২: প্ল্যাটফর্ম সুপার অ্যাডমিন অথেনটিকেশন ও আলাদা কন্ট্রোল প্যানেল শেল
+--------------------------------------------------------------------------------
+৩.২.১ [অবস্থা: বাকি - PENDING] পৃথক সুপার অ্যাডমিন অথ ও কঠোর টেন্যান্ট সুরক্ষা
+      - `med_pos_super_admin_session` কুকি ও `verifySuperAdminRequest(req)` তৈরি; কোনো স্টোর
+        অ্যাডমিন যেন সুপার অ্যাডমিন API অ্যাক্সেস করতে না পারে তা নিশ্চিত করা।
+      - আলাদা ব্রুট-ফোর্স লকআউট এবং নিরাপদ ইনিশিয়াল CEO বুটস্ট্র্যাপ স্ক্রিপ্ট।
+      - সম্পূর্ণ আলাদা সুপার অ্যাডমিন লগইন পেজ (`/super-admin/login`,
+        `src/app/(super-admin)/super-admin/login/page.tsx`) ও ফুল অথ API
+        (`GET/POST/PATCH/DELETE /api/auth/super-admin` — লগইন, সেশন যাচাই, পাসওয়ার্ড পরিবর্তন,
+        লগআউট ও নতুন সুপার অ্যাডমিন টিম মেম্বার তৈরি), যা স্টোর `/admin/login` থেকে সম্পূর্ণ পৃথক।
+
+৩.২.২ [অবস্থা: বাকি - PENDING] সুপার অ্যাডমিন প্যানেল শেল ও আলাদা বিভাগীয় প্যানেল (`/super-admin`)
+      - ডেডিকেটেড CEO লেআউট ও আলাদা প্যানেল নেভিগেশন: Executive Dashboard, Stores Panel,
+        Branches Explorer, Plan Architect & Razorpay Sync, Subscriptions, Payments Ledger,
+        CEO BI Reports, Audit Logs এবং Platform Settings।
+      - এই ১টি মূল সুপার অ্যাডমিন পোর্টালের (`/super-admin`) ভেতরে মোট ১১টি আলাদা সাব-প্যানেল/মেনু থাকবে:
+        ১) এক্সিকিউটিভ ড্যাশবোর্ড (`/super-admin/dashboard`)
+        ২) অল-স্টোরস প্যানেল (`/super-admin/stores` ও একক স্টোর ভিউ `/super-admin/stores/[id]`)
+        ৩) ব্রাঞ্চেস এক্সপ্লোরার প্যানেল (`/super-admin/branches` ও একক ব্রাঞ্চ ভিউ `/super-admin/branches/[id]`)
+        ৪) প্ল্যান আর্কিটেক্ট ও রেজরপে সিঙ্ক প্যানেল (`/super-admin/plans`)
+        ৫) স্টোর সাবস্ক্রিপশন প্যানেল (`/super-admin/subscriptions`)
+        ৬) বিলিং ও রেজরপে পেমেন্ট প্যানেল (`/super-admin/payments`)
+        ৭) CEO অ্যানালিটিক্স ও রিপোর্টস প্যানেল (`/super-admin/reports`)
+        ৮) প্ল্যাটফর্ম অডিট লগস প্যানেল (`/super-admin/audit-logs`)
+        ৯) প্ল্যাটফর্ম সেটিংস ও রেজরপে কনফিগ প্যানেল (`/super-admin/settings`)
+        ১০) গ্লোবাল ইউজার ও রোলস প্যানেল (`/super-admin/users`)
+        ১১) প্ল্যাটফর্ম ব্রডকাস্ট ও ঘোষণা প্যানেল (`/super-admin/announcements`)
+
+৩.২.৩ [অবস্থা: বাকি - PENDING] সুরক্ষিত স্টোর সাপোর্ট ভিউ / ইমপার্সোনেশন মোড
+      - নির্দিষ্ট সময়ের জন্য কোনো স্টোরের অ্যাডমিন প্যানেল পর্যবেক্ষণ করার সুবিধা (লাল সতর্কতা
+        ব্যানার ও `PlatformAuditLog` + স্টোর `AuditLog`-এ বাধ্যতামূলক রেকর্ডসহ)।
+
+--------------------------------------------------------------------------------
+মডিউল ৩.৩: আলাদা ম্যানেজমেন্ট প্যানেল — স্টোর ও ব্রাঞ্চ কন্ট্রোল সেন্টার
+--------------------------------------------------------------------------------
+৩.৩.১ [অবস্থা: বাকি - PENDING] অল-স্টোর ডিরেক্টরি ও লাইফসাইকেল প্যানেল (`/super-admin/stores`)
+      - সব ফার্মাসি স্টোরের তালিকা, অ্যাক্টিভ প্ল্যান ব্যাজ, কোটা ব্যবহার (`Branches`, `Staff`),
+        ৩০-দিনের বিক্রয় GMV, ট্রায়াল/বকেয়া ফিল্টার এবং ১-ক্লিকে Suspend / Activate / Trial
+        Extend / Custom Plan গ্রান্ট অ্যাকশন।
+
+৩.৩.২ [অবস্থা: বাকি - PENDING] একক স্টোরের ৩৬০-ডিগ্রি ইনস্পেকশন প্যানেল (`/super-admin/stores/[id]`)
+      - আলাদা ট্যাবে প্রতিটি স্টোরের সম্পূর্ণ বিবরণ: ১) ওভারভিউ ও রাজস্ব, ২) ওই স্টোরের সব
+        ব্রাঞ্চ, ৩) স্টাফ তালিকা, ৪) সাবস্ক্রিপশন ও লাইভ কোটা মিটার (+ কাস্টম ওভাররাইড),
+        ৫) অডিট ও সাম্প্রতিক কার্যক্রম।
+
+৩.৩.৩ [অবস্থা: বাকি - PENDING] গ্লোবাল ও স্টোর-ভিত্তিক ব্রাঞ্চ প্যানেল (`/super-admin/branches`)
+      - পুরো প্ল্যাটফর্মের প্রতিটি ব্রাঞ্চ এক জায়গায় দেখা: স্টোর ফিল্টার, `MAIN` বনাম শাখা,
+        DL/GSTIN কমপ্লায়েন্স অবস্থা, স্টক ভ্যালু, ৩০-দিনের সেলস ও সর্বশেষ Z-Report ক্লোজিং।
+      - একক ব্রাঞ্চ ডিপ-ডাইভ প্যানেল (`/super-admin/branches/[id]`): নির্দিষ্ট ব্রাঞ্চের স্টাফ,
+        ব্যাচ ইনভেন্টরি, মেয়াদোত্তীর্ণ ঝুঁকি, POS সেলস, রিটার্ন, খরচ ও ক্যাশ ড্রয়ার Z-Report।
+
+৩.৩.৪ [অবস্থা: বাকি - PENDING] গ্লোবাল ইউজার ডিরেক্টরি ও প্ল্যাটফর্ম ব্রডকাস্ট প্যানেল (`/super-admin/users` ও `/super-admin/announcements`)
+      - সব স্টোরের অ্যাডমিন, স্টাফ, সাপ্লায়ার, পেশেন্ট ও প্ল্যাটফর্ম টিমের আলাদা তালিকা এবং
+        সুপার অ্যাডমিন থেকে সব স্টোরের নোটিফিকেশন বেলে জরুরি ঘোষণা/অ্যালার্ট পাঠানোর সুবিধা।
+
+--------------------------------------------------------------------------------
+মডিউল ৩.৪: সাবস্ক্রিপশন প্ল্যান আর্কিটেক্ট ও প্রস্তাবিত SaaS টিয়ার ব্লুপ্রিন্ট
+--------------------------------------------------------------------------------
+৩.৪.১ [অবস্থা: বাকি - PENDING] ১২টি ফিচার এনটাইটেলমেন্ট ও ৬টি কোটা লিমিট রেজিস্ট্রি
+      - Part 1 ও Part 2-এর প্রতিটি মূল ফিচারকে ১২টি ফ্ল্যাগে ভাগ করা (`multiBranchManagement`,
+        `supplierPortalAndGrn`, `patientPortalAndRxQueue`, `twoWayMessagingInboxes`,
+        `gstAndRegulatoryReports`, `advancedBiAndProfitReports`, `excelAndCsvExports`, ইত্যাদি)
+        এবং ৬টি কাউন্ট লিমিট (`maxBranches`, `maxStaffUsers`, `maxMedicines`,
+        `maxMonthlyInvoices`, `maxSuppliers`, `maxRxStorageMb`; `-1` = আনলিমিটেড)।
+
+৩.৪.২ [অবস্থা: বাকি - PENDING] প্রস্তাবিত ৪টি ডিফল্ট প্ল্যান টিয়ার সিডিং
+      - **Free Trial (১৪ দিন)**, **Starter Clinic (৭৯৯ টাকা/মাস)**, **Growth Pharmacy
+        (১,৯৯৯ টাকা/মাস — প্রস্তাবিত)** এবং **Enterprise Chain (৪,৯৯৯ টাকা/মাস — আনলিমিটেড)**।
+
+৩.৪.৩ [অবস্থা: বাকি - PENDING] সুপার অ্যাডমিন প্ল্যান বিল্ডার UI ও CRUD API (`/super-admin/plans`)
+      - সুপার অ্যাডমিনের মাধ্যমে নতুন কাস্টম প্ল্যান তৈরি, এডিট, পাবলিক/প্রাইভেট করা এবং
+        অ্যাক্টিভ গ্রাহক থাকলে সেফ আর্কাইভিং (পুরোনো গ্রাহকের প্ল্যান না ভেঙে)।
+
+--------------------------------------------------------------------------------
+মডিউল ৩.৫: রেজরপে (Razorpay) প্ল্যান সিঙ্ক, চেকআউট ও আইডেমপোটেন্ট ওয়েবহুক ইঞ্জিন
+--------------------------------------------------------------------------------
+৩.৫.১ [অবস্থা: বাকি - PENDING] রেজরপে REST ক্লায়েন্ট ও অটো-প্ল্যান সিঙ্ক ইঞ্জিন
+      - সুপার অ্যাডমিনে প্ল্যান তৈরি বা আপডেট করলে স্বয়ংক্রিয়ভাবে Razorpay `/v1/plans`-এ পয়সা
+        হিসেবে প্ল্যান সিঙ্ক হওয়া (`razorpayPlanId` সংরক্ষণ); মূল্য বা সময়কাল বদলালে Razorpay-এর
+        নিয়ম মেনে নতুন প্ল্যান ভার্সন তৈরি ও ব্যর্থ সিঙ্ক পুনরায় চালানোর (Retry) বাটন।
+
+৩.৫.২ [অবস্থা: বাকি - PENDING] স্টোর সাবস্ক্রিপশন চেকআউট ও HMAC সিগনেচার যাচাই
+      - Razorpay Subscription (অটোপে) ও One-Time Order (বার্ষিক/আপগ্রেড প্রোরেশন) চেকআউট,
+        `crypto.timingSafeEqual` দিয়ে `razorpay_signature` যাচাই ও সঙ্গে সঙ্গে সাবস্ক্রিপশন সক্রিয়।
+
+৩.৫.৩ [অবস্থা: বাকি - PENDING] আইডেমপোটেন্ট রেজরপে ওয়েবহুক লিসেনার (`/api/webhooks/razorpay`)
+      - `x-razorpay-signature` যাচাই ও `RazorpayWebhookEvent` দিয়ে ডুপ্লিকেট ইভেন্ট আটকানো;
+        `subscription.charged` (রিনিউ), `payment.failed` (৭-দিনের গ্রেস পিরিয়ড), ও
+        `subscription.halted/cancelled` অটো হ্যান্ডলিং।
+
+৩.৫.৪ [অবস্থা: বাকি - PENDING] ম্যানুয়াল/এন্টারপ্রাইজ অফলাইন প্ল্যান গ্রান্ট ও ট্রায়াল এক্সটেনশন
+      - ব্যাংক ট্রান্সফার বা কাস্টম চুক্তির জন্য CEO-র ম্যানুয়াল প্ল্যান অ্যাসাইন ও কোটা ওভাররাইড।
+
+--------------------------------------------------------------------------------
+মডিউল ৩.৬: প্ল্যান-ভিত্তিক এনটাইটেলমেন্ট ও ফিচার/কাউন্ট লিমিট গার্ড
+--------------------------------------------------------------------------------
+৩.৬.১ [অবস্থা: বাকি - PENDING] কেন্দ্রীয় এনটাইটেলমেন্ট ও লাইভ কোটা ইঞ্জিন (`src/lib/entitlements.ts`)
+      - স্টোরের অ্যাক্টিভ প্ল্যান + CEO ওভাররাইড বিশ্লেষণ করে তাৎক্ষণিক ক্যাশড অনুমোদন যাচাই;
+        অনুমতি না থাকলে বা লিমিট পূরণ হলে স্পষ্ট `402 Upgrade Required` JSON রেসপন্স প্রদান।
+
+৩.৬.২ [অবস্থা: বাকি - PENDING] মডিউল ১.১ থেকে ২.২০-এর সব API রুটে ফিচার গেটিং
+      - বর্তমান প্ল্যানে যে ফিচারগুলো বন্ধ রয়েছে তার API রুট (যেমন: মাল্টি-ব্রাঞ্চ, সাপ্লায়ার পোর্টাল,
+        পেশেন্ট পোর্টাল, ইনবক্স, GSTR/Schedule H1, সেলস BI, Excel এক্সপোর্ট, Z-Report) সুরক্ষিত করা।
+
+৩.৬.৩ [অবস্থা: বাকি - PENDING] সার্ভার-সাইড কাউন্ট লিমিট প্রয়োগ
+      - নতুন ব্রাঞ্চ, স্টাফ ইউজার, ওষুধ, সাপ্লায়ার, মাসিক POS ইনভয়েস এবং প্রেসক্রিপশন
+        স্টোরেজ তৈরির সময় প্ল্যানের সর্বোচ্চ সংখ্যা (`max...`) যাচাই ও অতিক্রম করলে ব্লক করা।
+
+৩.৬.৪ [অবস্থা: বাকি - PENDING] মেয়াদোত্তীর্ণ, ৭-দিনের গ্রেস পিরিয়ড ও সাসপেন্ড স্টোর সুরক্ষা
+      - পেমেন্ট ব্যর্থ হলে ৭ দিন গ্রেস ব্যানার দেখানো; এরপর শুধুমাত্র বিলিং রিনিউ ও পুরোনো ডাটা
+        এক্সপোর্ট খোলা রেখে নতুন ট্রানজাকশন বন্ধ রাখা।
+
+--------------------------------------------------------------------------------
+মডিউল ৩.৭: স্টোর অ্যাডমিন বিলিং পোর্টাল ও UI ফিচার লক / আপগ্রেড অভিজ্ঞতা
+--------------------------------------------------------------------------------
+৩.৭.১ [অবস্থা: বাকি - PENDING] স্টোর অ্যাডমিন বিলিং ও প্ল্যান কেনার পেজ (`/admin/billing`)
+      - বর্তমান প্ল্যান কার্ড, সব কাউন্ট লিমিটের লাইভ প্রগ্রেস বার, মাসিক/বার্ষিক প্রাইসিং তুলনা
+        এবং Razorpay Checkout দিয়ে ১-ক্লিকে প্ল্যান কেনা বা আপগ্রেডের সুবিধা।
+
+৩.৭.২ [অবস্থা: বাকি - PENDING] প্ল্যান আপগ্রেড/ডাউনগ্রেড, বাতিল ও GST ইনভয়েস ডাউনলোড
+      - প্রোরেটেড আপগ্রেড, পিরিয়ড শেষে ডাউনগ্রেড/বাতিল অপশন এবং ১৮% GST সহ `SUB-INV-...`
+        সাবস্ক্রিপশন ট্যাক্স ইনভয়েস প্রিন্ট/ডাউনলোড।
+
+৩.৭.৩ [অবস্থা: বাকি - PENDING] ফ্রন্টএন্ড ফিচার লক ও আপগ্রেড UX (`<FeatureGate />`)
+      - বর্তমান প্ল্যানে না থাকা মেনু/বাটনে তালা (Lock) ও প্ল্যান ব্যাজ দেখানো; ক্লিক করলে
+        সাজানো Upgrade Modal খুলে `/admin/billing`-এ নিয়ে যাওয়া।
+
+৩.৭.৪ [অবস্থা: বাকি - PENDING] সেটআপ উইজার্ডে স্বয়ংক্রিয় ফ্রি ট্রায়াল চালু (`/setup/wizard`)
+      - নতুন স্টোর রেজিস্ট্রেশন সম্পন্ন হওয়ার সাথে সাথেই ১৪ দিনের ট্রায়াল প্ল্যান স্বয়ংক্রিয়ভাবে
+        সক্রিয় করা।
+
+--------------------------------------------------------------------------------
+মডিউল ৩.৮: CEO এক্সিকিউটিভ কমান্ড ড্যাশবোর্ড (`/super-admin/dashboard`)
+--------------------------------------------------------------------------------
+৩.৮.১ [অবস্থা: বাকি - PENDING] মূল SaaS আর্থিক KPI (MRR, ARR, ARPU, কনভার্সন ও চার্ন %)
+      - রিয়েল-টাইম MRR, ARR, সংগৃহীত মাসিক ও মোট আয়, ট্রায়াল-টু-পেইড কনভার্সন হার, মাসিক
+        চার্ন % ও ARPU ড্যাশবোর্ড কার্ড।
+
+৩.৮.২ [অবস্থা: বাকি - PENDING] প্ল্যাটফর্ম-ব্যাপী অপারেশনাল পালস (মোট GMV ও গেটওয়ে স্বাস্থ্য)
+      - সব ফার্মাসি স্টোর মিলিয়ে আজকের/মাসের/সর্বমোট খুচরা বিক্রয় (GMV), মোট ইনভয়েস ও
+        Razorpay পেমেন্ট/ওয়েবহুক সফলতার হার।
+
+৩.৮.৩ [অবস্থা: বাকি - PENDING] CEO অ্যাকশন ফিড (আপসেল লিড ও চার্ন সতর্কতা)
+      - ৮০%+ কোটা ব্যবহারকারী আপগ্রেড-সম্ভাব্য স্টোরের তালিকা এবং ১৪ দিন কোনো বিক্রি না হওয়া বা
+        পেমেন্ট ব্যর্থ ঝুঁকিপূর্ণ স্টোরের সতর্কতা।
+
+--------------------------------------------------------------------------------
+মডিউল ৩.৯: CEO-লেভেল BI রিপোর্ট, অ্যানালিটিক্স ও এক্সপোর্ট (`/super-admin/reports`)
+--------------------------------------------------------------------------------
+৩.৯.১ [অবস্থা: বাকি - PENDING] SaaS রেভিনিউ, ১২-মাসের MRR মুভমেন্ট ও প্ল্যান-টিয়ার রিপোর্ট
+      - ১২ মাসের New/Expansion/Churn MRR বিশ্লেষণ, টিয়ার অনুযায়ী আয়ের অনুপাত এবং প্ল্যাটফর্ম
+        কোম্পানির GST দায়ের রিপোর্ট।
+
+৩.৯.২ [অবস্থা: বাকি - PENDING] স্টোর ও ব্রাঞ্চ পারফরম্যান্স লিডারবোর্ড রিপোর্ট
+      - GMV, ইনভয়েস সংখ্যা, ইনভেন্টরি মূল্য, পোর্টাল ব্যবহার ও কমপ্লায়েন্স স্কোর অনুযায়ী সব
+        স্টোর ও ব্রাঞ্চের র‍্যাংকিং।
+      - স্টোর-ভিত্তিক ও ব্রাঞ্চ-ভিত্তিক সমন্বিত P&L (বিক্রয়, রিফান্ড, নিট আয়, COGS, লাভ, খরচ),
+        ইনভেন্টরি মেয়াদোত্তীর্ণ/ডেড-স্টক ঝুঁকি, Schedule H/H1 কমপ্লায়েন্স ও বাকি খাতার বকেয়া রিপোর্ট।
+
+৩.৯.৩ [অবস্থা: বাকি - PENDING] ক্যাপাসিটি, স্টোরেজ ও ফিচার অ্যাডপশন রিপোর্ট
+      - কোন ফিচার কত শতাংশ স্টোর ব্যবহার করছে ও প্রতি স্টোরের ডাটা/ফাইল স্টোরেজ খরচ।
+
+৩.৯.৪ [অবস্থা: বাকি - PENDING] CEO বোর্ড রিপোর্ট এক্সপোর্ট (CSV ও মাল্টি-শিট Excel `.xlsx`)
+      - `buildXlsxBuffer` ব্যবহার করে এক্সিকিউটিভ সামারি, MRR ট্রেন্ড, স্টোর ম্যাট্রিক্স, ব্রাঞ্চ
+        ও পেমেন্ট লেজারসহ মাল্টি-শিট Excel ও CSV ডাউনলোড।
+
+--------------------------------------------------------------------------------
+মডিউল ৩.১০: সুপার অ্যাডমিন সিকিউরিটি, অডিট লগ ও এন্ড-টু-এন্ড ভেরিফিকেশন স্যুট
+--------------------------------------------------------------------------------
+৩.১০.১ [অবস্থা: বাকি - PENDING] প্ল্যাটফর্ম সিকিউরিটি ও রেজরপে সিক্রেট সুরক্ষা
+       - API রেসপন্সে সিক্রেট কী মাস্কিং, টাইমিং-সেফ ওয়েবহুক ভেরিফিকেশন এবং সব লিগ্যাসি API-তে
+         `storeId` সুরক্ষা অডিট।
+
+৩.১০.২ [অবস্থা: বাকি - PENDING] গ্লোবাল প্ল্যাটফর্ম ও ক্রস-স্টোর অডিট লগ (`/super-admin/audit-logs`)
+       - CEO অ্যাকশন, প্ল্যান পরিবর্তন, ম্যানুয়াল গ্রান্ট, ইমপার্সোনেশন এবং স্টোর-লেভেল নিরাপত্তা
+         ইভেন্ট অনুসন্ধান ও এক্সপোর্ট।
+
+৩.১০.৩ [অবস্থা: বাকি - PENDING] স্বয়ংক্রিয় Phase 3 রিয়েল-ডিবি ও রেজরপে ইন্টিগ্রেশন টেস্ট স্যুট
+       - `scripts/test-real-api-phase-3.ts` তৈরি করে স্টোর/সুপার-অ্যাডমিন অথ বিচ্ছিন্নতা,
+         প্ল্যান সিঙ্ক, HMAC ওয়েবহুক, কোটা লিমিট, ৪0২ ফিচার লক এবং CEO রিপোর্ট পরীক্ষা।
+
+================================================================================
+END OF DOCUMENT: PART 3 — CEO CONTROL TOWER, SUBSCRIPTIONS & RAZORPAY SAAS ENGINE
+ডকুমেন্ট সমাপ্ত: Part 3 — CEO কন্ট্রোল টাওয়ার, সাবস্ক্রিপশন ও রেজরপে SaaS ইঞ্জিন
+================================================================================
