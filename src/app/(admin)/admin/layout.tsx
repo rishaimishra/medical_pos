@@ -32,7 +32,9 @@ import {
 import { useBranchStore } from "@/stores/useBranchStore";
 import { useCartStore } from "@/stores/useCartStore";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useSubscriptionStore } from "@/stores/useSubscriptionStore";
 import { getVisibleMenuItems } from "@/lib/menu-registry";
+import { UpgradeRequiredModal } from "@/components/saas/UpgradeRequiredModal";
 import { ToastProvider } from "@/components/ui/ToastProvider";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/stores/useToastStore";
@@ -64,6 +66,13 @@ export default function AdminLayout({
     canAccessPage,
     hasPermission,
   } = useAuthStore();
+  const {
+    entitlements,
+    fetchBillingStatus,
+    hasFeature,
+    openUpgradeModal,
+    clearSubscription,
+  } = useSubscriptionStore();
 
   const [unlockPassword, setUnlockPassword] = useState("");
   const [unlockError, setUnlockError] = useState<string | null>(null);
@@ -124,8 +133,9 @@ export default function AdminLayout({
 
     if (isAuthenticated) {
       fetchBranches(user?.branchId);
+      fetchBillingStatus();
     }
-  }, [loading, isAuthenticated, pathname, router, fetchBranches, clearBranches, user?.branchId]);
+  }, [loading, isAuthenticated, pathname, router, fetchBranches, fetchBillingStatus, clearBranches, user?.branchId]);
 
   // 3. Keep staff locked to their assigned branch UNLESS they have permission to switch branches
   useEffect(() => {
@@ -247,6 +257,7 @@ export default function AdminLayout({
   const handleLogout = async () => {
     clearCart(true);
     clearBranches();
+    clearSubscription();
     await logout();
     router.replace("/admin/login");
   };
@@ -370,6 +381,30 @@ export default function AdminLayout({
             const isActive =
               pathname === item.href ||
               (item.href !== "/admin/dashboard" && pathname?.startsWith(item.href));
+            const featureLocked = Boolean(item.requiredFeature && !hasFeature(item.requiredFeature));
+            const firstLockedKey = Array.isArray(item.requiredFeature)
+              ? item.requiredFeature[0]
+              : item.requiredFeature;
+
+            if (featureLocked) {
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => openUpgradeModal({ featureKey: firstLockedKey })}
+                  className="w-full flex items-center justify-between pl-5 pr-4 py-2.5 rounded-l-full text-xs font-bold text-white/55 hover:bg-white/10 hover:text-white/90 transition-all cursor-pointer text-left"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-extrabold bg-amber-400/20 text-amber-200 shrink-0">
+                    <Lock className="w-2.5 h-2.5" /> PRO
+                  </span>
+                </button>
+              );
+            }
+
             return (
               <Link
                 key={item.id}
@@ -450,6 +485,33 @@ export default function AdminLayout({
                 const isActive =
                   pathname === item.href ||
                   (item.href !== "/admin/dashboard" && pathname?.startsWith(item.href));
+                const featureLocked = Boolean(item.requiredFeature && !hasFeature(item.requiredFeature));
+                const firstLockedKey = Array.isArray(item.requiredFeature)
+                  ? item.requiredFeature[0]
+                  : item.requiredFeature;
+
+                if (featureLocked) {
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        openUpgradeModal({ featureKey: firstLockedKey });
+                      }}
+                      className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-white/55 hover:bg-white/10 hover:text-white/90 transition-all text-left"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                      </div>
+                      <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-extrabold bg-amber-400/20 text-amber-200 shrink-0">
+                        <Lock className="w-2.5 h-2.5" /> PRO
+                      </span>
+                    </button>
+                  );
+                }
+
                 return (
                   <Link
                     key={item.id}
@@ -495,6 +557,32 @@ export default function AdminLayout({
 
       {/* Main Right Canvas (#EAF2F4) */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        {user.impersonatedByPlatformUserId && (
+          <div className="bg-rose-600 text-white px-4 sm:px-6 py-2 text-xs font-semibold flex flex-wrap items-center justify-between gap-2 shadow-sm shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <ShieldAlert className="w-4 h-4 shrink-0 text-amber-200" />
+              <span className="truncate">
+                CEO Support Session: Viewing as <strong>{user.name}</strong> via{" "}
+                <strong>{user.impersonatorName || "Super Admin"}</strong>
+                {user.impersonationReason ? ` (Reason: ${user.impersonationReason})` : ""} — Audit Logged
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                await fetch("/api/super-admin/impersonate", { method: "DELETE" }).catch(() => {});
+                clearCart(true);
+                clearBranches();
+                router.replace(
+                  user.storeId ? `/super-admin/stores/${user.storeId}` : "/super-admin/stores"
+                );
+              }}
+              className="px-3 py-1 rounded-lg bg-white text-rose-700 hover:bg-rose-50 font-bold text-[11px] shrink-0 cursor-pointer transition-colors"
+            >
+              Exit Support View
+            </button>
+          </div>
+        )}
         {/* Top Welcome & Search Bar */}
         <header className="px-4 sm:px-6 pt-5 pb-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -671,6 +759,58 @@ export default function AdminLayout({
           </div>
         </header>
 
+        {/* SaaS Trial / Grace / Lockout Banners (Module 3.6.4 & 3.7.3) */}
+        {entitlements && entitlements.isReadOnlyLocked && pathname !== "/admin/billing" && (
+          <div className="mx-4 sm:mx-6 mt-2 mb-1 p-3 rounded-2xl bg-rose-600 text-white text-xs flex flex-wrap items-center justify-between gap-2 shadow-sm">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-100" />
+              <span>
+                <strong>Subscription Expired or Suspended:</strong> New POS billing and mutations are paused.
+                {entitlements.suspensionReason ? ` Reason: ${entitlements.suspensionReason}.` : ""}
+              </span>
+            </div>
+            <Link
+              href="/admin/billing"
+              className="px-3 py-1 rounded-lg bg-white text-rose-700 hover:bg-rose-50 font-bold text-[11px] shrink-0"
+            >
+              Renew Subscription
+            </Link>
+          </div>
+        )}
+
+        {entitlements && !entitlements.isReadOnlyLocked && entitlements.inGracePeriod && (
+          <div className="mx-4 sm:mx-6 mt-2 mb-1 p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+              <span>
+                <strong>Renewal Pending — Grace Period ({entitlements.graceDaysRemaining ?? 7}d left):</strong>{" "}
+                Core POS billing continues uninterrupted; advanced exports & portal tools pause until payment is completed.
+              </span>
+            </div>
+            <Link
+              href="/admin/billing"
+              className="px-3 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700 font-bold text-[11px] shrink-0"
+            >
+              Complete Payment
+            </Link>
+          </div>
+        )}
+
+        {entitlements && !entitlements.isReadOnlyLocked && !entitlements.inGracePeriod && entitlements.inTrialWarning && (
+          <div className="mx-4 sm:mx-6 mt-2 mb-1 px-3.5 py-2 rounded-2xl bg-teal-50 border border-teal-200 text-teal-900 text-xs flex flex-wrap items-center justify-between gap-2">
+            <span>
+              <strong>Free Trial Countdown:</strong>{" "}
+              {entitlements.trialDaysRemaining} day(s) remaining on your trial. Choose a plan anytime without losing data.
+            </span>
+            <Link
+              href="/admin/billing"
+              className="px-3 py-1 rounded-lg bg-[#1F4E5B] text-white hover:bg-[#163a44] font-bold text-[11px] shrink-0"
+            >
+              Upgrade Plan
+            </Link>
+          </div>
+        )}
+
         {/* Page Content */}
         <main className="flex-1 px-4 sm:px-6 pb-8 pt-2">
           {!pageAllowed ? (
@@ -705,9 +845,10 @@ export default function AdminLayout({
         </main>
       </div>
 
-      {/* Global Shared Providers (Module 2.1.2) */}
+      {/* Global Shared Providers (Module 2.1.2 & 3.7.3) */}
       <ToastProvider />
       <ConfirmDialog />
+      <UpgradeRequiredModal />
     </div>
   );
 }

@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const branchIdParam = searchParams.get("branchId");
   const format = (searchParams.get("format") || "csv").toLowerCase();
 
-  const authCtx = await authorizeReportRequest(req, branchIdParam);
+  const authCtx = await authorizeReportRequest(req, branchIdParam, { feature: "excelAndCsvExports" });
   if (!authCtx.authorized) return authCtx.response!;
 
   try {

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 1.13.3: CUSTOMER BAKI KHATA & CREDIT LEDGER
@@ -23,6 +24,9 @@ export async function GET(
   if (!hasPermission(auth.session, "manage_customers") && auth.session.role !== "admin") {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
+
+  const bakiGate = await requireStoreFeature(auth.session.storeId, "bakiKhataCreditLedger");
+  if (!bakiGate.allowed) return bakiGate.response!;
 
   const { id: rawId } = await params;
   const id = parseInt(rawId, 10);
@@ -195,6 +199,9 @@ export async function POST(
   if (!hasPermission(auth.session, "manage_customers") && auth.session.role !== "admin") {
     return NextResponse.json({ success: false, message: "Forbidden: Insufficient privileges" }, { status: 403 });
   }
+
+  const bakiGate = await requireStoreFeature(auth.session.storeId, "bakiKhataCreditLedger");
+  if (!bakiGate.allowed) return bakiGate.response!;
 
   const { id: rawId } = await params;
   const id = parseInt(rawId, 10);

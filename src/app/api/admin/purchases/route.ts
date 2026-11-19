@@ -4,6 +4,7 @@ import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { hasPermission, canAccessBranch } from "@/lib/rbac";
 import { sendSupplierPoEmail } from "@/lib/email";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 1.11.1 & 1.11.2: PURCHASE ORDERS GENERATION & LIFECYCLE
@@ -27,6 +28,9 @@ export async function GET(req: NextRequest) {
   ) {
     return NextResponse.json({ success: false, message: "Forbidden: Insufficient privileges to view purchase orders" }, { status: 403 });
   }
+
+  const poGate = await requireStoreFeature(auth.session.storeId, "purchasesAndGrn");
+  if (!poGate.allowed) return poGate.response!;
 
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
@@ -181,6 +185,9 @@ export async function POST(req: NextRequest) {
   ) {
     return NextResponse.json({ success: false, message: "Forbidden: Insufficient privileges to create purchase orders" }, { status: 403 });
   }
+
+  const poGate = await requireStoreFeature(auth.session.storeId, "purchasesAndGrn");
+  if (!poGate.allowed) return poGate.response!;
 
   try {
     const body = await req.json();

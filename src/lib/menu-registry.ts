@@ -18,9 +18,11 @@ import {
   SlidersHorizontal,
   Percent,
   Wallet,
+  CreditCard,
   LucideIcon,
 } from "lucide-react";
 import { canAccessPage, hasPermission, PermissionKey, SystemRole } from "./rbac";
+import type { FeatureKey } from "./saasFeatures";
 
 export interface MenuItem {
   id: string;
@@ -28,6 +30,7 @@ export interface MenuItem {
   href: string;
   icon: LucideIcon;
   requiredPermission?: PermissionKey;
+  requiredFeature?: FeatureKey | FeatureKey[];
   adminOnly?: boolean;
   status: "ready" | "in_development" | "coming_soon";
   badge?: string;
@@ -71,6 +74,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     href: "/admin/branches",
     icon: GitBranch,
     requiredPermission: "switch_branches",
+    requiredFeature: "multiBranchManagement",
     adminOnly: true,
     status: "ready",
     description: "Multi-outlet pharmacy store locations",
@@ -123,6 +127,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     label: "Financial Ledger & Z-Report",
     href: "/admin/financials",
     icon: Wallet,
+    requiredFeature: ["expenseAndFinancialLedger", "customDiscountsAndDayEndClose"],
     status: "ready",
     description: "General income & expense ledger, day-end cash drawer closing",
   },
@@ -132,6 +137,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     href: "/admin/purchases",
     icon: ShoppingCart,
     requiredPermission: "manage_purchases",
+    requiredFeature: "purchasesAndGrn",
     status: "ready",
     description: "Vendor PO lifecycle, price updates, GRN inward",
   },
@@ -141,6 +147,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     href: "/admin/suppliers",
     icon: Truck,
     requiredPermission: "manage_purchases",
+    requiredFeature: "purchasesAndGrn",
     adminOnly: true,
     status: "ready",
     description: "Distributor master and ledger accounts",
@@ -159,6 +166,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     label: "Messages & Inbox",
     href: "/admin/messages",
     icon: MessageSquare,
+    requiredFeature: "twoWayMessagingInboxes",
     status: "ready",
     description: "Supplier messaging channel and patient inbox",
   },
@@ -168,6 +176,7 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     href: "/admin/reports",
     icon: BarChart3,
     requiredPermission: "view_profit_reports",
+    requiredFeature: ["gstAndRegulatoryReports", "advancedBiAndProfitReports"],
     status: "ready",
     description: "GSTR tax summaries, P&L reports, daily cash register",
   },
@@ -177,8 +186,19 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     href: "/admin/discounts",
     icon: Percent,
     requiredPermission: "apply_high_discount",
+    requiredFeature: "customDiscountsAndDayEndClose",
     status: "ready",
     description: "Configurable master discount architecture & promotional schemes",
+  },
+  {
+    id: "billing",
+    label: "Subscription & Billing",
+    href: "/admin/billing",
+    icon: CreditCard,
+    requiredPermission: "manage_settings",
+    adminOnly: true,
+    status: "ready",
+    description: "Manage SaaS plan, Razorpay checkout, live quotas & GST tax invoices",
   },
   {
     id: "settings",

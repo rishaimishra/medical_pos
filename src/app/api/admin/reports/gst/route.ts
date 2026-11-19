@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const branchIdParam = searchParams.get("branchId");
 
-  const authCtx = await authorizeReportRequest(req, branchIdParam);
+  const authCtx = await authorizeReportRequest(req, branchIdParam, { feature: "gstAndRegulatoryReports" });
   if (!authCtx.authorized) return authCtx.response!;
 
   try {

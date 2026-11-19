@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 function isValidPhone(phone: string): boolean {
   const digits = phone.replace(/\D/g, "");
@@ -152,6 +153,10 @@ export async function PUT(
     const chronicDiseases = body.chronicDiseases !== undefined ? ((body.chronicDiseases || "").trim() || null) : existing.chronicDiseases;
     const refillDays = body.refillDays !== undefined ? (parseInt(body.refillDays, 10) || null) : existing.refillDays;
     const creditLimit = body.creditLimit !== undefined ? Math.max(0, parseFloat(body.creditLimit) || 0) : existing.creditLimit;
+    if (body.creditLimit !== undefined && Number(creditLimit) > Number(existing.creditLimit || 0)) {
+      const bakiGate = await requireStoreFeature(auth.session.storeId, "bakiKhataCreditLedger");
+      if (!bakiGate.allowed) return bakiGate.response!;
+    }
     const active = body.active !== undefined ? Boolean(body.active) : existing.active;
 
     if (!name) {
@@ -166,18 +171,32 @@ export async function PUT(
       return NextResponse.json({ success: false, message: "Customer phone number must contain between 10 and 15 digits" }, { status: 400 });
     }
 
-    // Check unique phone collision
+    const scopeStoreId = existing.storeId ?? auth.session.storeId ?? null;
+
+    // Check unique phone collision within store tenant
     if (phone !== existing.phone) {
-      const phoneTaken = await prisma.customer.findUnique({ where: { phone } });
-      if (phoneTaken && phoneTaken.id !== id) {
+      const phoneTaken = await prisma.customer.findFirst({
+        where: {
+          phone,
+          ...(scopeStoreId ? { storeId: scopeStoreId } : {}),
+          id: { not: id },
+        },
+      });
+      if (phoneTaken) {
         return NextResponse.json({ success: false, message: `Phone number ${phone} is already used by ${phoneTaken.name}` }, { status: 400 });
       }
     }
 
-    // Check unique email collision
+    // Check unique email collision within store tenant
     if (email && email !== existing.email) {
-      const emailTaken = await prisma.customer.findUnique({ where: { email } });
-      if (emailTaken && emailTaken.id !== id) {
+      const emailTaken = await prisma.customer.findFirst({
+        where: {
+          email: { equals: email, mode: "insensitive" },
+          ...(scopeStoreId ? { storeId: scopeStoreId } : {}),
+          id: { not: id },
+        },
+      });
+      if (emailTaken) {
         return NextResponse.json({ success: false, message: `Email ${email} is already in use.` }, { status: 400 });
       }
     }

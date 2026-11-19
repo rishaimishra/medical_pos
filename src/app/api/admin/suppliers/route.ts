@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
+import { checkStoreQuota } from "@/lib/entitlements";
 
 function isValidPhone(phone: string): boolean {
   const digits = phone.replace(/\D/g, "");
@@ -233,6 +234,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: "Forbidden: Insufficient privileges to add suppliers" }, { status: 403 });
   }
 
+  const supQuota = await checkStoreQuota(auth.session.storeId, "maxSuppliers");
+  if (!supQuota.allowed) return supQuota.response!;
+
   try {
     const body = await req.json();
     const name = (body.name || "").trim();
@@ -270,7 +274,10 @@ export async function POST(req: NextRequest) {
     if (dlNo) dupConditions.push({ dlNo: { equals: dlNo, mode: "insensitive" } });
 
     const existing = await prisma.supplier.findFirst({
-      where: { OR: dupConditions },
+      where: {
+        ...(auth.session.storeId ? { storeId: auth.session.storeId } : {}),
+        OR: dupConditions,
+      },
     });
 
     if (existing) {
@@ -290,6 +297,7 @@ export async function POST(req: NextRequest) {
 
     const supplier = await prisma.supplier.create({
       data: {
+        storeId: auth.session.storeId ?? null,
         name,
         contact,
         phone,
@@ -302,6 +310,7 @@ export async function POST(req: NextRequest) {
     });
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: "SUPPLIER_CREATED",
@@ -420,6 +429,7 @@ export async function PUT(req: NextRequest) {
     });
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: "SUPPLIER_UPDATED",
@@ -512,6 +522,7 @@ export async function DELETE(req: NextRequest) {
     await prisma.supplier.delete({ where: { id } });
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: "SUPPLIER_DELETED",

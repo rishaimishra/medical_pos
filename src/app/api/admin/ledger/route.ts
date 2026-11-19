@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { queryMasterLedger } from "@/lib/ledger";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 export type { MasterLedgerEntry } from "@/lib/ledger";
 
@@ -14,6 +15,9 @@ export async function GET(req: NextRequest) {
   if (!canAccessPage(auth.session, "/admin/financials") && !canAccessPage(auth.session, "/admin/reports")) {
     return NextResponse.json({ success: false, message: "Forbidden: Access to financial ledger denied" }, { status: 403 });
   }
+
+  const finGate = await requireStoreFeature(auth.session.storeId, "expenseAndFinancialLedger");
+  if (!finGate.allowed) return finGate.response!;
 
   const { searchParams } = new URL(req.url);
   const branchIdParam = searchParams.get("branchId");

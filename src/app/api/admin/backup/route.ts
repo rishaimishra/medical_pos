@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/lib/auth";
 import { generateSqlDump, listSavedBackups, BACKUP_DIR } from "@/lib/backup";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { requireStoreFeature } from "@/lib/entitlements";
 import path from "path";
 import fs from "fs";
 
@@ -27,6 +28,11 @@ export async function GET(req: NextRequest) {
         { status: 403 }
       );
     }
+
+    const backupGate = await requireStoreFeature(auth.session.storeId, "auditAndBackupCompliance", {
+      allowComplianceRead: true,
+    });
+    if (!backupGate.allowed) return backupGate.response!;
 
     const { searchParams } = new URL(req.url);
 

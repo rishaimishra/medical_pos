@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { queryAdminSalesSummary } from "@/lib/salesReport";
 import { buildCsvContent } from "@/lib/csv";
 import { buildXlsxBuffer } from "@/lib/excel";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.16.4 & 2.16.5: Admin Sales Summary Export (CSV UTF-8 BOM & Excel .xlsx)
@@ -32,6 +33,9 @@ export async function GET(req: NextRequest) {
   const format = (searchParams.get("format") || "csv").toLowerCase();
 
   const storeId = auth.session.storeId ?? null;
+  const featGate = await requireStoreFeature(storeId, "excelAndCsvExports");
+  if (!featGate.allowed) return featGate.response!;
+
   let targetBranchId: number | null = auth.session.branchId ?? null;
 
   if (branchParam === "all") {

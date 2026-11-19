@@ -5,6 +5,7 @@ import {
   hashPassword,
 } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { checkStoreQuota, requireStoreFeature } from "@/lib/entitlements";
 import {
   ROLE_MATRIX,
   SystemRole,
@@ -209,6 +210,9 @@ export async function POST(req: NextRequest) {
 
     // ── 1. CREATE STAFF USER ──────────────────────────────────────────
     if (type === "staff") {
+      const staffQuota = await checkStoreQuota(auth.session.storeId, "maxStaffUsers");
+      if (!staffQuota.allowed) return staffQuota.response!;
+
       const name = (body.name || "").trim();
       const username = (body.username || "").trim().toLowerCase();
       const email = (body.email || "").trim().toLowerCase();
@@ -376,6 +380,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, message: "Password must be at least 6 characters." }, { status: 400 });
       }
 
+      const supGate = await requireStoreFeature(auth.session.storeId, "supplierPortalAndGrn");
+      if (!supGate.allowed) return supGate.response!;
+
       const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
       if (!supplier) {
         return NextResponse.json({ success: false, message: "Affiliated supplier vendor not found." }, { status: 404 });
@@ -452,6 +459,9 @@ export async function POST(req: NextRequest) {
 
     // ── 3. CREATE PATIENT / CUSTOMER ──────────────────────────────────
     if (type === "patient") {
+      const custQuota = await checkStoreQuota(auth.session.storeId, "maxCustomers");
+      if (!custQuota.allowed) return custQuota.response!;
+
       const name = (body.name || "").trim();
       const phone = (body.phone || "").trim();
       const email = body.email ? body.email.trim().toLowerCase() : null;
@@ -469,12 +479,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, message: "Optional portal password must be at least 6 characters." }, { status: 400 });
       }
 
-      // Check unique phone / email
+      const storeId = auth.session.storeId ?? null;
+
+      // Check unique phone / email within store tenant
       const orCheck: any[] = [{ phone }];
-      if (email) orCheck.push({ email });
+      if (email) orCheck.push({ email: { equals: email, mode: "insensitive" } });
 
       const existingCust = await prisma.customer.findFirst({
-        where: { OR: orCheck },
+        where: {
+          ...(storeId ? { storeId } : {}),
+          OR: orCheck,
+        },
       });
       if (existingCust) {
         return NextResponse.json(
@@ -487,6 +502,7 @@ export async function POST(req: NextRequest) {
 
       const newCustomer = await prisma.customer.create({
         data: {
+          storeId,
           name,
           phone,
           email,
@@ -894,12 +910,26 @@ export async function PUT(req: NextRequest) {
       if (!name) return NextResponse.json({ success: false, message: "Patient name is required." }, { status: 400 });
       if (!phone || phone.length < 7) return NextResponse.json({ success: false, message: "Valid mobile phone required." }, { status: 400 });
 
-      // Unique phone & email checks
-      const dupPhone = await prisma.customer.findFirst({ where: { phone, id: { not: id } } });
+      const scopeStoreId = existing.storeId ?? auth.session.storeId ?? null;
+
+      // Unique phone & email checks within store tenant
+      const dupPhone = await prisma.customer.findFirst({
+        where: {
+          phone,
+          ...(scopeStoreId ? { storeId: scopeStoreId } : {}),
+          id: { not: id },
+        },
+      });
       if (dupPhone) return NextResponse.json({ success: false, message: "Phone number is already registered to another patient." }, { status: 409 });
 
       if (email) {
-        const dupEmail = await prisma.customer.findFirst({ where: { email, id: { not: id } } });
+        const dupEmail = await prisma.customer.findFirst({
+          where: {
+            email: { equals: email, mode: "insensitive" },
+            ...(scopeStoreId ? { storeId: scopeStoreId } : {}),
+            id: { not: id },
+          },
+        });
         if (dupEmail) return NextResponse.json({ success: false, message: "Email is already registered to another patient." }, { status: 409 });
       }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAdminRequest(req);
@@ -16,6 +17,9 @@ export async function GET(req: NextRequest) {
   ) {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
+
+  const exportGate = await requireStoreFeature(auth.session.storeId, "excelAndCsvExports");
+  if (!exportGate.allowed) return exportGate.response!;
 
   try {
     const suppliers = await prisma.supplier.findMany({

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { buildCsvContent } from "@/lib/csv";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * GET /api/admin/sales/export
@@ -23,6 +24,11 @@ export async function GET(req: NextRequest) {
       { status: 403 }
     );
   }
+
+  const exportGate = await requireStoreFeature(auth.session.storeId, "excelAndCsvExports", {
+    allowComplianceRead: true,
+  });
+  if (!exportGate.allowed) return exportGate.response!;
 
   const { searchParams } = new URL(req.url);
   const search = (searchParams.get("search") || "").trim();

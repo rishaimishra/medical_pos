@@ -14,6 +14,7 @@ import {
   Store,
 } from "lucide-react";
 import { useBranchStore } from "@/stores/useBranchStore";
+import { FeatureGate } from "@/components/saas/FeatureGate";
 
 interface Branch {
   id: number;
@@ -219,13 +220,15 @@ export default function StoreBranchesPage() {
               {successMsg}
             </div>
           )}
-          <button
-            onClick={() => openBranchModal()}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#1F4E5B] hover:bg-[#163a44] text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            Add New Store Branch
-          </button>
+          <FeatureGate feature="multiBranchManagement" quotaResource="maxBranches" mode="disable">
+            <button
+              onClick={() => openBranchModal()}
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#1F4E5B] hover:bg-[#163a44] text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Add New Store Branch
+            </button>
+          </FeatureGate>
         </div>
       </div>
 

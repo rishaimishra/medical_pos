@@ -4,6 +4,7 @@ import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { calculateShiftCashFigures } from "@/lib/cashDrawerServer";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.12.2: Day-End Cash Drawer Reconciliation (Z-Report Closing)
@@ -31,6 +32,9 @@ export async function POST(req: NextRequest) {
   if (!canAccessPage(auth.session, "/admin/financials")) {
     return NextResponse.json({ success: false, message: "Forbidden: Access to close cash drawer denied" }, { status: 403 });
   }
+
+  const featureGate = await requireStoreFeature(auth.session.storeId, "customDiscountsAndDayEndClose");
+  if (!featureGate.allowed) return featureGate.response!;
 
   try {
     const body = await req.json();

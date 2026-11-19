@@ -4,6 +4,7 @@ import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessPage } from "@/lib/rbac";
 import { escapeHtml, sendEmail } from "@/lib/email";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.17.2: Admin Supplier Message Actions (Mark Read, Reply, Delete)
@@ -20,6 +21,9 @@ export async function PATCH(
   if (!canAccessPage(auth.session, "/admin/messages")) {
     return NextResponse.json({ success: false, message: "Forbidden: Messaging access denied" }, { status: 403 });
   }
+
+  const msgGate = await requireStoreFeature(auth.session.storeId, "twoWayMessagingInboxes");
+  if (!msgGate.allowed) return msgGate.response!;
 
   const { id: rawId } = await params;
   const id = parseInt(rawId, 10);
@@ -129,6 +133,9 @@ export async function DELETE(
   if (!canAccessPage(auth.session, "/admin/messages")) {
     return NextResponse.json({ success: false, message: "Forbidden: Messaging access denied" }, { status: 403 });
   }
+
+  const msgGate = await requireStoreFeature(auth.session.storeId, "twoWayMessagingInboxes");
+  if (!msgGate.allowed) return msgGate.response!;
 
   const { id: rawId } = await params;
   const id = parseInt(rawId, 10);

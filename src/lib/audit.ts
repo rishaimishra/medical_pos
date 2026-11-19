@@ -58,6 +58,9 @@ const SENSITIVE_KEYS = new Set([
   "setupotp",
   "otp",
   "secret",
+  "razorpaykeysecret",
+  "razorpaywebhooksecret",
+  "bootstrapkey",
 ]);
 
 /**
@@ -137,6 +140,58 @@ export async function logAudit(
     await prisma.auditLog.create({ data });
   } catch (err) {
     console.error("[AuditTrail Error] Failed to write audit log:", err);
+  }
+}
+
+export interface PlatformAuditLogInput {
+  platformUserId?: number | null;
+  storeId?: number | null;
+  action: string;
+  entity: string;
+  entityId?: number | null;
+  details?: string | Record<string, unknown> | null;
+  ipAddress?: string | null;
+}
+
+/**
+ * Writes an immutable Platform CEO / Super Admin audit log row.
+ */
+export async function logPlatformAudit(
+  input: PlatformAuditLogInput,
+  tx?: TransactionClient
+): Promise<void> {
+  const client = tx || prisma;
+
+  let serializedDetails: string | null = null;
+  if (typeof input.details === "string") {
+    serializedDetails = input.details;
+  } else if (input.details && typeof input.details === "object") {
+    try {
+      serializedDetails = JSON.stringify(sanitizeAuditDetails(input.details));
+    } catch {
+      serializedDetails = String(input.details);
+    }
+  }
+
+  const data = {
+    platformUserId: input.platformUserId ?? null,
+    storeId: input.storeId ?? null,
+    action: input.action.slice(0, 100),
+    entity: input.entity.slice(0, 100),
+    entityId: input.entityId ?? null,
+    details: serializedDetails,
+    ipAddress: (input.ipAddress || "127.0.0.1").slice(0, 45),
+  };
+
+  if (tx) {
+    await tx.platformAuditLog.create({ data });
+    return;
+  }
+
+  try {
+    await prisma.platformAuditLog.create({ data });
+  } catch (err) {
+    console.error("[PlatformAudit Error] Failed to write platform audit log:", err);
   }
 }
 

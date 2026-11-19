@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { toLocalYMD } from "@/lib/csv";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { FeatureGate } from "@/components/saas/FeatureGate";
 import {
   BarChart3,
   TrendingUp,
@@ -305,6 +306,8 @@ export default function ReportsPage() {
           )}
 
           {/* Export Buttons depending on active tab */}
+          <FeatureGate feature="excelAndCsvExports" mode="disable">
+          <div className="flex flex-wrap items-center gap-2">
           {activeTab === "sales_summary" && isAdmin && (
             <>
               <button
@@ -437,6 +440,8 @@ export default function ReportsPage() {
               </button>
             </>
           )}
+          </div>
+          </FeatureGate>
         </div>
       </div>
 

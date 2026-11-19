@@ -1,0 +1,1873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Medical POS SaaS — Complete Product Guide, Panel Handbook & Sales Playbook</title>
+  <style>
+    :root {
+      --bg: #f4f7f9;
+      --surface: #ffffff;
+      --surface-alt: #f8fafc;
+      --ink: #0f172a;
+      --muted: #475569;
+      --subtle: #64748b;
+      --border: #e2e8f0;
+      --teal: #0f6e56;
+      --teal-dark: #0a4d3c;
+      --teal-soft: #eaf5f0;
+      --indigo: #4338ca;
+      --indigo-soft: #eef2ff;
+      --amber: #b45309;
+      --amber-soft: #fef3c7;
+      --rose: #be123c;
+      --rose-soft: #ffe4e6;
+      --emerald: #047857;
+      --emerald-soft: #d1fae5;
+      --sidebar-bg: #0f172a;
+      --sidebar-width: 295px;
+      --radius: 16px;
+      --shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.65;
+      font-size: 15px;
+    }
+
+    /* Layout */
+    .app-shell {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-width);
+      background: var(--sidebar-bg);
+      color: #e2e8f0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      overflow-y: auto;
+      padding: 20px 16px 40px;
+      z-index: 50;
+      border-right: 1px solid #1e293b;
+      transition: transform 0.25s ease;
+    }
+    .sidebar::-webkit-scrollbar { width: 6px; }
+    .sidebar::-webkit-scrollbar-thumb { background: #334155; border-radius: 99px; }
+
+    .brand-box {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 10px 16px;
+      border-bottom: 1px solid #1e293b;
+      margin-bottom: 14px;
+    }
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #10b981, #0f6e56);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 900;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .brand-title { font-size: 15px; font-weight: 800; color: #fff; line-height: 1.2; }
+    .brand-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+    .search-wrap {
+      position: relative;
+      margin-bottom: 16px;
+    }
+    .search-input {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #f8fafc;
+      padding: 9px 12px 9px 34px;
+      border-radius: 10px;
+      font-size: 13px;
+      outline: none;
+    }
+    .search-input:focus { border-color: #10b981; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25); }
+    .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #94a3b8;
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    .nav-group-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #64748b;
+      font-weight: 800;
+      margin: 18px 10px 6px;
+    }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 11px;
+      border-radius: 10px;
+      color: #cbd5e1;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s, color 0.15s;
+      margin-bottom: 2px;
+    }
+    .nav-link:hover, .nav-link.active {
+      background: #1e293b;
+      color: #fff;
+    }
+    .nav-link.active {
+      background: linear-gradient(90deg, rgba(15,110,86,0.45), rgba(15,110,86,0.15));
+      border-left: 3px solid #10b981;
+      color: #6ee7b7;
+    }
+    .nav-pill {
+      font-size: 10px;
+      padding: 1px 7px;
+      border-radius: 99px;
+      background: #1e293b;
+      color: #94a3b8;
+      font-weight: 700;
+    }
+
+    /* Main Content */
+    .main {
+      margin-left: var(--sidebar-width);
+      flex: 1;
+      min-width: 0;
+      padding: 28px 36px 80px;
+      max-width: 1460px;
+    }
+
+    .mobile-topbar {
+      display: none;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: var(--sidebar-bg);
+      color: #fff;
+      padding: 12px 16px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .menu-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #fff;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* Hero */
+    .hero {
+      background: linear-gradient(135deg, #0f172a 0%, #0f4c3a 55%, #115e59 100%);
+      color: #ffffff;
+      border-radius: 22px;
+      padding: 36px 38px;
+      box-shadow: 0 20px 40px -15px rgba(15, 23, 42, 0.25);
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(16, 185, 129, 0.18);
+      border: 1px solid rgba(110, 231, 183, 0.35);
+      color: #a7f3d0;
+      padding: 5px 14px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: 31px;
+      line-height: 1.2;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+    .hero p {
+      margin: 0;
+      color: #cbd5e1;
+      max-width: 850px;
+      font-size: 15.5px;
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 10px 16px;
+      border-radius: 11px;
+      text-decoration: none;
+      transition: transform 0.12s ease, opacity 0.15s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: #10b981; color: #052e16; }
+    .btn-light { background: rgba(255,255,255,0.14); color: #fff; border: 1px solid rgba(255,255,255,0.22); }
+    .btn-outline { background: var(--surface); color: var(--ink); border: 1px solid var(--border); }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 14px;
+      margin-bottom: 26px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+    }
+    .stat-num { font-size: 24px; font-weight: 900; color: var(--teal); line-height: 1.1; }
+    .stat-label { font-size: 12.5px; font-weight: 700; color: var(--muted); margin-top: 4px; }
+    .stat-hint { font-size: 11.5px; color: var(--subtle); margin-top: 2px; }
+
+    /* Filter Bar */
+    .filter-bar {
+      position: sticky;
+      top: 12px;
+      z-index: 30;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 14px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      box-shadow: var(--shadow);
+      margin-bottom: 28px;
+    }
+    .filter-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .filter-pill {
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 6px 12px;
+      border-radius: 99px;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .filter-pill.active {
+      background: var(--teal);
+      border-color: var(--teal);
+      color: #fff;
+    }
+
+    /* Section Headings */
+    .section { margin-bottom: 42px; scroll-margin-top: 84px; }
+    .section-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+    .section-kicker {
+      font-size: 11.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--teal);
+    }
+    .section-head h2 {
+      margin: 3px 0 0;
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.015em;
+    }
+    .section-desc { color: var(--muted); font-size: 14px; max-width: 780px; margin: 4px 0 0; }
+
+    /* Cards & Grids */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 9px;
+      border-radius: 99px;
+      white-space: nowrap;
+    }
+    .b-live { background: var(--emerald-soft); color: #065f46; }
+    .b-admin { background: #e0f2fe; color: #075985; }
+    .b-staff { background: #f1f5f9; color: #334155; }
+    .b-pro { background: var(--indigo-soft); color: var(--indigo); }
+    .b-roadmap { background: var(--amber-soft); color: #92400e; }
+    .b-placeholder { background: #f3e8ff; color: #6b21a8; }
+    .b-sec { background: var(--rose-soft); color: var(--rose); }
+
+    .route-chip {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 2px 8px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      font-weight: 700;
+    }
+
+    /* Callouts */
+    .callout {
+      border-radius: 12px;
+      padding: 12px 15px;
+      margin-top: 10px;
+      font-size: 13.5px;
+    }
+    .c-example { background: var(--teal-soft); border-left: 4px solid var(--teal); color: #064e3b; }
+    .c-pitch { background: var(--indigo-soft); border-left: 4px solid var(--indigo); color: #1e1b4b; }
+    .c-warn { background: var(--amber-soft); border-left: 4px solid #d97706; color: #78350f; }
+    .c-info { background: #f1f5f9; border-left: 4px solid #475569; color: #1e293b; }
+
+    /* Sidebar Item Detail Cards */
+    .module-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .module-top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .module-title {
+      font-size: 16.5px;
+      font-weight: 800;
+      color: var(--ink);
+      margin: 0;
+    }
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .bullet-list {
+      margin: 4px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 13.5px;
+    }
+    .bullet-list li { margin-bottom: 4px; }
+
+    /* Flow Diagram */
+    .flow-diagram {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .flow-step {
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      position: relative;
+    }
+    .flow-num {
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      line-height: 24px;
+      text-align: center;
+      border-radius: 50%;
+      background: var(--teal);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    /* Tables */
+    .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    th {
+      background: #f8fafc;
+      text-align: left;
+      padding: 11px 14px;
+      font-weight: 800;
+      color: var(--ink);
+      border-bottom: 2px solid var(--border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      color: var(--muted);
+    }
+    tr:last-child td { border-bottom: none; }
+
+    /* Accordion for TODOs */
+    details.todo-acc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    details.todo-acc summary {
+      padding: 14px 18px;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 14.5px;
+      background: var(--surface);
+    }
+    details.todo-acc summary:hover { background: var(--surface-alt); }
+    details.todo-acc[open] summary { border-bottom: 1px solid var(--border); background: #f0fdf4; }
+    .todo-body { padding: 14px 18px; font-size: 13.8px; color: var(--muted); }
+
+    .hidden-by-filter { display: none !important; }
+
+    @media (max-width: 980px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .main { margin-left: 0; padding: 18px 16px 60px; }
+      .mobile-topbar { display: flex; }
+      .hero { padding: 24px 20px; }
+      .hero h1 { font-size: 24px; }
+    }
+
+    @media print {
+      .sidebar, .mobile-topbar, .filter-bar, .no-print { display: none !important; }
+      .main { margin-left: 0; padding: 0; max-width: 100%; }
+      body { background: #fff; font-size: 12px; }
+      .card, .module-card, details.todo-acc { break-inside: avoid; box-shadow: none; }
+      details.todo-acc { display: block; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Mobile Header -->
+  <div class="mobile-topbar no-print">
+    <div>
+      <strong>Medical POS SaaS</strong>
+      <span style="font-size:12px;color:#94a3b8;margin-left:6px;">Product &amp; Sales Guide</span>
+    </div>
+    <button class="menu-btn" onclick="toggleSidebar()">☰ Menu</button>
+  </div>
+
+  <div class="app-shell">
+    <!-- Left Navigation Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand-box">
+        <div class="brand-icon">Rx</div>
+        <div>
+          <div class="brand-title">Medical POS SaaS</div>
+          <div class="brand-sub">Complete System &amp; Sales Guide</div>
+        </div>
+      </div>
+
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input id="globalSearch" class="search-input" type="text" placeholder="Search page, feature, Razorpay..." />
+      </div>
+
+      <div class="nav-group-label">Start Here</div>
+      <a class="nav-link active" href="#overview">1. What Is This System? <span class="nav-pill">Intro</span></a>
+      <a class="nav-link" href="#ecosystem">2. How 5 Panels Connect <span class="nav-pill">Flow</span></a>
+
+      <div class="nav-group-label">Panel-by-Panel &amp; Sidebars</div>
+      <a class="nav-link" href="#panel-setup">3. Public, Setup &amp; Logins <span class="nav-pill">Entry+Auth</span></a>
+      <a class="nav-link" href="#panel-admin">4. Store Admin &amp; Staff <span class="nav-pill">18 menus</span></a>
+      <a class="nav-link" href="#panel-super-admin">5. Super Admin / CEO Tower <span class="nav-pill">11 menus</span></a>
+      <a class="nav-link" href="#panel-customer">6. Customer / Patient Portal <span class="nav-pill">7 tabs</span></a>
+      <a class="nav-link" href="#panel-supplier">7. Supplier Extranet Portal <span class="nav-pill">5 tabs</span></a>
+
+      <div class="nav-group-label">Billing &amp; Jargon Explained</div>
+      <a class="nav-link" href="#razorpay-deepdive">8. Razorpay Working In-Depth <span class="nav-pill">9 events</span></a>
+      <a class="nav-link" href="#jargon-buster">9. Complex Terms Made Simple <span class="nav-pill">14 cards</span></a>
+      <a class="nav-link" href="#pricing-plans">10. SaaS Plans &amp; Feature Locks <span class="nav-pill">4 tiers/16</span></a>
+
+      <div class="nav-group-label">Every TODO &amp; Sales Pitch</div>
+      <a class="nav-link" href="#todo-part1">11. TODO Part 1: Core &amp; Stock <span class="nav-pill">1.1–1.15</span></a>
+      <a class="nav-link" href="#todo-part2">12. TODO Part 2: POS &amp; Portals <span class="nav-pill">2.1–2.20</span></a>
+      <a class="nav-link" href="#todo-part3">13. TODO Part 3: SaaS &amp; CEO <span class="nav-pill">3.1–3.10</span></a>
+      <a class="nav-link" href="#sales-playbook">14. Marketer's Sales Playbook <span class="nav-pill">Pitch</span></a>
+    </aside>
+
+    <!-- Main Guide Body -->
+    <main class="main">
+
+      <!-- Hero -->
+      <section class="hero" id="overview">
+        <div class="hero-badge">COMPLETE PRODUCT HANDBOOK &bull; ALL 5 PANELS &bull; ALL 45 MODULES (PARTS 1–3)</div>
+        <h1>Medical POS &amp; Multi-Store Pharmacy SaaS Platform</h1>
+        <p>
+          Think of this software as <strong>Shopify + Zoho Books + Apollo Pharmacy Counter Software combined into one platform</strong>.
+          You can host it once in the cloud and sell monthly or yearly subscriptions to <strong>100+ independent pharmacy owners</strong>.
+          Each pharmacy gets its own private workspace, fast barcode billing counter, expiry guard, GST &amp; Schedule H1 registers,
+          plus dedicated login portals for their <strong>Suppliers</strong> and <strong>Patients</strong>—while <strong>You (the SaaS CEO)</strong>
+          control pricing, quotas, Razorpay auto-billing, and revenue from a separate Super Admin Tower.
+        </p>
+        <div class="hero-actions no-print">
+          <a href="#panel-admin" class="btn btn-primary">Explore Store Admin (18 Menus) &rarr;</a>
+          <a href="#razorpay-deepdive" class="btn btn-light">How Razorpay Billing Works</a>
+          <a href="#sales-playbook" class="btn btn-light">Marketer's Pitch Cheat Sheet</a>
+          <button onclick="window.print()" class="btn btn-light">🖨 Print / Save PDF</button>
+        </div>
+      </section>
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-num">5 Portals</div>
+          <div class="stat-label">Separate Panels</div>
+          <div class="stat-hint">Setup, Store, CEO, Customer, Supplier</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">18 + 11</div>
+          <div class="stat-label">Sidebar Modules</div>
+          <div class="stat-hint">18 Store Admin + 11 Super Admin menus</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">43 / 45</div>
+          <div class="stat-label">Modules Built</div>
+          <div class="stat-hint">Parts 1 &amp; 2 Done &bull; Part 3 up to 3.8 Done</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">16 + 8</div>
+          <div class="stat-label">Plan Switches</div>
+          <div class="stat-hint">16 Feature toggles + 8 Usage quotas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">4 Tiers</div>
+          <div class="stat-label">Razorpay SaaS Plans</div>
+          <div class="stat-hint">Trial ₹0, ₹799, ₹1,999, ₹4,999</div>
+        </div>
+      </div>
+
+      <!-- Sticky Filter Bar -->
+      <div class="filter-bar no-print">
+        <div class="filter-pills" id="panelFilters">
+          <button class="filter-pill active" data-filter="all">Show Everything</button>
+          <button class="filter-pill" data-filter="store">Store Admin (18 Menus)</button>
+          <button class="filter-pill" data-filter="ceo">Super Admin / CEO</button>
+          <button class="filter-pill" data-filter="customer">Patient Portal</button>
+          <button class="filter-pill" data-filter="supplier">Supplier Portal</button>
+          <button class="filter-pill" data-filter="razorpay">Razorpay &amp; Terms</button>
+          <button class="filter-pill" data-filter="todos">All TODOs (1.1–3.10)</button>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-outline" style="padding:6px 12px;font-size:12px;" onclick="toggleAllTodos(true)">Expand All TODOs</button>
+          <button class="btn btn-outline" style="padding:6px 12px;font-size:12px;" onclick="toggleAllTodos(false)">Collapse All</button>
+        </div>
+      </div>
+
+      <!-- SECTION 2: ECOSYSTEM -->
+      <section class="section filterable" data-cat="all store ceo customer supplier" id="ecosystem">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">Big Picture Architecture</div>
+            <h2>How All 5 Panels Work Together (Zero Overlap, Complete Security)</h2>
+            <p class="section-desc">
+              Every type of person gets their own login screen and private area. A patient can never enter the billing counter,
+              a store owner can never open your CEO revenue dashboard, and Pharmacy A can never see Pharmacy B's medicines or customers.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="card">
+            <div class="meta-row"><span class="badge b-live">1. Public &amp; Setup</span><span class="route-chip">/setup/wizard</span></div>
+            <h3 style="margin:8px 0 6px;">New Store Self-Onboarding</h3>
+            <p style="margin:0;color:var(--muted);font-size:13.5px;">
+              A brand-new medical store owner opens the website, fills a 4-step form (Shop Name, Drug License, GSTIN, Owner Login),
+              and within 60 seconds gets their own private pharmacy workspace + an automatic <strong>14-Day Free Growth Trial</strong>.
+            </p>
+          </div>
+          <div class="card">
+            <div class="meta-row"><span class="badge b-live">2. Pharmacy Workplace</span><span class="route-chip">/admin/*</span></div>
+            <h3 style="margin:8px 0 6px;">Store Admin &amp; Staff Panel</h3>
+            <p style="margin:0;color:var(--muted);font-size:13.5px;">
+              Where daily business happens: scanning barcodes, billing patients, managing multiple branches, checking expiring strips,
+              paying wholesalers, filing GSTR-1/3B, closing the evening cash drawer, and paying SaaS subscription via Razorpay.
+            </p>
+          </div>
+          <div class="card">
+            <div class="meta-row"><span class="badge b-pro">3. SaaS Owner Tower</span><span class="route-chip">/super-admin/*</span></div>
+            <h3 style="margin:8px 0 6px;">Platform CEO Control Tower</h3>
+            <p style="margin:0;color:var(--muted);font-size:13.5px;">
+              <strong>Your headquarters.</strong> Create pricing plans synced to Razorpay, track Monthly Recurring Revenue (MRR),
+              see stores running out of quotas (upsell leads), spot inactive stores (churn alerts), suspend non-payers, or inspect any store safely.
+            </p>
+          </div>
+          <div class="card">
+            <div class="meta-row"><span class="badge b-live">4. Patient App</span><span class="route-chip">/customer/*</span></div>
+            <h3 style="margin:8px 0 6px;">Customer / Patient Portal</h3>
+            <p style="margin:0;color:var(--muted);font-size:13.5px;">
+              Patients sign in with their email/phone to download old pharmacy bills across multiple stores they visited,
+              upload prescription photos for pickup/delivery, chat with the pharmacist, track chronic monthly medicine refills, and request returns.
+            </p>
+          </div>
+          <div class="card">
+            <div class="meta-row"><span class="badge b-live">5. Vendor Portal</span><span class="route-chip">/supplier/*</span></div>
+            <h3 style="margin:8px 0 6px;">Wholesale Supplier Extranet</h3>
+            <p style="margin:0;color:var(--muted);font-size:13.5px;">
+              Distributors log in to view Purchase Orders sent by the pharmacy, quote updated rates, enter challan/invoice numbers when
+              dispatching trucks, view stock levels of batches they supplied, and message the purchasing manager.
+            </p>
+          </div>
+          <div class="card" style="background:var(--teal-soft);border-color:#a7f3d0;">
+            <div class="meta-row"><span class="badge b-live">Key Sales Point</span></div>
+            <h3 style="margin:8px 0 6px;color:var(--teal-dark);">Same Software, 100+ Independent Stores</h3>
+            <p style="margin:0;color:#065f46;font-size:13.5px;">
+              Whether 1 neighborhood chemist joins or a 20-branch hospital chain joins, everyone runs smoothly on the same cloud server
+              with strict <strong>storeId + branchId isolation</strong> so data never mixes.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 3: PUBLIC & SETUP -->
+      <section class="section filterable" data-cat="all store" id="panel-setup">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">Panel 1 &bull; Entry &amp; Store Registration</div>
+            <h2>Public Landing Portal &amp; 4-Step Setup Wizard</h2>
+            <p class="section-desc">How a new buyer goes from zero to billing medicines in under 2 minutes without needing a developer.</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="module-card">
+            <div class="module-top">
+              <h3 class="module-title">Home Launchpad</h3>
+              <span class="badge b-live">LIVE</span>
+            </div>
+            <div class="meta-row"><span class="route-chip">/</span><span class="badge b-staff">Public Visitor</span></div>
+            <p style="margin:4px 0;font-size:13.5px;color:var(--muted);">
+              Clean, neutral welcome portal with 1-click links to <strong>Register New Store</strong>, <strong>Store Admin Login</strong>,
+              <strong>Customer Portal</strong>, and <strong>Supplier Portal</strong>. Safely hides other stores' private data from visitors.
+            </p>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top">
+              <h3 class="module-title">4-Step First-Run Setup Wizard</h3>
+              <span class="badge b-live">LIVE &bull; Modules 1.2 + 3.7.4</span>
+            </div>
+            <div class="meta-row"><span class="route-chip">/setup/wizard</span><span class="badge b-admin">New Store Owner</span></div>
+            <ul class="bullet-list">
+              <li><strong>Step 1 — Store Info:</strong> Enter Store Name, Phone, Email, Address, 15-char GSTIN, Drug Licenses (DL 20B / 21B), Low-Stock alert level (default 10), Expiry warning days (default 90).</li>
+              <li><strong>Step 2 — Admin Account:</strong> Create Store Owner's username, email, and strong password (encrypted with BCrypt).</li>
+              <li><strong>Step 3 — System &amp; Database Check:</strong> Runs live latency check against the cloud database with plain-English help hints if anything needs attention.</li>
+              <li><strong>Step 4 — Launch &amp; Auto-Seed:</strong> Instantly creates the store's primary <strong>MAIN</strong> branch, seeds <strong>20 medical dosage forms</strong> (Tablet, Capsule, Syrup, Injection, etc.), provisions a <strong>14-Day Free Growth Trial</strong> automatically, sends a welcome countdown email, and logs the owner right into the dashboard!</li>
+            </ul>
+            <div class="callout c-example">
+              <strong>Real-Life Safety Example:</strong> If a pharmacy owner closes Chrome accidentally at Step 3 or opens the site on another laptop, their unfinished setup is saved. They can unlock &amp; resume exact progress using their Step 2 password or a <strong>6-digit SendGrid Email OTP</strong>!
+            </div>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top">
+              <h3 class="module-title">All 4 Separate Login Gates &amp; Security Locks</h3>
+              <span class="badge b-sec">SECURITY &bull; Modules 1.4 &amp; 3.2</span>
+            </div>
+            <div class="meta-row">
+              <span class="route-chip">/admin/login</span>
+              <span class="route-chip">/super-admin/login</span>
+              <span class="route-chip">/customer/login</span>
+              <span class="route-chip">/supplier/login</span>
+            </div>
+            <ul class="bullet-list">
+              <li><strong>Store Login (<code>/admin/login</code>):</strong> Separate login for pharmacy owners &amp; staff. Features a <strong>2-Hour Inactivity Lock + <kbd>Alt+L</kbd> Quick Lock</strong> that locks the screen while safely keeping active POS cart medicines intact (blocks background API saves with <code>HTTP 423</code> until password re-entered).</li>
+              <li><strong>CEO / Platform Login (<code>/super-admin/login</code>):</strong> Isolated SaaS owner gateway with a guarded <em>First-Run CEO Bootstrap</em> tab (unlocked once using server key <code>PLATFORM_BOOTSTRAP_KEY</code> when 0 CEO accounts exist).</li>
+              <li><strong>Brute-Force Shield (All Portals):</strong> 5 consecutive wrong password attempts across IP, username, or email triggers an automatic <strong>15-minute cooldown countdown timer</strong>.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 4: STORE ADMIN PANEL (ALL 18 SIDEBAR MENUS) -->
+      <section class="section filterable" data-cat="all store" id="panel-admin">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">Panel 2 &bull; Daily Pharmacy Operations (<span class="route-chip">/admin/*</span>)</div>
+            <h2>Store Admin &amp; Staff Panel — Every Sidebar Page Explained</h2>
+            <p class="section-desc">
+              This is the heart of the pharmacy. Notice how the sidebar adapts automatically: Cashiers &amp; Pharmacists only see what they are allowed to operate,
+              while features locked on lower plans show a sleek <strong>Lock + PRO badge</strong> that opens an upgrade popup instead of disappearing mysteriously.
+              Header also includes an <strong>Outlet Branch Switcher</strong>, <strong>Notification Bell</strong>, and <strong>Quick Screen Lock (Alt+L)</strong>.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <!-- 1 Dashboard -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">1. Dashboard</h3><span class="badge b-live">LIVE</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/dashboard</span><span class="badge b-staff">All Authorized Staff</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              The pharmacy owner's morning pulse screen. Shows Today / This Month / All-Time net revenue (sales minus refunds), real COGS gross profit,
+              7-day sales chart, 6-month Profit vs Expense trend, Top 5 best-selling medicines, Purchase Order pipeline counts, recent 8 bills, and dismissible Expired / Low-Stock alert banners.
+            </p>
+            <div class="callout c-pitch"><strong>Sales Pitch:</strong> "In 5 seconds every morning, the owner sees exact net profit—not just total cash in the till—plus alerts before medicines expire."</div>
+          </div>
+
+          <!-- 2 Counter POS -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">2. Counter POS (+ Legal Invoice View)</h3><span class="badge b-live">LIVE</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/pos</span><span class="route-chip">/admin/pos/invoice/[id]</span><span class="badge b-staff">Counter Cashiers &amp; Pharmacists</span></div>
+            <ul class="bullet-list">
+              <li><strong>100% Zero-Mouse Keyboard Speed:</strong> <kbd>F2</kbd> Search, <kbd>F4</kbd> Pay, <kbd>F7</kbd> Pick Customer, <kbd>F9</kbd> Bill Discount, <kbd>F10</kbd> Open Cash Drawer, <kbd>Ctrl+P</kbd> Thermal Print, <kbd>ESC</kbd> Clear.</li>
+              <li><strong>USB/Bluetooth Barcode Scanner:</strong> Instant auto-add to cart with audio confirmation beeps (success chime vs out-of-stock double beep).</li>
+              <li><strong>Physical Rack Finder &amp; FEFO:</strong> Every search row shows where the strip sits (e.g., <em>Rack B-02 / Shelf 4</em>) and auto-picks the batch expiring soonest (expired batches are strictly blocked!).</li>
+              <li><strong>Box &rarr; Strip &rarr; Loose Tablets:</strong> Sell a full strip or 4 loose tablets; system divides MRP and deducts fractional stock automatically.</li>
+              <li><strong>Park / Hold Bill:</strong> Customer forgot wallet? Park their cart with 1 click, bill the next person, and recall later.</li>
+              <li><strong>Multi-Tender Payment &amp; Manager Override:</strong> Split 1 bill across Cash + Dynamic UPI QR Code (exact rupee QR!) + Card + Cheque + Baki Khata credit. Cashiers are capped at 10% discount unless a Manager approves with their PIN.</li>
+              <li><strong>Printing &amp; Cash Drawer:</strong> Triggers electronic cash drawer kick pulse on cash sales and prints 58mm/80mm thermal slips or 1-page A4 Legal Tax Invoices.</li>
+            </ul>
+          </div>
+
+          <!-- 3 User Management -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">3. User Management</h3><span class="badge b-live">LIVE</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/users</span><span class="badge b-admin">Admin Only</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">One screen with <strong>3 Tabs</strong> to control everyone connected to the store:</p>
+            <ul class="bullet-list">
+              <li><strong>Tab 1 — Staff &amp; Admin:</strong> Create Managers, Pharmacists, Cashiers, Accountants; lock staff to a specific branch (<em>BR-02</em>) or allow all outlets; control 11 permissions (e.g., hide cost price from cashiers). Protects against deleting the last Admin!</li>
+              <li><strong>Tab 2 — Supplier Portal Logins:</strong> Generate distributor login accounts and email them credentials automatically.</li>
+              <li><strong>Tab 3 — Patients &amp; Customers:</strong> View customer portal accounts, phone primary IDs, and active status.</li>
+            </ul>
+          </div>
+
+          <!-- 4 Store Branches -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">4. Store Branches</h3><span class="badge b-pro">PRO &bull; Growth+</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/branches</span><span class="badge b-admin">Admin Only</span><span class="route-chip">multiBranchManagement</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              Run 2, 3, or 20 medical shops under one login without running Setup Wizard again. Each branch (<em>MAIN</em>, <em>BR-02</em>, <em>OPD-Counter</em>) gets its own
+              Drug License (DL 20B/21B), GSTIN, staff list, and separate stock batches. Top header switcher safely clears/confirms active POS carts before switching outlets.
+            </p>
+            <div class="callout c-example"><strong>Example:</strong> A pharmacy owner opens a second counter outside a hospital. They add <code>BR-02</code> here in 20 seconds and see both shops' sales from one dashboard.</div>
+          </div>
+
+          <!-- 5 Medicines Catalog -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">5. Medicines Catalog</h3><span class="badge b-live">LIVE</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/medicines</span><span class="badge b-staff">Staff w/ Medicine Permission</span></div>
+            <ul class="bullet-list">
+              <li><strong>Complete Drug Details:</strong> Brand Name, Generic Salt Formula, Company, 20 Dosage Forms (+ custom "Other" saved for reuse), HSN Code, GST %, Pack/Loose conversion ratio.</li>
+              <li><strong>Rack / Shelf / Box Locator:</strong> Tag physical storage spots for faster counter retrieval.</li>
+              <li><strong>Regulatory Schedule Tags:</strong> Mark <em>OTC</em>, <em>Schedule H</em>, <em>Schedule H1</em>, or <em>Narcotic</em> to require Doctor details during POS billing.</li>
+              <li><strong>2-Step Bulk CSV/Excel Import &amp; Export:</strong> Upload `.csv`/`.txt`/`.xlsx`, preview rows &amp; duplicates first, confirm import, or print Code 128 barcode stickers! (Bulk Import &amp; Barcode stickers can be gated by SaaS plan).</li>
+            </ul>
+          </div>
+
+          <!-- 6 Batches & Expiry -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">6. Batches &amp; Expiry</h3><span class="badge b-live">LIVE</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/batches</span><span class="badge b-staff">Staff w/ Medicine Permission</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              Tracks multiple manufacturer batches per medicine per branch (same Batch # allowed independently in Branch 1 and Branch 2!).
+              Color-coded alert cards highlight <strong>Red (Already Expired — hard blocked at billing)</strong>, <strong>Orange (&le;30 days — return to wholesaler)</strong>,
+              <strong>Yellow (&le;90 days)</strong>, and <strong>Green (Safe &gt;90 days)</strong>. Cashiers automatically have Purchase Cost hidden (`null`) so owner margins stay confidential.
+            </p>
+          </div>
+
+          <!-- 7 Stock Adjustments -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">7. Stock Adjustments</h3><span class="badge b-live">LIVE</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/adjustments</span><span class="badge b-staff">Inventory &amp; Managers</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              Record every non-billing stock movement with standardized reasons (<em>Damaged in Transit</em>, <em>Breakage/Spillage</em>, <em>Expired Discard</em>,
+              <em>Supplier Return</em>, <em>Physical Audit Variance</em>) and run atomic <strong>Inter-Branch Stock Transfers</strong> (e.g., move 50 strips from MAIN to BR-02 in one click,
+              writing matching Outward &amp; Inward audit logs). Includes UTF-8 Excel CSV export.
+            </p>
+          </div>
+
+          <!-- 8 Sales History -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">8. Sales History</h3><span class="badge b-live">LIVE</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/sales</span><span class="badge b-staff">All Staff</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              Searchable archive of every bill ever generated—filter by Date Range, Branch, Invoice #, Customer Name/Phone, Payment Mode (Cash/UPI/Card/Credit), or Cashier.
+              Reprint A4/Thermal slips in 1 click, send <strong>WhatsApp / SMS digital invoice links</strong>, or jump straight to processing a Return.
+            </p>
+          </div>
+
+          <!-- 9 Sales Returns -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">9. Sales Returns</h3><span class="badge b-live">LIVE</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/returns</span><span class="badge b-staff">All Staff</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              <strong>2 Tabs (Process Return &amp; Return History):</strong> Lookup original bill by barcode or invoice number. Blocks returning more strips than bought minus already returned.
+              Computes exact <strong>Discount-Proportional Refund</strong>, lets staff choose <em>Restock back to good batch</em> vs <em>Damaged Write-Off</em>, prints a Credit Note,
+              and approves/rejects pending return requests sent by patients from the Customer Portal!
+            </p>
+          </div>
+
+          <!-- 10 Financial Ledger & Z-Report -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">10. Financial Ledger &amp; Z-Report</h3><span class="badge b-pro">PRO &bull; Growth+</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/financials</span><span class="route-chip">expenseAndFinancialLedger + customDiscountsAndDayEndClose</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);"><strong>3 Tabs for total cash &amp; overhead control:</strong></p>
+            <ul class="bullet-list">
+              <li><strong>Tab 1 — Master Financial Ledger:</strong> Unified debit/credit statement across Sales, Purchases, Returns &amp; Party payouts, filterable by date/party + CSV/Excel export.</li>
+              <li><strong>Tab 2 — Operational Expenses &amp; Incomes:</strong> Log store rent, electricity bills, staff salaries, tea/petty cash vouchers.</li>
+              <li><strong>Tab 3 — Day-End Cash Drawer Closing (Z-Report):</strong> Cashier enters physical currency counts (e.g., <em>₹500 &times; 14, ₹200 &times; 8</em>) and the system compares it against recorded cash sales/returns/expenses to flag exact <strong>Cash Excess or Shortage</strong>!</li>
+            </ul>
+          </div>
+
+          <!-- 11 Purchase Orders & GRN -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">11. Purchase Orders &amp; GRN Desk</h3><span class="badge b-live">Starter+</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/purchases</span><span class="route-chip">/admin/grn</span><span class="route-chip">purchasesAndGrn</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              Full medicine procurement workflow: <strong>Smart Auto-PO Suggestions</strong> (analyzes 30-day sales speed minus incoming POs), PO status flow
+              (<em>draft &rarr; pending &rarr; price_updated &rarr; confirmed &rarr; shipped &rarr; received</em>), 1-click Reorder Clone, printable PO PDF + WhatsApp/Email dispatch,
+              and a fast keyboard <strong>GRN Receiving Desk (/admin/grn)</strong> supporting free Bonus/Scheme strips, partial deliveries, and weighted average cost updates!
+            </p>
+          </div>
+
+          <!-- 12 Suppliers & Vendors -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">12. Suppliers &amp; Vendors</h3><span class="badge b-admin">Admin Only</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/suppliers</span><span class="route-chip">purchasesAndGrn</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              Directory of wholesale pharma distributors with GSTIN, Drug License, and Payment Terms. Includes an interactive <strong>Accounts Payable Ledger</strong>
+              (track vendor bills vs NEFT/Cheque/UPI/Cash payments and running dues) plus 1-click button to generate &amp; email Supplier Portal logins.
+            </p>
+          </div>
+
+          <!-- 13 Patients Directory -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">13. Patients Directory</h3><span class="badge b-live">LIVE</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/customers</span><span class="badge b-staff">Staff w/ Customer Permission</span></div>
+            <ul class="bullet-list">
+              <li><strong>Customer Profiles:</strong> Mobile phone (scoped cleanly per store!), age, gender, allergies/medical notes, purchase count.</li>
+              <li><strong>Chronic Patient Refill Tracker:</strong> Tag Diabetes/Cardiac/Thyroid patients with e.g. 30-day refill cycles; send automated refill alert emails &amp; renew with 1 click!</li>
+              <li><strong>Baki Khata (Customer Credit Ledger):</strong> Set credit limits per customer, record partial credit settlements, and stop over-limit billing right at the POS counter.</li>
+            </ul>
+          </div>
+
+          <!-- 14 Messages & Inbox -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">14. Messages &amp; Inbox</h3><span class="badge b-pro">PRO &bull; Growth+</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/messages</span><span class="route-chip">twoWayMessagingInboxes</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              <strong>2 Built-in Communication Inboxes:</strong><br>
+              &bull; <strong>Patient Inbox:</strong> View incoming chats &amp; securely uploaded Prescription photos/PDFs from customers and send two-way replies.<br>
+              &bull; <strong>Supplier Inbox:</strong> Receive &amp; reply to distributor inquiries, public contact requests, and PO price questions.
+            </p>
+          </div>
+
+          <!-- 15 Reports & Financials -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">15. Reports &amp; Financials (6 BI Tabs)</h3><span class="badge b-pro">PRO &bull; Growth+</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/reports</span><span class="route-chip">gstAndRegulatoryReports / advancedBiAndProfitReports</span></div>
+            <ul class="bullet-list">
+              <li><strong>Tab 1 — Analytics:</strong> Revenue graphs, Top 10 revenue medicines, payment mode pie-chart (branch-filtered or all branches).</li>
+              <li><strong>Tab 2 — COGS Profit &amp; Loss:</strong> True profitability using actual batch purchase price &times; quantity sold minus operating expenses.</li>
+              <li><strong>Tab 3 — Dead Stock:</strong> Spots medicines with 0 sales in 60, 90, or 180 days so owners don't lock money on slow shelves.</li>
+              <li><strong>Tab 4 — Schedule H / H1 Register:</strong> Legal inspection register showing Date, Patient, Prescribing Doctor &amp; Reg No, Batch, Qty.</li>
+              <li><strong>Tab 5 — GST Summary (GSTR-1 &amp; GSTR-3B):</strong> HSN-wise Taxable Value, CGST, SGST, and IGST ready for the CA to file!</li>
+              <li><strong>Tab 6 — Admin Sales Summary:</strong> Month-over-month growth %, 12-month table, Top 5 customers &amp; OpenXML multi-sheet <code>.xlsx</code> / CSV export.</li>
+            </ul>
+          </div>
+
+          <!-- 16 Discount Policies -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">16. Discount Policies</h3><span class="badge b-pro">PRO &bull; Growth+</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/discounts</span><span class="route-chip">customDiscountsAndDayEndClose</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              Create reusable discount schemes like <em>Senior Citizen 10%</em>, <em>Doctor Referral 5%</em>, or <em>Flat ₹50 Off above ₹1,000 bill</em>.
+              Policies linked to past invoices are safely archived rather than deleted so financial records never break.
+            </p>
+          </div>
+
+          <!-- 17 Subscription & Billing -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">17. Subscription &amp; Billing</h3><span class="badge b-live">LIVE &bull; Module 3.7</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/billing</span><span class="badge b-admin">Admin Only</span></div>
+            <ul class="bullet-list">
+              <li><strong>Plan Hero Card:</strong> Displays active tier (e.g., Growth Pharmacy), Status pill (<em>Trialing / Active / Grace Period</em>), next auto-debit date, and 1-click Cancel Auto-Renew synced with Razorpay.</li>
+              <li><strong>8 Live Usage Meters:</strong> Color-coded bars (Green &lt;70%, Amber 70–94%, Red &ge;95%) tracking Branches, Staff, Medicines, Monthly Bills, Suppliers, Rx Storage, Customers, Discount Rules.</li>
+              <li><strong>Upgrade &amp; Proration:</strong> Compares Starter, Growth &amp; Enterprise side-by-side (Monthly/Yearly toggle), automatically deducts remaining-days proration credit when upgrading, and launches Razorpay Checkout right inside the screen.</li>
+              <li><strong>Printable GST Invoices:</strong> Lists every transaction (<code>SUB-INV-2026-00001</code>) with Store GSTIN, Platform GSTIN, SAC <code>998314</code>, and 18% GST breakup for B2B tax credit!</li>
+            </ul>
+          </div>
+
+          <!-- 18 Store Settings -->
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">18. Store Settings</h3><span class="badge b-live">LIVE &bull; 5 Tabs</span></div>
+            <div class="meta-row"><span class="route-chip">/admin/settings</span><span class="badge b-admin">Admin Only</span></div>
+            <ul class="bullet-list">
+              <li><strong>Tab 1 — Store Profile:</strong> Edit shop name, tagline, GSTIN, DL 20B/21B, currency, low-stock &amp; expiry thresholds (syncs live with MAIN branch).</li>
+              <li><strong>Tab 2 — Branches Setup:</strong> Quick branch manager &amp; outlet status table.</li>
+              <li><strong>Tab 3 — RBAC &amp; Audit Trails:</strong> Inspect role permission matrix and immutable append-only security logs (cannot be edited or deleted).</li>
+              <li><strong>Tab 4 — Backup, Restore &amp; JSON Migration:</strong> 1-click full `.sql` database backup, safe dry-run SQL restore, and legacy JSON-to-PostgreSQL importer.</li>
+              <li><strong>Tab 5 — Software Updates:</strong> Upload signed version ZIP updates with path-traversal protection and automatic pre-update rollback backup!</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 5: SUPER ADMIN / CEO CONTROL TOWER -->
+      <section class="section filterable" data-cat="all ceo" id="panel-super-admin">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">Panel 3 &bull; SaaS Platform Owner Headquarters (<span class="route-chip">/super-admin/*</span>)</div>
+            <h2>Super Admin / CEO Control Tower — All 11 Sidebar Menus &amp; Sub-Pages</h2>
+            <p class="section-desc">
+              Completely isolated from every pharmacy (<code>med_pos_super_admin_session</code> + <code>PlatformUser</code> table). Store Admins get a strict <code>401/403</code> block if they ever try opening these URLs.
+              Includes <strong>Global Command Search (<kbd>Ctrl+K</kbd>)</strong> across stores, branches, plans &amp; invoices, plus Role tiers (<em>CEO, Platform Admin, Finance Ops, Support Viewer</em>).
+            </p>
+          </div>
+        </div>
+
+        <div class="callout c-warn" style="margin-bottom:18px;">
+          <strong>Status Note for Demo Presenters:</strong> 6 of the 11 sidebar areas (Dashboard, Stores + Store 360&deg;, Branches + Branch Detail, Global Users, Broadcasts, Plans &amp; Razorpay Sync) plus the Login/CEO Bootstrap page have <strong>full live interactive UI</strong> right now. The remaining 5 sidebar routes (<em>Store Subscriptions</em>, <em>Payments &amp; Invoices</em>, <em>CEO Analytics &amp; Reports</em>, <em>Platform Audit Logs</em>, <em>Platform Settings</em>) display planned-module placeholders while subscription grants, offline NEFT recording, and overrides work today inside <strong>Stores &rarr; Store 360&deg; Workspace</strong> and Modules 3.9–3.10 complete the remaining dedicated views.
+        </div>
+
+        <h3 style="margin:12px 0 10px;color:var(--teal-dark);font-size:16px;">Group A: Control Panels</h3>
+        <div class="grid-2">
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">1. Executive Overview</h3><span class="badge b-live">LIVE &bull; Module 3.8</span></div>
+            <div class="meta-row"><span class="route-chip">/super-admin/dashboard</span></div>
+            <ul class="bullet-list">
+              <li><strong>SaaS Revenue Strip:</strong> Real-time <strong>MRR</strong> (Monthly normalized across Monthly, Quarterly &divide;3, Yearly &divide;12), <strong>ARR</strong> (MRR &times; 12), <strong>ARPU</strong>, plus Month-to-Date &amp; All-Time Net Collected Revenue (Pre-GST + 18% GST minus refunds).</li>
+              <li><strong>Store Cohorts:</strong> Live count of Paid Active, Trialing, Grace Period, Suspended, Cancelled/Churned stores, Trial-to-Paid Conversion %, and 30-day Churn %.</li>
+              <li><strong>Platform Retail Pulse &amp; Gateway Health:</strong> Combined Pharmacy GMV processed (Today/30d/All-Time), invoices issued, Rx uploads, Razorpay payment success rate &amp; Webhook health badge.</li>
+              <li><strong>Upsell Leads &amp; Churn Risk Feeds:</strong> Automatically flags stores at &ge;80% quota usage (ready to sell upgrade!) and alerts on stores in grace period, trial expiring within 72 hours, or 14 days with zero sales.</li>
+            </ul>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">2. Stores Directory &amp; Store 360&deg; Workspace</h3><span class="badge b-live">LIVE &bull; Module 3.3</span></div>
+            <div class="meta-row"><span class="route-chip">/super-admin/stores</span><span class="route-chip">/super-admin/stores/[id]</span></div>
+            <ul class="bullet-list">
+              <li><strong>Directory Filters:</strong> One-click pills for <em>All Stores, Active Paid, Free Trial, Expiring &le;7d, Near Quota &ge;80%, Past Due/Suspended, Inactive &ge;14d</em>. Quick actions: Activate, Grace Mode, Suspend with reason, Extend Trial (+7/+14/+30d), Grant Plan.</li>
+              <li><strong>6-Tab Store 360&deg; Deep-Dive (<code>/stores/[id]</code>):</strong>
+                1) Overview &amp; KPIs, 2) Store Branches (toggle active), 3) Staff &amp; Users (emergency password reset),
+                4) Subscription &amp; Quota Usage (live bars, <strong>CEO Custom Limit Overrides</strong>, <strong>Manual Plan Grant</strong>, <strong>Record Offline NEFT/Cheque Payment</strong> with auto <code>SUB-INV</code> tax invoice),
+                5) Activity &amp; Audit Feed, 6) Read-only Operations (inventory, expiring stock, bills, POs, Baki Khata).</li>
+              <li><strong>30-Minute Audited Support View ("Impersonate"):</strong> CEO can enter any store's <code>/admin/dashboard</code> to troubleshoot while a mandatory red banner logs every action in both audit trails!</li>
+            </ul>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">3. Branches Explorer &amp; Branch Detail</h3><span class="badge b-live">LIVE &bull; Module 3.3.3</span></div>
+            <div class="meta-row"><span class="route-chip">/super-admin/branches</span><span class="route-chip">/super-admin/branches/[id]</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              View every branch across every customer pharmacy on the platform. Spots branches missing mandatory GSTIN or Drug Licenses (20B/21B), shows batch SKU count, stock value, 30-day sales, last Cash Z-Report close, and drills down into single-branch details.
+            </p>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">4. Global Users &amp; Roles</h3><span class="badge b-live">LIVE &bull; Module 3.3.4</span></div>
+            <div class="meta-row"><span class="route-chip">/super-admin/users</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              5-Tab master explorer searching across <strong>Store Admins</strong>, <strong>Branch Staff</strong>, <strong>Suppliers</strong>, <strong>Patients</strong>, and your own <strong>Platform Super Admin Team</strong> (CEO can add <code>platform_admin</code>, <code>finance_ops</code>, or <code>support_viewer</code> operators here).
+            </p>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">5. Broadcasts &amp; Store Announcements</h3><span class="badge b-live">LIVE &bull; Module 3.3.4</span></div>
+            <div class="meta-row"><span class="route-chip">/super-admin/announcements</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              Send announcements (e.g., maintenance schedule, GST deadline alerts, festival upgrade promos) targeted to <strong>All Stores</strong>, a <strong>Specific Plan Tier</strong> (e.g., only Starter stores), or <strong>One Store</strong>—appearing straight inside their Admin Notification Bell &amp; banners.
+            </p>
+          </div>
+        </div>
+
+        <h3 style="margin:20px 0 10px;color:var(--teal-dark);font-size:16px;">Group B &amp; C: Monetization, Intelligence &amp; Governance</h3>
+        <div class="grid-2">
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">6. Plans &amp; Razorpay Sync (Plan Architect)</h3><span class="badge b-live">LIVE &bull; Modules 3.4 &amp; 3.5.1</span></div>
+            <div class="meta-row"><span class="route-chip">/super-admin/plans</span></div>
+            <p style="margin:2px 0;font-size:13.5px;color:var(--muted);">
+              Create, edit, or archive SaaS subscription tiers. Set Price (INR), Cycle (<em>Monthly / Quarterly / Yearly / Lifetime</em>), Trial Days, <em>Recommended</em> star, Public/Private visibility (for secret enterprise deals), all <strong>8 Quota Limits</strong> (with <code>Unlimited = -1</code> toggle), and all <strong>16 Feature Checkboxes</strong>.
+              Includes 1-click <strong>"Sync RZP"</strong> / <strong>"Retry Sync"</strong> and <strong>"Reconcile All with Razorpay"</strong>!
+            </p>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">7–11. Subscriptions, Payments, BI Reports, Audit Logs &amp; Platform Settings</h3><span class="badge b-placeholder">Placeholder UI &bull; Modules 3.5 &amp; 3.9–3.10</span></div>
+            <div class="meta-row">
+              <span class="route-chip">/super-admin/subscriptions</span>
+              <span class="route-chip">/super-admin/payments</span>
+              <span class="route-chip">/super-admin/reports</span>
+              <span class="route-chip">/super-admin/audit-logs</span>
+              <span class="route-chip">/super-admin/settings</span>
+            </div>
+            <ul class="bullet-list">
+              <li><strong>Current State:</strong> These 5 sidebar pages render clean placeholder cards today. All core subscription grants, offline NEFT payment logging, quota overrides &amp; refunds are already live inside <strong>Store 360&deg; (<code>/super-admin/stores/[id]</code>)</strong>, and CEO financials are live on <strong><code>/super-admin/dashboard</code></strong>.</li>
+              <li><strong>Upcoming in Modules 3.9 &amp; 3.10:</strong> Dedicated 12-month MRR waterfall movement, Store/Branch P&amp;L leaderboards, Multi-Sheet Executive Board <code>.xlsx</code> workbook export, unified Cross-Store Forensic Audit Viewer, and masked Razorpay Config screen.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 6: CUSTOMER / PATIENT PORTAL -->
+      <section class="section filterable" data-cat="all customer" id="panel-customer">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">Panel 4 &bull; Patient Self-Service Web Portal (<span class="route-chip">/customer/*</span>)</div>
+            <h2>Customer / Patient Portal — Login &amp; All 7 Navigation Tabs</h2>
+            <p class="section-desc">
+              Turns a one-time walk-in buyer into a loyal repeat patient! Patients log in at <span class="route-chip">/customer/login</span> (with mandatory email verification &amp; brute-force protection) and access all 7 self-service tabs inside <span class="route-chip">/customer/dashboard</span>.
+            </p>
+          </div>
+        </div>
+
+        <div class="callout c-example" style="margin-bottom:18px;">
+          <strong>Scenario A — N-Store Customer Bill Aggregation (LIVE &bull; Module 3.1.1):</strong><br>
+          Suppose Ramesh buys diabetes strips at <strong>Apex Pharmacy (Store 1)</strong> without registering on the portal—he just gives his mobile number <code>9876543210</code> at the counter. Next week he buys antibiotics at <strong>City Care Chemists (Store 2)</strong> using the same phone number. Each store saves its own isolated customer record (<code>uk_store_customer_phone = [storeId, phone]</code>), so neither store can ever see the other store's list or credit dues! Later, when Ramesh registers &amp; verifies once on <code>/customer/login</code> with <code>9876543210</code>, the system links all matching phone profiles (<code>getLinkedCustomerIds</code>) so Ramesh sees <strong>ALL N stores' bills</strong> (Store 1, Store 2, ..., Store N) in one personal portal—each with the originating <em>Store Name + Branch badge</em> and downloadable Tax Invoice!<br><br>
+          <strong>Scenario B — Private Multi-Store Prescription Routing (UPCOMING &bull; Module 3.10.1):</strong><br>
+          When uploading a doctor's prescription photo, patients shouldn't accidentally broadcast it to every pharmacy on the platform. Module 3.10.1 adds a mandatory <strong>"Target Store / Branch Selector"</strong> right on Upload &amp; Support Chat (<code>PatientMessage.storeId</code> + email alert ONLY to that chosen pharmacy), ensuring Store B's pharmacists can never view prescriptions sent to Store A.
+        </div>
+
+        <div class="grid-3">
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 1: Dashboard</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Summary of total pharmacy visits, total spend, uploaded prescriptions, return requests, and unread store messages.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 2: My Orders</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">View &amp; search all past pharmacy bills across linked stores, filter Rx orders, inspect Originating Store &amp; Branch badge, and print/download Tax Invoices.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 3: Prescriptions</h3><span class="badge b-live">LIVE (+ 3.10.1 Store Picker)</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Upload doctor Rx photos/PDF/HEIC, choose <em>Store Pickup</em> or <em>Home Delivery</em>, add doctor/notes. Files sit outside public web root so only logged-in owners/pharmacists can open them. <em>(Upcoming 3.10.1 adds explicit Target Store/Branch selector.)</em></p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 4: Return Requests</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Pick items &amp; quantities from an invoice, choose Store Credit / Cash / UPI refund, and submit directly to that store's Return desk for approval.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 5: Messages</h3><span class="badge b-live">LIVE &bull; Bidirectional</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Two-way chat with pharmacy staff (ask dosage questions, check medicine availability, confirm order readiness) with unread reply indicators.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 6: Monthly Refills</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Chronic care patients (Diabetes, Thyroid, BP) see their scheduled monthly refill cycle dates so they never run out of maintenance drugs.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 7: Profile</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Update full name, email, residential address, date of birth, gender, and change account password.</p></div>
+        </div>
+      </section>
+
+      <!-- SECTION 7: SUPPLIER EXTRANET PORTAL -->
+      <section class="section filterable" data-cat="all supplier" id="panel-supplier">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">Panel 5 &bull; Wholesale Distributor Self-Service (<span class="route-chip">/supplier/*</span>)</div>
+            <h2>Supplier Extranet Portal — Contact Desk &amp; All 5 Dashboard Tabs</h2>
+            <p class="section-desc">
+              Eliminates endless phone calls and WhatsApp PDF confusion between medical stores and wholesale stockists.
+              Access <span class="route-chip">/supplier/login</span> (credentials auto-emailed by Store Admin) or public vendor desk <span class="route-chip">/supplier/contact</span>.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Public Vendor Contact</h3><span class="badge b-live">LIVE</span></div><div class="meta-row"><span class="route-chip">/supplier/contact</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">New distributors can submit supply price quotes, onboarding inquiries, or dispatch questions straight into the Store Admin's Supplier Inbox without needing a login first.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 1: Dashboard</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Live snapshot of Pending, Price Updated, Confirmed, and Shipped Purchase Orders, total order pipeline value, and unread store messages.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 2: Purchase Orders</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Review requested items and quote updated purchase rates &amp; MRP (<code>price_updated</code>). Once Store Admin confirms the PO, prices permanently lock so rates cannot change silently!</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 3: Dispatches</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">When dispatching stock to the pharmacy, enter distributor Invoice / Challan # + transport notes and flip order status to <code>shipped</code>.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 4: Supplied Batches</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Transparency view showing batches already delivered by this supplier and remaining inventory units at the pharmacy.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 5: Messages</h3><span class="badge b-live">LIVE &bull; Bidirectional</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Direct two-way chat thread with the pharmacy purchasing manager regarding urgent short-expiry returns or replacement stock.</p></div>
+        </div>
+      </section>
+
+      <!-- SECTION 8: RAZORPAY ENGINE DEEP DIVE -->
+      <section class="section filterable" data-cat="all razorpay" id="razorpay-deepdive">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">SaaS Payment Engine Explained Simply</div>
+            <h2>How Razorpay Works Inside This System (Step-by-Step + Real Numbers)</h2>
+            <p class="section-desc">
+              Think of Razorpay as our automated bank collector. Here is every moving part explained in simple English so anyone in sales, operations, or management can understand how money moves from pharmacies to your bank account safely.
+            </p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0;">6-Step Life of a SaaS Subscription Payment</h3>
+          <div class="flow-diagram">
+            <div class="flow-step">
+              <div class="flow-num">1</div>
+              <strong>CEO Creates Plan</strong>
+              <p style="font-size:13px;color:var(--muted);margin:4px 0 0;">In <code>/super-admin/plans</code>, CEO sets price (e.g., ₹1,999/mo). Server calls Razorpay <code>POST /plans</code> and saves <code>plan_xyz</code>. Wait—what if price changes later? Server keeps old subscribers safe and issues a fresh Plan ID!</p>
+            </div>
+            <div class="flow-step">
+              <div class="flow-num">2</div>
+              <strong>14-Day Free Trial Starts</strong>
+              <p style="font-size:13px;color:var(--muted);margin:4px 0 0;">When a pharmacy finishes the Setup Wizard, they automatically start a 14-day Growth Trial (₹0) with a welcome countdown email.</p>
+            </div>
+            <div class="flow-step">
+              <div class="flow-num">3</div>
+              <strong>Store Picks Flow A or Flow B</strong>
+              <p style="font-size:13px;color:var(--muted);margin:4px 0 0;"><strong>Flow A (Subscription Autopay):</strong> Auto-debits Card/UPI every month like Netflix.<br><strong>Flow B (Order / Upgrade):</strong> 1-time UPI/NetBanking checkout (calculates 18% GST &amp; Upgrade Proration credit).</p>
+            </div>
+            <div class="flow-step">
+              <div class="flow-num">4</div>
+              <strong>Wax Seal Verification</strong>
+              <p style="font-size:13px;color:var(--muted);margin:4px 0 0;">After checkout popup finishes, server verifies Razorpay's mathematical HMAC signature before unlocking features—impossible to fake in browser dev tools!</p>
+            </div>
+            <div class="flow-step">
+              <div class="flow-num">5</div>
+              <strong>GST Invoice &amp; Activation</strong>
+              <p style="font-size:13px;color:var(--muted);margin:4px 0 0;">Marks old trial/plan <code>expired</code> (only 1 active sub per store!), activates new plan, unlocks features immediately, and prints sequential GST Tax Invoice <code>SUB-INV-2026-00001</code> (SAC <code>998314</code>).</p>
+            </div>
+            <div class="flow-step">
+              <div class="flow-num">6</div>
+              <strong>Webhooks Handle Autopilot</strong>
+              <p style="font-size:13px;color:var(--muted);margin:4px 0 0;">At midnight every month, Razorpay pings <code>/api/webhooks/razorpay</code> when auto-renewal succeeds (extends expiry + creates new invoice) OR fails (triggers 7-day Grace Period + retry email).</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--teal-dark);">Real Money Math #1: What is "Proration Credit"?</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              When a pharmacy upgrades mid-month, we never punish them by making them pay twice for unused days! Our backend calculates remaining-day credit and subtracts it <strong>before adding 18% GST</strong>.
+            </p>
+            <div class="callout c-example">
+              <strong>Real Example (Verified by Live Test Suite!):</strong><br>
+              &bull; Pharmacy bought <strong>Monthly Starter (₹799)</strong> on Day 1.<br>
+              &bull; Shortly after, they upgrade to <strong>Yearly Scale (₹12,000)</strong>.<br>
+              &bull; Unused credit from Monthly Starter = <strong>₹799</strong>.<br>
+              &bull; Net Taxable Amount = <code>₹12,000 - ₹799 = ₹11,201</code>.<br>
+              &bull; Plus 18% GST on ₹11,201 &rarr; Final Razorpay Order total.<br>
+              &bull; Once paid, old Monthly Starter sub becomes <code>expired</code> so CEO MRR counts only the new plan!
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--teal-dark);">Real Concept #2: Why "Immutable Plan Versioning" &amp; "Reconcile All"?</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Razorpay has a strict banking rule: once a Plan ID (say <code>plan_Old123</code> at ₹1,999/mo) exists on Razorpay, <strong>nobody can change its price or billing cycle</strong> because existing subscribers already signed mandates for ₹1,999.
+            </p>
+            <ul class="bullet-list">
+              <li><strong>If you change Limits/Features</strong> (e.g., increase Growth Staff limit from 15 &rarr; 20): Updates locally in 10ms, keeps the same Razorpay <code>plan_id</code>!</li>
+              <li><strong>If you change Price or Cycle</strong> (e.g., ₹1,999 &rarr; ₹2,299): Automatically creates a brand-new Razorpay Plan ID (<code>plan_New456</code>) for new buyers while existing buyers keep renewing peacefully on their grandfathered rate!</li>
+              <li><strong>"Reconcile All with Razorpay":</strong> Pulls live plans from Razorpay API and compares every local plan's amount/interval against Razorpay, auto-fixing any mismatch in 1 click.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--teal-dark);">Real Concept #3: Webhook Replay Protection ("Idempotency")</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Suppose a bank server is slow, so Razorpay sends the <code>subscription.charged</code> webhook alert <strong>3 times</strong> for the exact same ₹1,999 payment.
+              If a normal system isn't protected, the customer would get 3 invoices and 3 months added instead of 1!
+            </p>
+            <div class="callout c-info">
+              <strong>How We Prevent That:</strong> Every Razorpay alert carries a unique ID (<code>x-razorpay-event-id</code>).
+              1) First, we verify the digital signature using <code>RAZORPAY_WEBHOOK_SECRET</code> (forged requests get <code>401</code>).<br>
+              2) Next, we check our <code>RazorpayWebhookEvent</code> table: on Alert #1 we process payment &amp; mark <code>processed = true</code>. On Alerts #2 &amp; #3, our server responds <code>200 OK (duplicate ignored)</code> with <strong>zero double-billing</strong>!
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--teal-dark);">Real Concept #4: 7-Day Grace Period vs Hard Lockout</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Imagine 15 sick patients waiting in line at a medical shop and the owner's bank card failed at midnight! Shutting down the billing counter immediately would be disastrous.
+            </p>
+            <ul class="bullet-list">
+              <li><strong>Days 1–7 after Failure ("Grace Period"):</strong> Store sees an amber warning banner + gets an email to update card at <code>/admin/billing</code>. <strong>Counter POS sales stay 100% open</strong> so patients never wait, while non-core BI exports pause until renewed.</li>
+              <li><strong>After 7 Days ("Hard Suspended"):</strong> New POS bills &amp; staff edits stop (<code>HTTP 402</code>), EXCEPT <code>/admin/billing</code> (so they can pay right away!) and Compliance/GST/Audit exports (legal records never held hostage!).</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3 style="margin-top:0;color:var(--teal-dark);">All 9 Razorpay Webhook Events &amp; Offline Enterprise Contracts</h3>
+          <p style="font-size:13.5px;color:var(--muted);">
+            In Razorpay Dashboard (&rarr; <em>Account &amp; Settings &rarr; Webhooks</em>), subscribing to these <strong>9 events</strong> at <code>POST /api/webhooks/razorpay</code> keeps every store's billing automatic 24/7. Plus, if a pharmacy pays yearly via <strong>Offline NEFT / Bank Cheque</strong>, the CEO records it in Store 360&deg; to issue a matching <code>SUB-INV</code> GST invoice—and Store Admins can toggle <strong>Cancel Auto-Renew</strong> (<code>cancelAtPeriodEnd</code> synced to Razorpay <code>POST /subscriptions/:id/cancel</code>) right from <code>/admin/billing</code>.
+          </p>
+          <div class="table-wrap" style="margin-top:10px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Razorpay Webhook Event</th>
+                  <th>When It Happens</th>
+                  <th>What Our Software Automatically Does</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>subscription.authenticated</code> / <code>subscription.activated</code></td><td>Customer authorizes autopay card / UPI mandate</td><td>Marks subscription <code>active</code>, unlocks store features, resets Store Status to <code>active</code>.</td></tr>
+                <tr><td><code>subscription.charged</code> / <code>invoice.paid</code></td><td>Monthly or yearly auto-debit succeeds</td><td>Extends <code>currentPeriodEnd</code> to next cycle, clears Grace Period, saves payment &amp; issues next <code>SUB-INV</code> GST invoice.</td></tr>
+                <tr><td><code>subscription.pending</code> / <code>payment.failed</code></td><td>Card declined or low bank balance at renewal</td><td>Enters <strong>7-Day Grace Period</strong>, keeps POS counter open, emails retry alert to Store Owner.</td></tr>
+                <tr><td><code>subscription.halted</code> / <code>subscription.cancelled</code></td><td>Retries exhausted or customer cancels mandate</td><td>Marks subscription <code>suspended</code> / <code>cancelled</code> and suspends store once paid period ends.</td></tr>
+                <tr><td><code>refund.processed</code></td><td>CEO / Razorpay completes refund</td><td>Marks matching <code>SubscriptionPayment</code> record as <code>refunded</code> (automatically excluded from CEO Net Revenue).</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 9: JARGON BUSTER -->
+      <section class="section filterable" data-cat="all razorpay" id="jargon-buster">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">Complex Words Made 100% Simple</div>
+            <h2>Jargon Buster: Every Technical &amp; Business Term Explained With Examples</h2>
+            <p class="section-desc">
+              Use these plain-English explanations when explaining the system to pharmacy owners, hospital buyers, investors, or non-technical teammates.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">1. What does "Bidirectional" mean here?</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              "Bidirectional" simply means <strong>two-way street</strong>—information flows both ways instead of just one person shouting and getting no reply. Where does it happen in our app?
+            </p>
+            <ul class="bullet-list">
+              <li><strong>Patient &harr; Store Chat:</strong> Customer uploads a prescription/question (<code>direction: in</code>) and Pharmacist replies directly back inside the same thread (<code>direction: out</code>).</li>
+              <li><strong>Supplier &harr; Store PO:</strong> Pharmacy sends Purchase Order; Supplier logs into Supplier Portal and quotes updated prices/dispatch tracking; Admin confirms or messages back.</li>
+              <li><strong>Store Profile &harr; MAIN Branch:</strong> Updating store DL/GSTIN in Admin Settings updates the primary <code>MAIN</code> branch automatically and vice versa.</li>
+              <li><strong>Local Plans &harr; Razorpay:</strong> Creating a plan pushes it to Razorpay; "Reconcile All" pulls Razorpay plans back to confirm parity!</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">2. Multi-Tenant Isolation (<code>storeId</code> vs <code>branchId</code>)</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Imagine a huge apartment building. The software is the building itself.
+              Each independent pharmacy buyer gets their own locked apartment (<strong><code>storeId</code></strong>). Nobody can walk into another buyer's apartment.
+              Inside one pharmacy's apartment, they can have multiple rooms like Main Shop + Hospital Counter (<strong><code>branchId</code></strong>), and their owner can walk between their own rooms using the Branch Switcher!
+            </p>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">3. FEFO (First Expiry, First Out)</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Groceries use FIFO (sell oldest arrival first). Pharmacies use <strong>FEFO</strong> (sell whichever batch <em>expires soonest</em> first).
+            </p>
+            <div class="callout c-example">
+              <strong>Example:</strong> You have Batch A (expires Dec 2026) and Batch B (expires Mar 2027) of Dolo-650. At checkout, POS auto-picks Batch A first so it sells before expiring—and if Batch X expired yesterday, POS <strong>locks it red</strong> so no staff can ever accidentally sell an expired pill!
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">4. ACID Transaction &amp; Rollback ("All-or-Nothing Safety")</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Every bill touches 5 places at once: deducts batch stock, writes sale row, saves payment, updates customer credit, writes audit log.
+              Wrapping it in an <strong>ACID Transaction</strong> means if power/internet cuts on step 4, everything rolls back cleanly—no stock gets wrongly deducted without a saved invoice!
+            </p>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">5. Weighted Average Cost (in GRN Receiving)</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              When a wholesaler sends new stock of the <em>same medicine + same batch</em> at a slightly different wholesale price, our GRN desk merges the quantities and computes the true average cost automatically.
+            </p>
+            <div class="callout c-example">
+              <strong>Example:</strong> Already had 10 strips bought at ₹80. Today received 10 more same-batch strips at ₹90. System merges to 20 strips with weighted cost = <strong>₹85/strip</strong>, keeping your Profit &amp; Loss accurate!
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">6. COGS Profit vs Simple Sales Total</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Old software subtracts "total bills paid to suppliers this month" from sales—which is wrong if you still hold unsold stock on shelves. We use <strong>COGS (Cost of Goods Sold)</strong>: every sold strip looks up its exact batch purchase cost, giving the true real-time profit margin per invoice!
+            </p>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">7. Discount-Proportional Refund</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Prevents return fraud or over-refunding. Suppose a patient bought a ₹100 syrup with a 10% bill discount (paid ₹90). When they return that syrup later, the software refunds <strong>₹90</strong> (what they actually paid), not full ₹100!
+            </p>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">8. Feature Gating (<code>HTTP 402</code>), Quotas &amp; <code>X-Quota-Warning</code></h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Both the frontend sidebar (Lock + PRO badges) AND backend APIs check the store's active plan. When a Starter store reaches 80%+ of monthly bills, our API sends a gentle <code>X-Quota-Warning</code> alert rather than crashing silently mid-queue—nudging the owner to upgrade smoothly!
+            </p>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">9. Schedule H / H1 / Narcotics Compliance</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Indian Drug Control law requires strict patient + prescribing doctor registers for habit-forming or high-alert antibiotics (Schedule H / H1). Our system flags those medicines at POS and generates a 1-click Drug Inspector audit report.
+            </p>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">10. Z-Report (Day-End Cash Drawer Closing)</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              At 10 PM shop closing, the cashier physically counts notes in the cash box (<em>₹500 &times; 12, ₹200 &times; 5</em>) and types the counts into Financials &rarr; Cash Drawer. The system compares physical cash vs recorded Cash Sales minus Cash Returns/Expenses and exposes any ₹200 shortage instantly.
+            </p>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">11. SaaS CEO Metrics (MRR, ARR, ARPU, GMV, Churn)</h3>
+            <ul class="bullet-list" style="margin-top:0;">
+              <li><strong>MRR (Monthly Recurring Revenue):</strong> Normalized monthly subscription income. A ₹12,000 yearly plan counts as <code>₹12,000 &divide; 12 = ₹1,000 MRR</code>!</li>
+              <li><strong>ARR (Annual Run Rate):</strong> <code>MRR &times; 12</code> (e.g., ₹1,000 MRR = ₹12,000 ARR).</li>
+              <li><strong>ARPU:</strong> Average Revenue Per Paid Store.</li>
+              <li><strong>GMV (Gross Merchandise Value):</strong> Total retail medicines billed by all pharmacies using your software (great bragging stat for investors: e.g., <em>"₹5 Crore+ pharmacy bills processed!"</em>).</li>
+              <li><strong>Logo Churn %:</strong> % of paid pharmacies that cancelled in the last 30 days.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">12. Other Helpful Terms in Brief</h3>
+            <ul class="bullet-list" style="margin-top:0;">
+              <li><strong>SAC <code>998314</code>:</strong> Official Indian GST Service Accounting Code printed on SaaS software tax invoices (<code>SUB-INV-YYYY-00001</code>) so pharmacies can claim 18% GST Input Credit.</li>
+              <li><strong>RBAC &amp; Manager Override:</strong> Role rules (Cashiers cannot see wholesale cost or give &gt;10% discount without Manager PIN approval).</li>
+              <li><strong>UTF-8 BOM &amp; OpenXML <code>.xlsx</code>:</strong> Ensures Excel shows the <code>₹</code> Rupee symbol cleanly without garbled text and blocks formula-injection hacks.</li>
+              <li><strong>Append-Only Audit Trail:</strong> Security log blocking Edit/Delete (<code>405</code>) and auto-masking passwords as <code>[REDACTED]</code>.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">13. GST-Inclusive MRP Tax Extraction (Indian Pharma Law)</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Unlike restaurants that add GST <em>on top</em> of menu prices, Indian medicine MRPs already <strong>include GST</strong>!
+              Our POS extracts the GST portion backwards automatically—and computes inclusive totals <em>before</em> subtracting discounts so tax never miscalculates.
+            </p>
+            <div class="callout c-example">
+              <strong>Example:</strong> Medicine MRP = <strong>₹112</strong> (GST = 12%). Base Taxable Value = <code>112 &divide; 1.12 = ₹100</code>. GST Tax Split = <code>₹6 CGST + ₹6 SGST</code>. Patient pays exact ₹112!
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--indigo);">14. Audited Support View ("Impersonation") &amp; UX Locking</h3>
+            <ul class="bullet-list" style="margin-top:0;">
+              <li><strong>Support Impersonation Banner:</strong> When the CEO clicks "Support View" to troubleshoot a pharmacy's problem, they get a 30-minute window with a bright red top bar (<em>"CEO Support Session — Audit Logged"</em>) so the store owner sees complete transparency.</li>
+              <li><strong><code>&lt;FeatureGate /&gt;</code> + Downgrade Warnings:</strong> Locked features show a sleek Lock + PRO badge opening <code>&lt;UpgradeRequiredModal /&gt;</code>—and if a Growth store with 3 active branches tries downgrading to a 1-branch Starter plan, <code>/admin/billing</code> warns them upfront!</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 10: PRICING & FEATURE BLUEPRINT -->
+      <section class="section filterable" data-cat="all store ceo razorpay" id="pricing-plans">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">Ready-to-Sell SaaS Blueprint (<code>src/lib/saasFeatures.ts</code>)</div>
+            <h2>The 4 Default Pricing Tiers &amp; What Gets Unlocked in Each</h2>
+            <p class="section-desc">
+              Every plan limit and feature toggle below is live in the database and completely customizable by the CEO inside <code>/super-admin/plans</code>. (<code>-1</code> means Unlimited!)
+            </p>
+          </div>
+        </div>
+
+        <div class="table-wrap" style="margin-bottom:20px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Plan Tier</th>
+                <th>Monthly Price (INR)</th>
+                <th>Branches / Staff</th>
+                <th>Medicines / Bills per Mo</th>
+                <th>Suppliers / Customers / Rx Space</th>
+                <th>Unlocked Features (out of 16)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>14-Day Growth Trial</strong><br><span class="route-chip">FREE_TRIAL</span></td>
+                <td><strong>₹0</strong> (14 days auto on setup)</td>
+                <td>1 Branch &bull; 5 Staff</td>
+                <td>2,500 SKUs &bull; 1,000 bills/mo</td>
+                <td>50 Vendors &bull; 1,000 Patients &bull; 250 MB</td>
+                <td><span class="badge b-live">15/16 Features</span> All Growth features unlocked for 14-day onboarding trial!</td>
+              </tr>
+              <tr>
+                <td><strong>Starter Clinic</strong><br><span class="route-chip">STARTER</span></td>
+                <td><strong>₹799 / mo</strong> (+18% GST)</td>
+                <td>1 Branch &bull; 3 Staff</td>
+                <td>2,000 SKUs &bull; 1,000 bills/mo</td>
+                <td>25 Vendors &bull; 2,000 Patients &bull; 250 MB</td>
+                <td><span class="badge b-staff">5 Core Features</span> Core FEFO POS, Sales &amp; Returns, Purchases &amp; GRN, Baki Khata Ledger, Code 128 Barcodes.</td>
+              </tr>
+              <tr style="background:#f0fdf4;">
+                <td><strong>Growth Pharmacy</strong> ⭐<br><span class="route-chip">GROWTH</span> <span class="badge b-live">Recommended</span></td>
+                <td><strong>₹1,999 / mo</strong> (+18% GST)</td>
+                <td>3 Branches &bull; 15 Staff</td>
+                <td>15,000 SKUs &bull; 10,000 bills/mo</td>
+                <td>150 Vendors &bull; 25,000 Patients &bull; 2,048 MB (2 GB)</td>
+                <td><span class="badge b-live">15/16 Features</span> Multi-Branch, Supplier &amp; Customer Portals, Two-Way Inboxes, GSTR-1/3B &amp; H1 Register, COGS P&amp;L &amp; Dead Stock, Excel/CSV, Bulk Import, Discounts &amp; Z-Report, Expense Ledger.</td>
+              </tr>
+              <tr>
+                <td><strong>Enterprise Chain</strong><br><span class="route-chip">ENTERPRISE</span></td>
+                <td><strong>₹4,999 / mo</strong> (+18% GST)</td>
+                <td><strong>Unlimited</strong> (-1)</td>
+                <td><strong>Unlimited</strong> (-1)</td>
+                <td><strong>Unlimited</strong> Vendors/Patients &bull; 25,600 MB (25 GB)</td>
+                <td><span class="badge b-pro">All 16/16 Features</span> Everything in Growth + Tamper-Proof Security Audit Trail, Automated Email Alerts &amp; 1-Click DB Backups/Restore.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="margin:18px 0 10px;color:var(--teal-dark);font-size:16px;">All 16 Toggleable Feature Switches (Grouped by Category)</h3>
+        <div class="grid-2">
+          <div class="card">
+            <div class="meta-row"><span class="badge b-staff">Group 1: Core POS &amp; Stock (Included in Starter+)</span></div>
+            <ul class="bullet-list" style="margin-top:8px;">
+              <li><code>posBilling</code> — Keyboard POS counter, FEFO picking &amp; receipts.</li>
+              <li><code>salesAndReturnsCore</code> — Sales archive &amp; discount-proportional returns.</li>
+              <li><code>purchasesAndGrn</code> — Vendor POs, stock inwarding &amp; supplier ledger.</li>
+              <li><code>bakiKhataCreditLedger</code> — Patient credit limits &amp; repayment ledger.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="meta-row"><span class="badge b-live">Group 2: Portals &amp; Messaging (Growth+)</span></div>
+            <ul class="bullet-list" style="margin-top:8px;">
+              <li><code>multiBranchManagement</code> — Multi-outlet branches &amp; header switcher.</li>
+              <li><code>supplierPortalAndGrn</code> — External wholesale distributor extranet portal.</li>
+              <li><code>patientPortalAndRxQueue</code> — Patient invoices, Rx upload &amp; monthly refills.</li>
+              <li><code>twoWayMessagingInboxes</code> — Patient chat inbox, Supplier inbox &amp; contact routing.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="meta-row"><span class="badge b-live">Group 3: Compliance &amp; Exports (Starter Barcodes / Growth+ Tools)</span></div>
+            <ul class="bullet-list" style="margin-top:8px;">
+              <li><code>barcodeAndThermalLabels</code> — Scanner listener &amp; Code 128 label sheets <em>(Starter+)</em>.</li>
+              <li><code>gstAndRegulatoryReports</code> — GSTR-1/3B tax splits &amp; Schedule H/H1 register.</li>
+              <li><code>excelAndCsvExports</code> — Multi-sheet <code>.xlsx</code> &amp; UTF-8 BOM CSV exports.</li>
+              <li><code>bulkMedicineImport</code> — 2-step preview &amp; duplicate-skip catalog upload.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="meta-row"><span class="badge b-pro">Group 4: Analytics &amp; Governance (Growth+ / Enterprise)</span></div>
+            <ul class="bullet-list" style="margin-top:8px;">
+              <li><code>advancedBiAndProfitReports</code> — 12-month sales, COGS P&amp;L &amp; Dead Stock BI.</li>
+              <li><code>customDiscountsAndDayEndClose</code> — Discount schemes, overrides &amp; Cash Z-Report.</li>
+              <li><code>expenseAndFinancialLedger</code> — Overheads (rent/salary) &amp; party ledger.</li>
+              <li><code>auditAndBackupCompliance</code> — Security Audit Trail, alerts &amp; SQL Backups <em>(Enterprise)</em>.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 11: TODO PART 1 -->
+      <section class="section filterable" data-cat="all todos" id="todo-part1">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">Complete Engineering &amp; Feature Checklist (Individual Module Breakdown)</div>
+            <h2>TODO Part 1: Core Engine, Inventory &amp; Purchasing (Modules 1.1 – 1.15)</h2>
+            <p class="section-desc">Every single one of the 15 Part 1 foundation modules is COMPLETED and verified.</p>
+          </div>
+        </div>
+
+        <details class="todo-acc" open>
+          <summary><span>Module 1.1: System Architecture, Database Foundation &amp; Transaction Safety</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Built 22+ normalized PostgreSQL tables with 49 high-speed indexes and exact decimal money types, centralized Indian defaults (<code>₹</code>, <code>Asia/Kolkata</code>, 10 low-stock &amp; 90-day expiry warning thresholds), ACID transaction rollbacks, <code>/api/health</code> diagnostics, and composite <code>[medicineId, batchNo, branchId]</code> uniqueness so Store 1 &amp; Store 2 stock the same batch numbers independently.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.2: 4-Step First-Run Setup Wizard, OTP Resume &amp; Default Master Data</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Interactive 4-step wizard (<code>/setup/wizard</code>) with browser recovery (<code>localStorage</code> + DB token), cross-device unlock via Admin Password or 6-digit SendGrid Email OTP, automatic seeding of 20 standard medical dosage forms + primary <code>MAIN</code> branch, permanent setup lock, and plain-English database error hints.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.3: Pharmacy Store Profile, Multi-Outlet Branches &amp; SendGrid Email Gateway</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Store DL 20B/21B, 15-char GSTIN, create extra outlets (<code>BR-02</code>) directly in settings without re-running setup, header Outlet Switcher with cart protection, bidirectional sync between Settings &amp; MAIN branch, and centralized <code>.env</code> SendGrid v3 / SMTP transactional email delivery.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.4: Authentication, Brute-Force Protection, RBAC &amp; Audit Trails</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">BCrypt Cost-12 password security, HMAC-SHA256 cookies, 2-hour inactivity auto-lock screen (<code>Alt+L</code> keeping active POS carts safe), 5-attempt 15-minute lockout across IP + username + email, 6 roles with 11 granular permission flags, and tamper-proof append-only AuditLog (auto-redacting passwords).</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.5: Unified 3-Tab User Management, Last-Admin Guard &amp; Auto Credential Emails</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Single screen (<code>/admin/users</code>) with 3 tabs (Staff/Admin, Supplier Portal, Patients), branch locking, Last-Admin deletion/demotion block, soft-deactivation for staff with sales history, role-filtered sidebar menus, and automatic welcome emails with login URLs &amp; passwords.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.6: Medicine Master Catalog, Rack Locator, Loose Units &amp; Drug Schedules</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Brand Name, Generic chemical formula, Manufacturer, HSN Code, GST %, physical Rack/Shelf/Box coordinates, Box&rarr;Strip&rarr;Loose Tablet ratios with loose pricing, and Schedule H / H1 / Narcotics flags enforcing doctor prescription capture at POS.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.7: Bulk CSV/TXT/XLSX Catalog Import, Custom Categories &amp; 100k Speed Rules</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">2-step Preview&rarr;Confirm bulk import skipping duplicates case-insensitively, sample CSV template, custom "Other" categories saved for reuse, UTF-8 BOM Excel export, batch deletion block, and SQL-level pagination built to stay sub-50ms at 100,000+ medicines.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.8: Multi-Batch Inventory, FEFO Picking &amp; 4-Tier Expiry Alert Dashboard</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Multiple batches per medicine per branch, FEFO nearest-expiry prioritization, hard dispense lock on expired drugs, 4-tier color dashboard (Red Expired, Orange &le;30d, Yellow &le;90d, Green Safe), low-stock alerts, and automatic purchase-cost hiding for cashiers.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.9: Stock Adjustments &amp; Atomic Inter-Branch Stock Transfers</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Inward (+) &amp; Outward (-) adjustments with standardized reasons (Damaged, Breakage, Expired Discard, Audit Variance), strict zero-floor guard against negative stock, live preview calculation, atomic cross-branch transfers seeding destination batches automatically, and CSV export.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.10: Supplier Directory, Payable Ledger &amp; Portal Account Generation</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Vendor master with GSTIN/DL validation, Supplier Accounts Payable ledger tracking purchases vs Cheque/NEFT/UPI/Cash payments &amp; running dues, and 1-click Supplier Portal credential generation with onboarding emails.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.11: Purchase Orders (PO), Smart Auto-PO Suggestions &amp; Keyboard GRN Desk</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Sequential <code>PO-YYYY-00001</code> generator, Smart Auto-PO suggestions from 30-day sales velocity minus incoming POs, printable PO PDF + WhatsApp/Email dispatch, and fast Enter-key GRN desk (<code>/admin/grn</code>) capturing free Bonus/Scheme units, batch/expiry, and trade discounts.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.12: Strict PO Status Lifecycle, Batch Merging &amp; Daily Stock-Alert Digest</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">PO state machine (<code>pending &rarr; price_updated &rarr; confirmed &rarr; shipped &rarr; received</code>), supplier price quoting unlocked until Admin confirms/locks, 1-click Reorder cloning, weighted average cost batch merge on matching batch receipt, supplier PO email triggers, and 24h rate-limited daily stock-alert digest email.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.13: Customer Directory, Chronic Patient Refill Tracker &amp; Baki Khata Ledger</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Patient master profiles, chronic illness refill schedules (Cardiac, Diabetes, Thyroid) with 1-click reminder emails &amp; cycle renewal, plus Baki Khata store credit limits, chronological repayment ledger, and real-time POS credit-limit enforcement.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.14: One-Click Full SQL Backup, Dry-Run Restore &amp; JSON Migration Tool</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Dependency-ordered <code>.sql</code> backup downloader + server archive, dry-run SQL restore validator blocking dangerous commands (<code>DROP DATABASE</code>, etc.) &amp; normalizing MySQL syntax to PostgreSQL, plus ACID legacy JSON-to-DB migration tool.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 1.15: Admin-Only ZIP Software Updater With Auto Rollback Snapshot</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Admin-only version ZIP installer checking semantic versions, blocking path-traversal attacks &amp; protected config files (<code>.env</code>, <code>.git</code>), showing file diffs, and creating automatic pre-update file + SQL rollback snapshots before extracting.</div>
+        </details>
+      </section>
+
+      <!-- SECTION 12: TODO PART 2 -->
+      <section class="section filterable" data-cat="all todos" id="todo-part2">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">Complete Billing, Finance &amp; Portal Checklist (Individual Module Breakdown)</div>
+            <h2>TODO Part 2: POS Billing, Financials, Compliance &amp; Portals (Modules 2.1 – 2.20)</h2>
+            <p class="section-desc">All 20 Part 2 POS counter, printing, financial accounting, GST &amp; portal modules are COMPLETED.</p>
+          </div>
+        </div>
+
+        <details class="todo-acc" open>
+          <summary><span>Module 2.1: Responsive App Shell, Searchable Dropdowns, Modals &amp; Stock Cap Fetch</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Auto-flip desktop dropdowns &amp; mobile bottom-sheets, ESC-dismissible modals, non-blocking toast alerts (~4.5s), promise confirmation dialogs, mobile drawer sidebar, live notification bell, dynamic tender fields, and strict cart caps preventing billing beyond physical stock.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.2: Single-Page High-Speed POS Terminal &amp; 100% Keyboard Shortcuts</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Zero-reload POS counter synced with Outlet Switcher, full keyboard shortcuts (<code>F2</code> Search, <code>F4</code> Pay, <code>F7</code> Customer, <code>F9</code> Discount, <code>Enter</code> Add, <code>ESC</code> Clear, <code>Ctrl+P</code> Print), Hold/Park bills, physical rack/shelf display, and FEFO batch auto-selection with override modal.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.3: USB/Bluetooth Barcode Scanner Listener &amp; Code 128 Label Printing</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Detects hardware scanner keystrokes (&lt;50ms speed) anywhere on POS, auto-adds to cart with audio beeps, and prints crisp SVG Code 128 barcode stickers (50&times;25mm, 38&times;25mm, A4 24-up sheets) with Medicine, Batch, Expiry &amp; MRP.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.4: Master Discount Policies, Line/Bill Discounts &amp; Manager PIN Override</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Create store-wide % or flat promo policies with min bill rules, apply per-item or bill-level discounts, enforce 10% cashier cap, and require Manager Password/PIN override via audited API for higher discounts.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.5: Multi-Tender Split Payments (Cash + Dynamic UPI QR) &amp; Electronic Cash Drawer</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Split one bill simultaneously across Cash (with live change calculation), Dynamic exact-amount UPI QR Code, Card, Cheque, and Customer Baki Credit; triggers ESC/POS hardware solenoid cash drawer pulse (<code>F10</code> manual kick logged to AuditLog).</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.6: Atomic Sale Finalization, Stock Deduction, Fixed Inclusive Tax Order &amp; Email Receipt</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Inside ACID DB transaction: re-verifies branch stock &amp; expiry, deducts batch stock, writes <code>stock_adjustments</code> row, captures UPI/cheque references, fixes legacy inclusive tax calculation order, records customer purchase log, and emails HTML receipt without slowing checkout.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.7: 2-Inch (58mm) &amp; 3-Inch (80mm) Thermal Receipts &amp; 11-Column A4 Legal Tax Invoice</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">ESC/POS thermal slips with store DL/GSTIN, batch/expiry &amp; return footer, plus full A4 Tax Invoice with HSN tax summary table, Indian Rupee amount-in-words, and statutory declarations.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.8: Legal Invoice Layout Specification &amp; Single-Page A4 Auto-Scale Print/PDF</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Full legal header ("ORIGINAL FOR RECIPIENT"), verified PAID badge, Doctor Rx details, pharmacist signature block, and auto-scaling print CSS fitting long bills cleanly onto a single A4 sheet or saving to PDF.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.9: Sales History Archive &amp; Instant WhatsApp / SMS Digital Invoice Sharing</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Filter all past invoices by Date, Branch, Invoice #, Customer, Payment Mode, or Cashier; 1-click reprint and share digital receipt link straight to customer's WhatsApp/SMS.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.10: Sales Returns Lookup &amp; Restock vs Damaged Write-Off</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Scan or search invoice to return partial or full items, choose to restock unopened goods back to active batch OR discard damaged stock, and generate Credit Notes.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.11: Return Status Machine, Already-Returned Guard &amp; Discount-Proportional Refund</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Processes pending Customer Portal return requests, prevents returning more quantity than originally purchased minus earlier returns, and calculates fair net refund factoring original bill discounts.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.12: Income/Expense Vouchers &amp; Day-End Cash Drawer Z-Report Closing</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Track store Rent, Electricity, Salaries &amp; misc overheads; close daily shifts by entering physical cash note denominations and automatically spotting exact drawer excess or shortage.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.13: Party Financial Ledger, Sequential Doc Numbers &amp; GST-Inclusive MRP Math</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Chronological sale/purchase/return ledger filterable by party + CSV/Excel export, consistent invoice/PO/RET numbering + amount-in-words, and per-medicine GST-inclusive MRP tax extraction.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.14: Schedule H / H1 Prescription Audit Register &amp; GSTR-1 / GSTR-3B Reports</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Statutory government inspection register for controlled Schedule H/H1 drugs (Patient, Doctor Reg No, Batch, Qty) plus HSN-wise CGST, SGST &amp; IGST breakup reports ready for monthly GST filing.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.15: Real-Time Analytics Dashboard, COGS P&amp;L Engine &amp; 60/90/180-Day Dead Stock Report</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Multi-period sales trends, payment mode pie charts, true COGS gross margin &amp; net profit after expenses, plus Dead Stock detector identifying zero-sale slow inventory tying up store capital.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.16: Admin Dashboard KPIs, Notification Bell Alerts &amp; 12-Month Sales Summary Export</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Time-based greetings, PO status breakdowns, dismissible alert banners + bell dropdown, COGS profit upgrade over crude PO math, MoM growth %, 12-month table, Top 10 medicines, Top 5 customers &amp; UTF-8 Excel exports.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.17: Supplier Self-Service Extranet Portal (Order Tracking, Price Quote &amp; Shipments)</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Distributors log in at <code>/supplier/login</code> to review assigned POs, quote prices before confirmation locks, update shipping challan/tracking numbers, inspect supplied batches, and chat with purchasing staff.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.18: Customer / Patient Portal (Order Archive &amp; Digital Prescription Upload Queue)</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Self-service patient portal displaying past invoices, refill schedule, and photo/PDF prescription uploader routing requests cleanly to pharmacy staff.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.19: Patient Self-Registration, Email Verification, Portal Return Requests &amp; Profile</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Tokenized email verification (blocking unverified logins), brute-force guard, patient-initiated invoice return requests emailed to store, and profile/password editor.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 2.20: Bidirectional Patient/Supplier Message Inboxes &amp; Off-Webroot Prescription Security</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Conversational Patient Inbox + Supplier Inquiry Inbox with unread counters, replies &amp; email alerts, plus storing prescription uploads outside public folders so files open only through authenticated permission-checked routes.</div>
+        </details>
+      </section>
+
+      <!-- SECTION 13: TODO PART 3 -->
+      <section class="section filterable" data-cat="all todos" id="todo-part3">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">Multi-Tenant SaaS Transformation Checklist</div>
+            <h2>TODO Part 3: Super Admin Tower, Subscriptions &amp; Razorpay (Modules 3.1 – 3.10)</h2>
+            <p class="section-desc">Modules 3.1 through 3.8 are COMPLETED &amp; tested against live PostgreSQL + live Razorpay Test API. Modules 3.9 &amp; 3.10 are the final upcoming polish &amp; reporting sprint.</p>
+          </div>
+        </div>
+
+        <details class="todo-acc" open>
+          <summary><span>Module 3.1: Full Multi-Tenant Isolation &amp; N-Store Verified Customer Bill Linking</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Scoped Medicine, Supplier, Customer, SupplierMessage &amp; PatientMessage via <code>storeId</code>; converted Customer phone to store-unique <code>[storeId, phone]</code> so Store 1 &amp; Store 2 never collide or leak customers; built <code>getLinkedCustomerIds</code> so a customer visiting N separate pharmacies merges all N stores' bills cleanly once verified; added SaaS tables (<code>PlatformUser</code>, <code>SubscriptionPlan</code>, <code>StoreSubscription</code>, <code>SubscriptionPayment</code>, <code>RazorpayWebhookEvent</code>).</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 3.2: Separate Super Admin Auth Engine, CEO Control Shell &amp; Support Impersonation</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Dedicated <code>/super-admin/login</code> + First-Run CEO Bootstrap, strict privilege separation from Store Admins (<code>401/403</code>), Command Search (<code>Ctrl+K</code>), and 30-minute audited Support View / Impersonation mode with mandatory red top banner.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 3.3: Stores Directory, Store 360&deg; Deep-Dive, Branches Explorer, Global Users &amp; Broadcasts</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Full tenant lifecycle controls (Activate, Grace, Suspend, Extend Trial), 6-tab Store 360&deg; inspector, Cross-store Branches compliance explorer, 5-tab Global User explorer, and targeted platform Broadcast announcements delivered to store bells.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 3.4: 16-Feature Entitlement Registry, 8 Quota Keys, 4-Tier Blueprint &amp; Plan Architect UI</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Built <code>saasFeatures.ts</code> (16 feature toggles + 8 numeric/unlimited quotas + FREE_TRIAL / STARTER / GROWTH / ENTERPRISE blueprints) and full Plan Architect CRUD UI at <code>/super-admin/plans</code> with safe plan archival.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 3.5: Razorpay Plan Sync, Immutable Versioning, Checkout, HMAC Verify &amp; Webhooks</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Live Razorpay REST engine (<code>POST /plans</code>, <code>GET /plans</code> Reconcile All), Flow A Subscription Autopay + Flow B GST Order Checkout, timing-safe HMAC verification, <code>SUB-INV-YYYY-00001</code> invoice numbering, idempotent <code>/api/webhooks/razorpay</code> supporting 9 events, and CEO manual grant / offline NEFT payment + refund endpoints.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 3.6: Plan-Wise Entitlement Resolver, 402 Feature Gating, Quota Caps &amp; Graceful Lockout</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">15-second cached entitlement resolver with instant cache invalidation, backend <code>402/403</code> guards across modules, hard/soft count quotas (<code>maxBranches</code>, <code>maxStaffUsers</code>, <code>maxMedicines</code>, <code>maxMonthlyInvoices</code> with 80% <code>X-Quota-Warning</code>, <code>maxSuppliers</code>, <code>maxRxStorageMb</code>), 7-day soft Grace Period, and Hard Lockout keeping Billing &amp; Tax Exports open.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 3.7: Store Billing Portal (<code>/admin/billing</code>), Proration Upgrades, <code>&lt;FeatureGate /&gt;</code> UX &amp; Setup Trial</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Hero card, 8 color-coded Usage Meters, Monthly/Yearly pricing cards, live Razorpay Checkout popup, Upgrade Proration credit deduction before 18% GST, auto-expiring previous subs on upgrade, Auto-Renew cancellation, Lock + PRO sidebar badges opening <code>&lt;UpgradeRequiredModal /&gt;</code>, printable B2B SaaS GST invoices, and 14-day Trial auto-provisioning in Setup Wizard.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 3.8: CEO Executive Command Dashboard (<code>/super-admin/dashboard</code>)</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Normalized MRR, ARR, ARPU, MTD/All-Time Net SaaS Revenue + GST minus refunds, Store Cohorts, Trial Conversion %, 30d Churn %, Total Platform Retail GMV, Razorpay Success Rate &amp; Webhook Health, Automated Upsell Leads (&ge;80% quota), and At-Risk Churn Alerts (grace period, &le;72h trial expiry, 14d zero sales).</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 3.9: CEO-Level BI Reports, Store P&amp;L Leaderboards &amp; Multi-Sheet Excel Board Pack</span><span class="badge b-roadmap">PENDING ROADMAP</span></summary>
+          <div class="todo-body"><strong>Scheduled Next:</strong> Populates <code>/super-admin/reports</code> with 12-month MRR waterfall (New, Upgrade, Churn, Net MRR), Plan tier share chart, Cross-Store &amp; Branch P&amp;L leaderboards, Feature utilization matrix, Storage footprint report, and 7-tab executive OpenXML <code>.xlsx</code> board workbook export.</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Module 3.10: Secret Masking, Customer Target-Store Rx Selector, Cross-Store Audit UI &amp; Phase 3 E2E Suite</span><span class="badge b-roadmap">PENDING ROADMAP</span></summary>
+          <div class="todo-body"><strong>Scheduled Next:</strong> Last-4-char Razorpay secret masking inside <code>/super-admin/settings</code>, adding an explicit <em>Target Store / Branch Selector</em> on Customer Portal prescription upload/chat so uploaded prescriptions route strictly to the selected pharmacy's <code>storeId</code>, dedicated Cross-Store Audit viewer UI at <code>/super-admin/audit-logs</code>, and unified Phase 3 E2E test suite.</div>
+        </details>
+      </section>
+
+      <!-- SECTION 14: MARKETER'S SALES PLAYBOOK -->
+      <section class="section filterable" data-cat="all store ceo customer supplier razorpay" id="sales-playbook">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">How to Sell This in the Market</div>
+            <h2>Marketer's 60-Second Pitch &amp; Objection Killer Guide</h2>
+            <p class="section-desc">Use these crisp talking points when demonstrating to independent chemists, multi-branch pharmacy chains, or wholesale distributors.</p>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--teal-dark);">Hook #1: "Save ₹5,000+/month on Expiry Loss Alone"</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Ask the store owner: <em>"How many thousand rupees of expired syrups and tablets do you throw away every 3 months?"</em>
+              Show <strong>FEFO auto-picking + 90/30-day Orange/Red Expiry Dashboard + Wholesale Return alerts</strong>. At ₹1,999/month, Growth pays for itself in week one!
+            </p>
+          </div>
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--teal-dark);">Hook #2: "Zero Theft, Zero Counter Mistakes"</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              Cashiers cannot give &gt;10% unauthorized discount (needs Manager PIN), cannot see owner wholesale purchase prices, cannot sell expired strips,
+              and <strong>Evening Z-Report note counter</strong> catches even ₹50 missing cash before closing the shutter.
+            </p>
+          </div>
+          <div class="card">
+            <h3 style="margin-top:0;color:var(--teal-dark);">Hook #3: "Keep Patients Coming Back Automatically"</h3>
+            <p style="font-size:13.5px;color:var(--muted);">
+              A Diabetes or BP patient buys medicine every 30 days. Our <strong>Chronic Refill Tracker + Customer Portal + WhatsApp Bill Link + Prescription Upload</strong>
+              locks that patient into <em>your</em> pharmacy instead of big online apps!
+            </p>
+          </div>
+        </div>
+
+        <div class="table-wrap" style="margin-top:14px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Common Pharmacy Objection</th>
+                <th>Winning Sales Answer (Backed by Built Features)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><em>"My billing boy only knows keyboard, not mouse—will it slow down the rush hour?"</em></td>
+                <td>No! Counter POS is <strong>100% keyboard-driven</strong> (<code>F2</code> Search, <code>F4</code> Pay, <code>Ctrl+P</code> Thermal Print) + Rack Location HUD + USB Barcode auto-add. Bills take under 5 seconds, and you can <strong>Hold/Park bills</strong> during rush hours.</td>
+              </tr>
+              <tr>
+                <td><em>"What if I have 2 shops or want to open a second branch later?"</em></td>
+                <td>Start on <strong>Starter (₹799)</strong> today, and whenever you open Branch #2, upgrade to <strong>Growth (₹1,999)</strong> in 1 click (with fair Proration Credit!) and add Branch #2 in 20 seconds—same catalog, separate batches &amp; Drug Licenses.</td>
+              </tr>
+              <tr>
+                <td><em>"Will Drug Inspector fines happen for Schedule H1 antibiotics?"</em></td>
+                <td>Our software tags Schedule H / H1 drugs, captures Doctor Name &amp; Reg No right at checkout, and exports the exact <strong>Schedule H/H1 Audit Register + GSTR-1/3B Tax Reports</strong> for your CA.</td>
+              </tr>
+              <tr>
+                <td><em>"What if my subscription card fails when patients are standing at the counter?"</em></td>
+                <td>We give a <strong>7-Day Grace Period</strong> where Counter POS billing <em>never stops</em> while showing an amber reminder to renew at <code>/admin/billing</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      const searchInput = document.getElementById("globalSearch");
+      const filterPills = document.querySelectorAll(".filter-pill");
+      const sections = document.querySelectorAll(".section.filterable");
+      const navLinks = document.querySelectorAll(".sidebar .nav-link");
+      const sidebar = document.getElementById("sidebar");
+
+      let activeFilter = "all";
+
+      function applyFilters() {
+        const q = (searchInput.value || "").trim().toLowerCase();
+
+        sections.forEach((sec) => {
+          const cats = (sec.getAttribute("data-cat") || "").split(/\s+/);
+          const matchesCat = activeFilter === "all" || cats.includes(activeFilter);
+
+          if (!matchesCat) {
+            sec.classList.add("hidden-by-filter");
+            return;
+          }
+
+          if (!q) {
+            sec.classList.remove("hidden-by-filter");
+            sec.querySelectorAll(".module-card, .card, details.todo-acc").forEach((el) => {
+              el.classList.remove("hidden-by-filter");
+            });
+            return;
+          }
+
+          const secText = sec.textContent.toLowerCase();
+          if (!secText.includes(q)) {
+            sec.classList.add("hidden-by-filter");
+            return;
+          }
+
+          sec.classList.remove("hidden-by-filter");
+          const cards = sec.querySelectorAll(".module-card, details.todo-acc, .grid-2 > .card, .grid-3 > .card");
+          if (cards.length > 0) {
+            cards.forEach((card) => {
+              if (card.textContent.toLowerCase().includes(q)) {
+                card.classList.remove("hidden-by-filter");
+                if (card.tagName.toLowerCase() === "details") card.open = true;
+              } else {
+                card.classList.add("hidden-by-filter");
+              }
+            });
+          }
+        });
+      }
+
+      filterPills.forEach((pill) => {
+        pill.addEventListener("click", () => {
+          filterPills.forEach((p) => p.classList.remove("active"));
+          pill.classList.add("active");
+          activeFilter = pill.getAttribute("data-filter") || "all";
+          applyFilters();
+        });
+      });
+
+      searchInput.addEventListener("input", applyFilters);
+
+      navLinks.forEach((link) => {
+        link.addEventListener("click", () => {
+          navLinks.forEach((l) => l.classList.remove("active"));
+          link.classList.add("active");
+          if (window.innerWidth <= 980) {
+            sidebar.classList.remove("open");
+          }
+          // Reset filter if jumping directly to hidden section
+          const targetId = (link.getAttribute("href") || "").replace("#", "");
+          const targetEl = document.getElementById(targetId);
+          if (targetEl && targetEl.classList.contains("hidden-by-filter")) {
+            document.querySelector('.filter-pill[data-filter="all"]')?.click();
+          }
+        });
+      });
+
+      window.toggleSidebar = function () {
+        sidebar.classList.toggle("open");
+      };
+
+      window.toggleAllTodos = function (openState) {
+        document.querySelectorAll("details.todo-acc").forEach((d) => {
+          d.open = openState;
+        });
+      };
+    })();
+  </script>
+</body>
+</html>

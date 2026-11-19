@@ -5,6 +5,7 @@ import { canAccessBranch, canAccessPage, getEffectiveMaxDiscount, hasPermission 
 import { getTodayMidnightUtc } from "@/lib/config";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { sendCustomerInvoiceReceiptEmail } from "@/lib/emailReceipt";
+import { checkStoreQuota, requireStoreFeature } from "@/lib/entitlements";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET: POS Bootstrapping Data (Settings, Discounts, Today's Metrics)
@@ -188,6 +189,21 @@ export async function POST(req: NextRequest | Request) {
 
     const effectiveBranchId = auth.session.branchId ? auth.session.branchId : requestedBranchId;
     const storeId = auth.session.storeId ?? null;
+
+    // SaaS Lifecycle & Monthly Invoice Quota Gate (3.6.3 & 3.6.4)
+    const posGate = await requireStoreFeature(storeId, "posBilling");
+    if (!posGate.allowed) return posGate.response!;
+
+    const posQuota = await checkStoreQuota(storeId, "maxMonthlyInvoices", { isPosCheckout: true });
+    if (!posQuota.allowed) return posQuota.response!;
+
+    const usesCredit =
+      paymentMethod === "credit" ||
+      (paymentMethod === "split" && Number(splitPayments?.credit || 0) > 0);
+    if (usesCredit) {
+      const creditGate = await requireStoreFeature(storeId, "bakiKhataCreditLedger");
+      if (!creditGate.allowed) return creditGate.response!;
+    }
 
     const custId =
       customerId !== undefined && customerId !== null && customerId !== ""
@@ -843,7 +859,7 @@ export async function POST(req: NextRequest | Request) {
     const shouldKickDrawer =
       paymentMethod === "cash" || (paymentMethod === "split" && (splitPaymentsData?.cash || 0) > 0);
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       success: true,
       sale: {
         ...finalSale,
@@ -864,6 +880,10 @@ export async function POST(req: NextRequest | Request) {
       emailReceiptSent,
       emailReceiptQueued,
     });
+    if (posQuota.warningHeader) {
+      res.headers.set("X-Quota-Warning", posQuota.warningHeader);
+    }
+    return res;
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error?.message || "Checkout failed and rolled back" },

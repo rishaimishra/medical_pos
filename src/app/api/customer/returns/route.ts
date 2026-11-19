@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyCustomerRequest } from "@/lib/auth";
 import { escapeHtml, sendEmail } from "@/lib/email";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.19.2: Customer Return Request From Portal
@@ -15,9 +16,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
 
+  const linkedIds = auth.session.linkedCustomerIds ?? [auth.session.customerId];
+
   try {
     const returns = await prisma.return.findMany({
-      where: { customerId: auth.session.customerId },
+      where: { customerId: { in: linkedIds } },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
@@ -71,6 +74,7 @@ export async function POST(req: NextRequest) {
   }
 
   const customerId = auth.session.customerId;
+  const linkedIds = auth.session.linkedCustomerIds ?? [customerId];
 
   try {
     const body = await req.json();
@@ -120,8 +124,18 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      if (!sale || sale.customerId !== customerId) {
+      if (!sale || !sale.customerId || !linkedIds.includes(sale.customerId)) {
         return { errorStatus: 404, errorMessage: "Invoice not found for your account." };
+      }
+
+      const retFeature = await requireStoreFeature(
+        sale.branch?.storeId ?? null,
+        "patientPortalAndRxQueue",
+        { forExternalPortal: true }
+      );
+      if (!retFeature.allowed) {
+        const errBody = await retFeature.response!.json();
+        return { errorStatus: 403, errorMessage: errBody.message };
       }
 
       const itemsSubtotal = sale.items.reduce((sum, si) => sum + Number(si.price), 0);
@@ -198,7 +212,7 @@ export async function POST(req: NextRequest) {
         data: {
           returnNumber,
           saleId: sale.id,
-          customerId,
+          customerId: sale.customerId ?? customerId,
           branchId: sale.branchId,
           reason,
           refundAmount: totalRefundCalculated,

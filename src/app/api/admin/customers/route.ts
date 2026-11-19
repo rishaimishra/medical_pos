@@ -265,9 +265,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Customer phone number must contain between 10 and 15 digits" }, { status: 400 });
     }
 
-    // Duplicate phone prevention
-    const existing = await prisma.customer.findUnique({
-      where: { phone },
+    const storeId = auth.session.storeId ?? null;
+
+    // Duplicate phone prevention (store-scoped in multi-tenant mode)
+    const existing = await prisma.customer.findFirst({
+      where: {
+        phone,
+        ...(storeId ? { storeId } : {}),
+      },
     });
 
     if (existing) {
@@ -281,7 +286,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (email) {
-      const existingEmail = await prisma.customer.findUnique({ where: { email } });
+      const existingEmail = await prisma.customer.findFirst({
+        where: {
+          email: { equals: email, mode: "insensitive" },
+          ...(storeId ? { storeId } : {}),
+        },
+      });
       if (existingEmail) {
         return NextResponse.json({ success: false, message: `Email address ${email} is already registered.` }, { status: 400 });
       }
@@ -312,6 +322,7 @@ export async function POST(req: NextRequest) {
 
     const newCustomer = await prisma.customer.create({
       data: {
+        storeId,
         name,
         phone,
         email,

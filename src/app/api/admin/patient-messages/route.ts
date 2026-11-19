@@ -5,6 +5,7 @@ import { canAccessPage } from "@/lib/rbac";
 import { sendEmail, escapeHtml } from "@/lib/email";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { deletePrescriptionFile } from "@/lib/prescriptionFiles";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.20.1: Patient Message Inbox API (Admin / Staff)
@@ -25,6 +26,9 @@ export async function GET(req: NextRequest) {
       { status: 403 }
     );
   }
+
+  const msgGate = await requireStoreFeature(auth.session.storeId, "twoWayMessagingInboxes");
+  if (!msgGate.allowed) return msgGate.response!;
 
   const { searchParams } = new URL(req.url);
   const customerIdParam = searchParams.get("customerId");
@@ -172,6 +176,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const msgGate = await requireStoreFeature(auth.session.storeId, "twoWayMessagingInboxes");
+  if (!msgGate.allowed) return msgGate.response!;
+
   try {
     const body = await req.json();
     const customerId = parseInt(String(body.customerId || ""), 10);
@@ -265,6 +272,9 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
+  const msgGate = await requireStoreFeature(auth.session.storeId, "twoWayMessagingInboxes");
+  if (!msgGate.allowed) return msgGate.response!;
+
   try {
     const body = await req.json();
     const msgId = body.id ? parseInt(String(body.id), 10) : null;
@@ -319,6 +329,9 @@ export async function DELETE(req: NextRequest) {
       { status: 403 }
     );
   }
+
+  const msgGate = await requireStoreFeature(auth.session.storeId, "twoWayMessagingInboxes");
+  if (!msgGate.allowed) return msgGate.response!;
 
   const { searchParams } = new URL(req.url);
   const idParam = searchParams.get("id");

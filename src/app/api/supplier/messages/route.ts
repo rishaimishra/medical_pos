@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifySupplierRequest } from "@/lib/auth";
 import { escapeHtml, sendEmail } from "@/lib/email";
+import { requireSupplierPortalFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.17.2: Supplier Two-Way Messaging Channel (Supplier Portal Endpoint)
@@ -14,6 +15,9 @@ export async function GET(req: NextRequest) {
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
+
+  const msgGate = await requireSupplierPortalFeature(auth.session.supplierId, "twoWayMessagingInboxes");
+  if (!msgGate.allowed) return msgGate.response!;
 
   try {
     const messages = await prisma.supplierMessage.findMany({
@@ -45,6 +49,9 @@ export async function POST(req: NextRequest) {
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
+
+  const msgGate = await requireSupplierPortalFeature(auth.session.supplierId, "twoWayMessagingInboxes");
+  if (!msgGate.allowed) return msgGate.response!;
 
   try {
     const body = await req.json();
@@ -106,6 +113,9 @@ export async function PATCH(req: NextRequest) {
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
+
+  const msgGate = await requireSupplierPortalFeature(auth.session.supplierId, "twoWayMessagingInboxes");
+  if (!msgGate.allowed) return msgGate.response!;
 
   try {
     const body = await req.json();

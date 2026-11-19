@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   }
 
   const customerId = auth.session.customerId;
+  const linkedIds = auth.session.linkedCustomerIds ?? [customerId];
   const { searchParams } = new URL(req.url);
   const search = (searchParams.get("search") || "").trim();
   const filter = (searchParams.get("filter") || "all").toLowerCase(); // all | rx
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Customer profile not found" }, { status: 404 });
     }
 
-    const whereClause: any = { customerId };
+    const whereClause: any = { customerId: { in: linkedIds } };
     if (filter === "rx") {
       whereClause.OR = [
         { doctorName: { not: null } },
@@ -64,7 +65,18 @@ export async function GET(req: NextRequest) {
         orderBy: [{ saleDate: "desc" }, { id: "desc" }],
         take: 100,
         include: {
-          branch: { select: { id: true, code: true, name: true, phone: true, address: true, gstNo: true } },
+          branch: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              phone: true,
+              address: true,
+              gstNo: true,
+              storeId: true,
+              store: { select: { id: true, storeName: true } },
+            },
+          },
           items: {
             include: {
               medicine: {
@@ -85,7 +97,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.sale.findMany({
-        where: { customerId },
+        where: { customerId: { in: linkedIds } },
         select: {
           id: true,
           grandTotal: true,
@@ -103,11 +115,11 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.return.findMany({
-        where: { customerId, status: "processed" },
+        where: { customerId: { in: linkedIds }, status: "processed" },
         select: { refundAmount: true },
       }),
       prisma.customerPayment.findMany({
-        where: { customerId },
+        where: { customerId: { in: linkedIds } },
         select: { amount: true },
       }),
     ]);
@@ -171,6 +183,8 @@ export async function GET(req: NextRequest) {
         paymentMethod: o.paymentMethod,
         doctorName: o.doctorName,
         doctorRegNo: o.doctorRegNo,
+        storeId: o.branch?.store?.id || o.branch?.storeId || null,
+        storeName: o.branch?.store?.storeName || null,
         branch: o.branch,
         items: o.items.map((it) => {
           const alreadyReturnedQty = (it.returnItems || [])

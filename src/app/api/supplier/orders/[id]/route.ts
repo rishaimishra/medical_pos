@@ -3,6 +3,7 @@ import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifySupplierRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { sendSupplierPoEmail } from "@/lib/email";
+import { requireSupplierPortalFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 1.12.2: SUPPLIER PRICE UPDATE & PO VIEW
@@ -19,6 +20,9 @@ export async function GET(
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
+
+  const gate = await requireSupplierPortalFeature(auth.session.supplierId, "supplierPortalAndGrn");
+  if (!gate.allowed) return gate.response!;
 
   const { id: rawId } = await params;
   const id = parseInt(rawId, 10);
@@ -61,6 +65,9 @@ export async function PUT(
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
+
+  const gate = await requireSupplierPortalFeature(auth.session.supplierId, "supplierPortalAndGrn");
+  if (!gate.allowed) return gate.response!;
 
   const { id: rawId } = await params;
   const id = parseInt(rawId, 10);
@@ -233,6 +240,9 @@ export async function PATCH(
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
+
+  const gate = await requireSupplierPortalFeature(auth.session.supplierId, "supplierPortalAndGrn");
+  if (!gate.allowed) return gate.response!;
 
   const { id: rawId } = await params;
   const id = parseInt(rawId, 10);

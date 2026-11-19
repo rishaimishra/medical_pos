@@ -39,8 +39,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(new URL("/customer/login?verifyError=expired", req.url));
     }
 
-    await prisma.customer.update({
-      where: { id: customer.id },
+    await prisma.customer.updateMany({
+      where: {
+        OR: [{ id: customer.id }, { phone: customer.phone }],
+      },
       data: {
         verified: true,
         verifiedAt: new Date(),

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyCustomerRequest } from "@/lib/auth";
 import { savePrescriptionBuffer } from "@/lib/prescriptionFiles";
 import { escapeHtml, sendEmail } from "@/lib/email";
+import { checkStoreQuota, requireCustomerPortalFeature, requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.18.2: Digital Prescription Upload & Order Request (Customer Portal)
@@ -15,9 +16,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
 
+  const linkedIds = auth.session.linkedCustomerIds ?? [auth.session.customerId];
+
+  const rxPortalGate = await requireCustomerPortalFeature(
+    auth.session.customerId,
+    "patientPortalAndRxQueue"
+  );
+  if (!rxPortalGate.allowed) return rxPortalGate.response!;
+
   try {
     const records = await prisma.patientMessage.findMany({
-      where: { customerId: auth.session.customerId },
+      where: { customerId: { in: linkedIds } },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
@@ -53,6 +62,17 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const cust = await prisma.customer.findUnique({
+      where: { id: auth.session.customerId },
+      select: { storeId: true },
+    });
+    const targetStoreId = cust?.storeId ?? null;
+
+    const rxFeature = await requireStoreFeature(targetStoreId, "patientPortalAndRxQueue", {
+      forExternalPortal: true,
+    });
+    if (!rxFeature.allowed) return rxFeature.response!;
+
     const contentType = (req.headers.get("content-type") || "").toLowerCase();
     let notes = "";
     let doctorName = "";
@@ -71,6 +91,13 @@ export async function POST(req: NextRequest) {
       if (fileField && typeof fileField === "object" && "arrayBuffer" in fileField) {
         const f = fileField as File;
         if (f.size > 0) {
+          const uploadMb = Math.max(0.01, f.size / (1024 * 1024));
+          const rxStorageQuota = await checkStoreQuota(targetStoreId, "maxRxStorageMb", {
+            incrementBy: uploadMb,
+            forExternalPortal: true,
+          });
+          if (!rxStorageQuota.allowed) return rxStorageQuota.response!;
+
           const arrayBuf = await f.arrayBuffer();
           const saved = await savePrescriptionBuffer(
             auth.session.customerId,

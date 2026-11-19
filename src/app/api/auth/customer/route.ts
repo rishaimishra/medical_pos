@@ -6,6 +6,7 @@ import {
   CustomerSessionPayload,
   checkBruteForceLockout,
   clearFailedLoginAttempts,
+  getLinkedCustomerIds,
   hashPassword,
   recordFailedLoginAttempt,
   signCustomerToken,
@@ -66,6 +67,12 @@ export async function GET(req: NextRequest) {
       return res;
     }
 
+    const linkedIds = await getLinkedCustomerIds(dbCustomer.id, dbCustomer.phone);
+    const [ordersCount, returnsCount] = await Promise.all([
+      prisma.sale.count({ where: { customerId: { in: linkedIds } } }),
+      prisma.return.count({ where: { customerId: { in: linkedIds } } }),
+    ]);
+
     return NextResponse.json({
       success: true,
       authenticated: true,
@@ -75,8 +82,8 @@ export async function GET(req: NextRequest) {
         phone: dbCustomer.phone,
         email: dbCustomer.email,
         address: dbCustomer.address,
-        ordersCount: dbCustomer._count.sales,
-        returnsCount: dbCustomer._count.returns,
+        ordersCount,
+        returnsCount,
       },
     });
   } catch (err: any) {
@@ -147,10 +154,15 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const existingPhone = await prisma.customer.findUnique({ where: { phone } });
-      const existingEmail = await prisma.customer.findUnique({ where: { email } });
+      const existingPhones = await prisma.customer.findMany({ where: { phone } });
+      const existingEmailConflict = await prisma.customer.findFirst({
+        where: {
+          email: { equals: email, mode: "insensitive" },
+          phone: { not: phone },
+        },
+      });
 
-      if (existingPhone && existingPhone.password) {
+      if (existingPhones.some((c) => Boolean(c.password))) {
         return NextResponse.json(
           {
             success: false,
@@ -161,9 +173,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (
-        existingPhone &&
-        existingPhone.email &&
-        existingPhone.email.toLowerCase() !== email
+        existingPhones.some((c) => c.email && c.email.toLowerCase() !== email)
       ) {
         return NextResponse.json(
           {
@@ -175,7 +185,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      if (existingEmail && (!existingPhone || existingEmail.id !== existingPhone.id)) {
+      if (existingEmailConflict) {
         return NextResponse.json(
           {
             success: false,
@@ -189,34 +199,46 @@ export async function POST(req: NextRequest) {
       const verifyToken = crypto.randomBytes(24).toString("hex");
       const now = new Date();
 
-      const customer = existingPhone
-        ? await prisma.customer.update({
-            where: { id: existingPhone.id },
-            data: {
-              name: existingPhone.name || name,
-              email,
-              address: existingPhone.address || address,
-              password: passwordHash,
-              active: true,
-              verified: false,
-              verifyToken,
-              verifySentAt: now,
-              verifiedAt: null,
-            },
-          })
-        : await prisma.customer.create({
-            data: {
-              name,
-              phone,
-              email,
-              address,
-              password: passwordHash,
-              active: true,
-              verified: false,
-              verifyToken,
-              verifySentAt: now,
-            },
-          });
+      const customer =
+        existingPhones.length > 0
+          ? await prisma.$transaction(async (tx) => {
+              await tx.customer.updateMany({
+                where: { phone },
+                data: {
+                  email,
+                  password: passwordHash,
+                  active: true,
+                  verified: false,
+                  verifyToken,
+                  verifySentAt: now,
+                  verifiedAt: null,
+                },
+              });
+              const primaryRow = existingPhones[0];
+              if (!primaryRow.name || (!primaryRow.address && address)) {
+                await tx.customer.update({
+                  where: { id: primaryRow.id },
+                  data: {
+                    name: primaryRow.name || name,
+                    address: primaryRow.address || address,
+                  },
+                });
+              }
+              return (await tx.customer.findUnique({ where: { id: primaryRow.id } }))!;
+            })
+          : await prisma.customer.create({
+              data: {
+                name,
+                phone,
+                email,
+                address,
+                password: passwordHash,
+                active: true,
+                verified: false,
+                verifyToken,
+                verifySentAt: now,
+              },
+            });
 
       await dispatchVerificationEmail(email, customer.name, verifyToken);
 
@@ -279,8 +301,8 @@ export async function POST(req: NextRequest) {
       }
 
       const newToken = crypto.randomBytes(24).toString("hex");
-      await prisma.customer.update({
-        where: { id: customer.id },
+      await prisma.customer.updateMany({
+        where: { phone: customer.phone },
         data: {
           verifyToken: newToken,
           verifySentAt: new Date(),
@@ -326,8 +348,10 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      await prisma.customer.update({
-        where: { id: customer.id },
+      await prisma.customer.updateMany({
+        where: {
+          OR: [{ id: customer.id }, { phone: customer.phone }],
+        },
         data: {
           verified: true,
           verifiedAt: new Date(),
@@ -370,11 +394,13 @@ export async function POST(req: NextRequest) {
 
     const customer = await prisma.customer.findFirst({
       where: {
+        password: { not: null },
         OR: [
           { phone: identifier },
           { email: { equals: identifier, mode: "insensitive" } },
         ],
       },
+      orderBy: [{ verified: "desc" }, { id: "asc" }],
     });
 
     if (!customer || !customer.password) {

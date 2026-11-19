@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, canAccessPage } from "@/lib/rbac";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * GET /api/admin/cash-drawer/closings
@@ -17,6 +18,9 @@ export async function GET(req: NextRequest) {
   if (!canAccessPage(auth.session, "/admin/financials") && !canAccessPage(auth.session, "/admin/reports")) {
     return NextResponse.json({ success: false, message: "Forbidden: Access to Z-Reports denied" }, { status: 403 });
   }
+
+  const featureGate = await requireStoreFeature(auth.session.storeId, "customDiscountsAndDayEndClose");
+  if (!featureGate.allowed) return featureGate.response!;
 
   const { searchParams } = new URL(req.url);
   const branchIdParam = searchParams.get("branchId");

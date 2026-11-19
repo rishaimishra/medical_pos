@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { calculateShiftCashFigures } from "@/lib/cashDrawerServer";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.12.2: Live Cash Drawer Shift Summary & Expected Balance Calculation
@@ -16,6 +17,9 @@ export async function GET(req: NextRequest) {
   if (!canAccessPage(auth.session, "/admin/financials") && !canAccessPage(auth.session, "/admin/pos")) {
     return NextResponse.json({ success: false, message: "Forbidden: Access to cash drawer summary denied" }, { status: 403 });
   }
+
+  const featureGate = await requireStoreFeature(auth.session.storeId, "customDiscountsAndDayEndClose");
+  if (!featureGate.allowed) return featureGate.response!;
 
   const { searchParams } = new URL(req.url);
   const branchIdParam = searchParams.get("branchId");

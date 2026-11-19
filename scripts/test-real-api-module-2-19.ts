@@ -163,7 +163,7 @@ async function main() {
       })
     );
     const regJson = await regRes.json();
-    const regDb = await prisma.customer.findUnique({ where: { phone: regPhone } });
+    const regDb = await prisma.customer.findFirst({ where: { phone: regPhone } });
     regCustId = regDb?.id || 0;
     const firstToken = regDb?.verifyToken || "";
 

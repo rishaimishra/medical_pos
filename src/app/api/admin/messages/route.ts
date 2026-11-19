@@ -4,6 +4,7 @@ import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessPage } from "@/lib/rbac";
 import { escapeHtml, sendEmail } from "@/lib/email";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.17.2: Pharmacy Admin Supplier Messaging Inbox API
@@ -22,6 +23,9 @@ export async function GET(req: NextRequest) {
       { status: 403 }
     );
   }
+
+  const msgGate = await requireStoreFeature(auth.session.storeId, "twoWayMessagingInboxes");
+  if (!msgGate.allowed) return msgGate.response!;
 
   const { searchParams } = new URL(req.url);
   const supplierIdParam = searchParams.get("supplierId");
@@ -101,6 +105,9 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     );
   }
+
+  const msgGate = await requireStoreFeature(auth.session.storeId, "twoWayMessagingInboxes");
+  if (!msgGate.allowed) return msgGate.response!;
 
   try {
     const body = await req.json();

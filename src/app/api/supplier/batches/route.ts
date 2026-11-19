@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifySupplierRequest } from "@/lib/auth";
+import { requireSupplierPortalFeature } from "@/lib/entitlements";
 
 /**
  * GET /api/supplier/batches
@@ -12,6 +13,9 @@ export async function GET(req: NextRequest) {
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
+
+  const gate = await requireSupplierPortalFeature(auth.session.supplierId, "supplierPortalAndGrn");
+  if (!gate.allowed) return gate.response!;
 
   const { searchParams } = new URL(req.url);
   const search = (searchParams.get("search") || "").trim();

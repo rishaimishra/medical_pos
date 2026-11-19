@@ -3,6 +3,7 @@ import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { queryAdminSalesSummary } from "@/lib/salesReport";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.16.4: Comprehensive Sales Report Metrics (Admin Only)
@@ -30,6 +31,9 @@ export async function GET(req: NextRequest) {
   const endDate = searchParams.get("endDate");
 
   const storeId = auth.session.storeId ?? null;
+  const featGate = await requireStoreFeature(storeId, "advancedBiAndProfitReports");
+  if (!featGate.allowed) return featGate.response!;
+
   let targetBranchId: number | null = auth.session.branchId ?? null;
 
   if (branchParam === "all") {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { checkStoreQuota, requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.4.1: Master Discount Architecture & Policy Management
@@ -70,6 +71,12 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     );
   }
+
+  const discFeature = await requireStoreFeature(auth.session.storeId, "customDiscountsAndDayEndClose");
+  if (!discFeature.allowed) return discFeature.response!;
+
+  const discQuota = await checkStoreQuota(auth.session.storeId, "maxDiscountSchemes");
+  if (!discQuota.allowed) return discQuota.response!;
 
   try {
     const body = await req.json();

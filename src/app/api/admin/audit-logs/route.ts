@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { getSessionFromRequest, verifyAdminRequest } from "@/lib/auth";
 import { getClientIp, logAudit } from "@/lib/audit";
 import { ROLE_MATRIX, SystemRole } from "@/lib/rbac";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 1.4.3 & 1.4.4: Tamper-Proof System Audit Trails & RBAC Matrix API
@@ -19,6 +20,11 @@ export async function GET(req: NextRequest) {
         { status: authGuard.status || 401 }
       );
     }
+
+    const auditGate = await requireStoreFeature(authGuard.session.storeId, "auditAndBackupCompliance", {
+      allowComplianceRead: true,
+    });
+    if (!auditGate.allowed) return auditGate.response!;
 
     const { searchParams } = new URL(req.url);
     const action = searchParams.get("action")?.trim() || undefined;

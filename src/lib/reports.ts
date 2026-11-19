@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest, SessionPayload } from "@/lib/auth";
 import { canAccessBranch, canAccessPage, hasPermission } from "@/lib/rbac";
+import { requireStoreFeature } from "@/lib/entitlements";
+import type { FeatureKey } from "@/lib/saasFeatures";
 
 export interface ReportAuthContext {
   authorized: boolean;
@@ -13,7 +15,8 @@ export interface ReportAuthContext {
 
 export async function authorizeReportRequest(
   req: NextRequest,
-  branchIdParam?: string | null
+  branchIdParam?: string | null,
+  gate?: { feature: FeatureKey; allowComplianceRead?: boolean }
 ): Promise<ReportAuthContext> {
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
@@ -75,6 +78,18 @@ export async function authorizeReportRequest(
       }
     }
     targetBranchId = bId;
+  }
+
+  if (gate) {
+    const featCheck = await requireStoreFeature(storeId, gate.feature, {
+      allowComplianceRead: gate.allowComplianceRead,
+    });
+    if (!featCheck.allowed) {
+      return {
+        authorized: false,
+        response: featCheck.response,
+      };
+    }
   }
 
   return {

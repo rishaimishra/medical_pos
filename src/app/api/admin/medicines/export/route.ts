@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { parsePackMetadata } from "../route";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAdminRequest(req, { requiredPermission: "manage_medicines" });
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
+
+  const exportGate = await requireStoreFeature(auth.session.storeId, "excelAndCsvExports");
+  if (!exportGate.allowed) return exportGate.response!;
 
   const { searchParams } = new URL(req.url);
   const branchParam = searchParams.get("branchId");

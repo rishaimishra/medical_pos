@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { getClientIp, logAudit } from "@/lib/audit";
+import { checkStoreQuota, requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * API: /api/admin/branches
@@ -119,6 +120,12 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    const featCheck = await requireStoreFeature(storeId, "multiBranchManagement");
+    if (!featCheck.allowed) return featCheck.response!;
+
+    const quotaCheck = await checkStoreQuota(storeId, "maxBranches");
+    if (!quotaCheck.allowed) return quotaCheck.response!;
 
     const body = await req.json();
     const { code, name, tagline, address, phone, email, gstNo, dlNo, active } = body;

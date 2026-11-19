@@ -4,6 +4,7 @@ import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { queryMasterLedger } from "@/lib/ledger";
 import { buildCsvContent } from "@/lib/csv";
 import { buildXlsxBuffer } from "@/lib/excel";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.13.1 & 2.16.5: Master Financial Ledger CSV / Excel (.xlsx) Export
@@ -17,6 +18,11 @@ export async function GET(req: NextRequest) {
   if (!canAccessPage(auth.session, "/admin/financials") && !canAccessPage(auth.session, "/admin/reports")) {
     return NextResponse.json({ success: false, message: "Forbidden: Access to financial ledger export denied" }, { status: 403 });
   }
+
+  const exportGate = await requireStoreFeature(auth.session.storeId, "excelAndCsvExports", {
+    allowComplianceRead: true,
+  });
+  if (!exportGate.allowed) return exportGate.response!;
 
   const { searchParams } = new URL(req.url);
   const branchIdParam = searchParams.get("branchId");

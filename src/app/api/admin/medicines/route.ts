@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { checkStoreQuota } from "@/lib/entitlements";
 
 interface PackMetadata {
   packUnit?: string;      // e.g. "Strip", "Box", "Bottle", "Vial", "Tube"
@@ -291,6 +292,9 @@ export async function POST(req: NextRequest) {
 
   const clientIp = getClientIp(req);
 
+  const medQuota = await checkStoreQuota(auth.session.storeId, "maxMedicines");
+  if (!medQuota.allowed) return medQuota.response!;
+
   try {
     const body = await req.json();
     const {
@@ -327,9 +331,10 @@ export async function POST(req: NextRequest) {
     const trimmedName = name.trim();
     const trimmedCompany = company.trim();
 
-    // 2. Duplicate Detection: Check case-insensitive name match
+    // 2. Duplicate Detection: Check case-insensitive name match within store tenant
     const existing = await prisma.medicine.findFirst({
       where: {
+        ...(auth.session.storeId ? { storeId: auth.session.storeId } : {}),
         name: { equals: trimmedName, mode: "insensitive" },
         company: { equals: trimmedCompany, mode: "insensitive" },
       },
@@ -394,6 +399,7 @@ export async function POST(req: NextRequest) {
     // 5. Create Medicine in DB
     const newMedicine = await prisma.medicine.create({
       data: {
+        storeId: auth.session.storeId ?? null,
         name: trimmedName,
         genericName: genericName ? genericName.trim() : null,
         company: trimmedCompany,

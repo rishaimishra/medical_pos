@@ -43,7 +43,8 @@ export async function GET(
     return NextResponse.json({ success: false, message: "Prescription file not found" }, { status: 404 });
   }
 
-  if (!isAuthorizedStaff && isAuthorizedCustomer && msg.customerId !== custAuth!.session!.customerId) {
+  const linkedCustomerIds = custAuth?.session?.linkedCustomerIds ?? (custAuth?.session ? [custAuth.session.customerId] : []);
+  if (!isAuthorizedStaff && isAuthorizedCustomer && !linkedCustomerIds.includes(msg.customerId)) {
     return NextResponse.json(
       { success: false, message: "Forbidden: You may only access your own prescription files" },
       { status: 403 }

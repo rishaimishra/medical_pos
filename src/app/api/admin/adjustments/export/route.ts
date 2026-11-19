@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch } from "@/lib/rbac";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 function escapeCsvField(val: any): string {
   if (val === null || val === undefined) return '""';
@@ -14,6 +15,9 @@ export async function GET(req: NextRequest) {
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
+
+  const exportGate = await requireStoreFeature(auth.session.storeId, "excelAndCsvExports");
+  if (!exportGate.allowed) return exportGate.response!;
 
   const { searchParams } = new URL(req.url);
   const search = (searchParams.get("search") || "").trim();

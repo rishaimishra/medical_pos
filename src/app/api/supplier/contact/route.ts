@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifySupplierRequest } from "@/lib/auth";
 import { escapeHtml, sendEmail } from "@/lib/email";
+import { requireSupplierPortalFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.20.2: Supplier Contact Form API (ref: supplier_contact.php)
@@ -30,6 +31,11 @@ export async function POST(req: NextRequest) {
     let storedMessage = rawMessage;
 
     if (auth.authorized && auth.session) {
+      const msgGate = await requireSupplierPortalFeature(
+        auth.session.supplierId,
+        "twoWayMessagingInboxes"
+      );
+      if (!msgGate.allowed) return msgGate.response!;
       supplierId = auth.session.supplierId;
       supplierName = auth.session.companyName || auth.session.name;
       senderEmail = auth.session.email;

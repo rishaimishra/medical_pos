@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { runInTransaction, getDatabaseHealth } from "@/lib/db-transaction";
-import { sendSetupOtpEmail } from "@/lib/email";
+import { sendEmail, sendSetupOtpEmail } from "@/lib/email";
+import { ensureDefaultPlansSeeded } from "@/lib/saasFeatures";
+import { invalidateStoreEntitlements } from "@/lib/entitlements";
 import {
   SESSION_COOKIE_NAME,
   buildUserSessionPayload,
@@ -691,7 +693,11 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Ensure canonical 4 SaaS tiers exist before creating trial subscription (Module 3.7.4)
+      await ensureDefaultPlansSeeded().catch(() => {});
+
       let createdMainBranchId: number | null = null;
+      let trialEndsAtIso: string | null = null;
 
       await runInTransaction(async (tx) => {
         // 1. Seed 20 dosage forms in a single fast batch query (single network round-trip)
@@ -736,20 +742,51 @@ export async function POST(request: NextRequest) {
 
         createdMainBranchId = mainBranch.id;
 
-        // 3. Mark this Store Tenant setup as completed
+        // 3. Provision initial 14-day Free Trial Subscription (Module 3.7.4)
+        const [platformCfg, trialPlan] = await Promise.all([
+          tx.platformConfig.findFirst({ orderBy: { id: "asc" }, select: { defaultTrialDays: true } }),
+          tx.subscriptionPlan.findUnique({ where: { code: "FREE_TRIAL" } }),
+        ]);
+
+        const trialDays = Math.max(1, platformCfg?.defaultTrialDays || trialPlan?.trialDays || 14);
+        const now = new Date();
+        const trialEnd = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
+        trialEndsAtIso = trialEnd.toISOString();
+
+        if (trialPlan) {
+          const existingSub = await tx.storeSubscription.findFirst({ where: { storeId: settings.id } });
+          if (!existingSub) {
+            await tx.storeSubscription.create({
+              data: {
+                storeId: settings.id,
+                planId: trialPlan.id,
+                status: "trialing",
+                billingMode: "manual_grant",
+                currentPeriodStart: now,
+                currentPeriodEnd: trialEnd,
+                trialEndsAt: trialEnd,
+                autoRenew: false,
+                notes: `Auto-provisioned ${trialDays}-day Free Trial on setup completion.`,
+              },
+            });
+          }
+        }
+
+        // 4. Mark this Store Tenant setup as completed & set status = trialing
         await tx.settings.update({
           where: { id: settings.id },
           data: {
             setupDone: true,
             setupStep: 4,
+            storeStatus: trialPlan ? "trialing" : "active",
             setupToken: null,
             setupOtp: null,
             setupOtpExp: null,
-            updatedAt: new Date(),
+            updatedAt: now,
           },
         });
 
-        // 4. Log initial audit trail entry scoped to this Store Tenant
+        // 5. Log initial audit trail entry scoped to this Store Tenant
         await tx.auditLog.create({
           data: {
             storeId: settings.id,
@@ -762,6 +799,23 @@ export async function POST(request: NextRequest) {
           },
         });
       });
+
+      invalidateStoreEntitlements(settings.id);
+
+      // Best-effort welcome trial countdown email (Module 3.7.4)
+      const welcomeEmail = adminUser.email || settings.storeEmail;
+      if (welcomeEmail && trialEndsAtIso) {
+        sendEmail({
+          to: welcomeEmail,
+          subject: `Welcome to Medical POS Cloud — Your 14-Day Free Trial is Active (${settings.storeName})`,
+          html: `<p>Welcome <strong>${adminUser.name}</strong>! Your pharmacy <strong>${settings.storeName}</strong> is now active on a <strong>14-day Free Trial</strong> (expires ${new Date(
+            trialEndsAtIso
+          ).toLocaleDateString("en-IN")}).</p><p>Upgrade anytime from <strong>/admin/billing</strong>.</p>`,
+          text: `Welcome ${adminUser.name}! Your 14-day Free Trial for ${settings.storeName} is active through ${new Date(
+            trialEndsAtIso
+          ).toLocaleDateString("en-IN")}.`,
+        }).catch(() => {});
+      }
 
       // Automatically issue authenticated admin session cookie for this store owner
       const sessionPayload = buildUserSessionPayload(

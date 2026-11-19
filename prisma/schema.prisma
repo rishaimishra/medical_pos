@@ -42,16 +42,31 @@ model Settings {
   setupOtpExp          DateTime? @map("setup_otp_exp")
   storage              String    @default("postgres") @db.VarChar(20)
   lastStockAlertSentAt DateTime? @map("last_stock_alert_sent_at")
+  storeStatus          String    @default("active") @map("store_status") @db.VarChar(30) // active, trialing, grace_period, suspended, archived
+  suspensionReason     String?   @map("suspension_reason") @db.Text
+  suspendedAt          DateTime? @map("suspended_at")
+  ownerName            String?   @map("owner_name") @db.VarChar(255)
+  ownerEmail           String?   @map("owner_email") @db.VarChar(255)
+  city                 String?   @db.VarChar(100)
+  state                String?   @db.VarChar(100)
   updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
   createdAt            DateTime  @default(now()) @map("created_at")
 
-  branches           Branch[]
-  users              User[]
-  auditLogs          AuditLog[]
-  discounts          Discount[]
-  expenses           Expense[]
-  cashDrawerClosings CashDrawerClosing[]
+  branches             Branch[]
+  users                User[]
+  medicines            Medicine[]
+  suppliers            Supplier[]
+  customers            Customer[]
+  supplierMessages     SupplierMessage[]
+  patientMessages      PatientMessage[]
+  auditLogs            AuditLog[]
+  discounts            Discount[]
+  expenses             Expense[]
+  cashDrawerClosings   CashDrawerClosing[]
+  subscriptions        StoreSubscription[]
+  subscriptionPayments SubscriptionPayment[]
 
+  @@index([storeStatus], name: "idx_settings_store_status")
   @@map("settings")
 }
 
@@ -84,6 +99,7 @@ model Branch {
   auditLogs          AuditLog[]
   expenses           Expense[]
   cashDrawerClosings CashDrawerClosing[]
+  patientMessages    PatientMessage[]
 
   @@unique([storeId, code], name: "uk_store_branch_code")
   @@index([storeId], name: "idx_branches_store")
@@ -138,6 +154,7 @@ model User {
 // Table: medicines (Master drug catalog, composition, schedule type, and rack locations)
 model Medicine {
   id             Int      @id @default(autoincrement())
+  storeId        Int?     @map("store_id")
   name           String   @db.VarChar(255)
   genericName    String?  @map("generic_name") @db.VarChar(255)
   company        String   @db.VarChar(255)
@@ -151,12 +168,14 @@ model Medicine {
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
   createdAt      DateTime @default(now()) @map("created_at")
 
+  store            Settings?         @relation(fields: [storeId], references: [id], onDelete: Cascade)
   batches          Batch[]
   saleItems        SaleItem[]
   poItems          POItem[]
   returnItems      ReturnItem[]
   stockAdjustments StockAdjustment[]
 
+  @@index([storeId], name: "idx_medicines_store")
   @@index([name], name: "idx_medicines_name")
   @@index([genericName], name: "idx_medicines_generic")
   @@index([company], name: "idx_medicines_company")
@@ -211,6 +230,7 @@ model Batch {
 // Table: suppliers (Vendor & distributor directory)
 model Supplier {
   id           Int      @id @default(autoincrement())
+  storeId      Int?     @map("store_id")
   name         String   @db.VarChar(255)
   contact      String?  @db.VarChar(255)
   phone        String   @db.VarChar(50)
@@ -222,12 +242,14 @@ model Supplier {
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
   createdAt    DateTime @default(now()) @map("created_at")
 
+  store            Settings?         @relation(fields: [storeId], references: [id], onDelete: Cascade)
   batches          Batch[]
   purchaseOrders   PurchaseOrder[]
   payments         SupplierPayment[]
   supplierUsers    SupplierUser[]
   supplierMessages SupplierMessage[]
 
+  @@index([storeId], name: "idx_suppliers_store")
   @@index([name], name: "idx_suppliers_name")
   @@index([phone], name: "idx_suppliers_phone")
   @@map("suppliers")
@@ -337,9 +359,10 @@ model POItem {
 // Table: customers (Patient & customer registry with portal accounts)
 model Customer {
   id              Int       @id @default(autoincrement())
+  storeId         Int?      @map("store_id")
   name            String    @db.VarChar(255)
-  phone           String    @unique @db.VarChar(50)
-  email           String?   @unique @db.VarChar(255)
+  phone           String    @db.VarChar(50)
+  email           String?   @db.VarChar(255)
   address         String?   @db.Text
   dob             DateTime? @db.Date
   gender          String?   @db.VarChar(20) // male, female, other
@@ -360,12 +383,16 @@ model Customer {
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
   createdAt       DateTime  @default(now()) @map("created_at")
 
+  store           Settings?             @relation(fields: [storeId], references: [id], onDelete: Cascade)
   sales           Sale[]
   returns         Return[]
   purchaseLogs    CustomerPurchaseLog[]
   patientMessages PatientMessage[]
   payments        CustomerPayment[]
 
+  @@unique([storeId, phone], name: "uk_store_customer_phone")
+  @@unique([storeId, email], name: "uk_store_customer_email")
+  @@index([storeId], name: "idx_customers_store")
   @@index([phone], name: "idx_customers_phone")
   @@index([email], name: "idx_customers_email")
   @@index([isChronic], name: "idx_customers_chronic")
@@ -636,6 +663,7 @@ model AuditLog {
 // Table: supplier_messages (Supplier extranet messaging channel)
 model SupplierMessage {
   id           Int       @id @default(autoincrement())
+  storeId      Int?      @map("store_id")
   supplierId   Int?      @map("supplier_id")
   supplierName String?   @map("supplier_name") @db.VarChar(255)
   senderEmail  String?   @map("sender_email") @db.VarChar(255)
@@ -647,8 +675,10 @@ model SupplierMessage {
   status       String    @default("unread") @db.VarChar(20) // unread, read, replied
   createdAt    DateTime  @default(now()) @map("created_at")
 
+  store    Settings? @relation(fields: [storeId], references: [id], onDelete: Cascade)
   supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
+  @@index([storeId], name: "idx_sm_store")
   @@index([supplierId], name: "idx_sm_supplier")
   @@index([status], name: "idx_sm_status")
   @@map("supplier_messages")
@@ -657,6 +687,8 @@ model SupplierMessage {
 // Table: patient_messages (Customer prescription uploads and inquiries)
 model PatientMessage {
   id         Int      @id @default(autoincrement())
+  storeId    Int?     @map("store_id")
+  branchId   Int?     @map("branch_id")
   customerId Int      @map("customer_id")
   direction  String   @default("in") @db.VarChar(10) // in, out
   message    String?  @db.Text
@@ -667,9 +699,13 @@ model PatientMessage {
   createdBy  Int?     @map("created_by") // Admin user ID if direction=out
   createdAt  DateTime @default(now()) @map("created_at")
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  creator  User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  store    Settings? @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  branch   Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  creator  User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
+  @@index([storeId], name: "idx_pm_store")
+  @@index([branchId], name: "idx_pm_branch")
   @@index([customerId], name: "idx_pm_customer")
   @@index([isRead], name: "idx_pm_is_read")
   @@map("patient_messages")
@@ -741,4 +777,227 @@ model CashDrawerClosing {
   @@index([branchId], name: "idx_cash_closings_branch")
   @@index([shiftEnd], name: "idx_cash_closings_shift_end")
   @@map("cash_drawer_closings")
+}
+
+// ============================================================================
+// 12. SAAS PLATFORM CEO / SUPER ADMIN, SUBSCRIPTIONS & RAZORPAY BILLING (PART 3)
+// ============================================================================
+
+// Table: platform_users (Platform CEO / Super Admin / Finance / Support accounts — strictly isolated from store users)
+model PlatformUser {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(255)
+  username  String    @unique @db.VarChar(100)
+  email     String    @unique @db.VarChar(255)
+  password  String    @db.VarChar(255)
+  role      String    @default("platform_admin") @db.VarChar(50) // ceo, platform_admin, finance_ops, support_viewer
+  active    Boolean   @default(true)
+  lastLogin DateTime? @map("last_login")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  grantedSubscriptions StoreSubscription[]  @relation("SubscriptionGrantor")
+  platformAuditLogs    PlatformAuditLog[]
+  announcements        PlatformAnnouncement[]
+
+  @@index([role], name: "idx_pu_role")
+  @@index([active], name: "idx_pu_active")
+  @@map("platform_users")
+}
+
+// Table: platform_config (Platform billing, GST, trial/grace policy & encrypted Razorpay settings)
+model PlatformConfig {
+  id                       Int      @id @default(autoincrement())
+  platformName             String   @default("Medical POS Cloud") @map("platform_name") @db.VarChar(255)
+  legalEntityName          String?  @map("legal_entity_name") @db.VarChar(255)
+  gstNo                    String?  @map("gst_no") @db.VarChar(50)
+  sacCode                  String   @default("998314") @map("sac_code") @db.VarChar(20)
+  billingAddress           String?  @map("billing_address") @db.Text
+  supportEmail             String?  @map("support_email") @db.VarChar(255)
+  supportPhone             String?  @map("support_phone") @db.VarChar(50)
+  defaultTrialDays         Int      @default(14) @map("default_trial_days")
+  gracePeriodDays          Int      @default(7) @map("grace_period_days")
+  razorpayMode             String   @default("test") @map("razorpay_mode") @db.VarChar(20) // test, live
+  razorpayKeyId            String?  @map("razorpay_key_id") @db.VarChar(255)
+  razorpayKeySecretEnc     String?  @map("razorpay_key_secret_enc") @db.Text
+  razorpayWebhookSecretEnc String?  @map("razorpay_webhook_secret_enc") @db.Text
+  updatedAt                DateTime @default(now()) @updatedAt @map("updated_at")
+  createdAt                DateTime @default(now()) @map("created_at")
+
+  @@map("platform_config")
+}
+
+// Table: platform_audit_logs (Platform-wide CEO / Super Admin audit log trail)
+model PlatformAuditLog {
+  id             Int      @id @default(autoincrement())
+  platformUserId Int?     @map("platform_user_id")
+  storeId        Int?     @map("store_id")
+  action         String   @db.VarChar(100)
+  entity         String   @db.VarChar(100)
+  entityId       Int?     @map("entity_id")
+  details        String?  @db.Text
+  ipAddress      String?  @map("ip_address") @db.VarChar(45)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  platformUser PlatformUser? @relation(fields: [platformUserId], references: [id], onDelete: SetNull)
+
+  @@index([platformUserId], name: "idx_pal_user")
+  @@index([storeId], name: "idx_pal_store")
+  @@index([action], name: "idx_pal_action")
+  @@index([entity], name: "idx_pal_entity")
+  @@index([createdAt], name: "idx_pal_created_at")
+  @@map("platform_audit_logs")
+}
+
+// Table: platform_announcements (Broadcast alerts pushed by Super Admin to Store Admin notification bells)
+model PlatformAnnouncement {
+  id             Int       @id @default(autoincrement())
+  platformUserId Int?      @map("platform_user_id")
+  title          String    @db.VarChar(255)
+  message        String    @db.Text
+  severity       String    @default("info") @db.VarChar(20) // info, warning, urgent
+  targetPlanCode String?   @map("target_plan_code") @db.VarChar(60)
+  targetStoreId  Int?      @map("target_store_id")
+  active         Boolean   @default(true)
+  expiresAt      DateTime? @map("expires_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  author PlatformUser? @relation(fields: [platformUserId], references: [id], onDelete: SetNull)
+
+  @@index([active], name: "idx_pa_active")
+  @@index([targetStoreId], name: "idx_pa_store")
+  @@map("platform_announcements")
+}
+
+// Table: subscription_plans (SaaS subscription tiers, quotas, feature flags & Razorpay Plan sync)
+model SubscriptionPlan {
+  id                 Int       @id @default(autoincrement())
+  code               String    @unique @db.VarChar(60) // e.g. FREE_TRIAL, STARTER_MONTHLY, GROWTH_MONTHLY, ENTERPRISE_MONTHLY
+  name               String    @db.VarChar(120)
+  tagline            String?   @db.VarChar(255)
+  description        String?   @db.Text
+  billingCycle       String    @default("monthly") @map("billing_cycle") @db.VarChar(20) // monthly, quarterly, yearly, lifetime
+  intervalCount      Int       @default(1) @map("interval_count")
+  priceInr           Decimal   @default(0.00) @map("price_inr") @db.Decimal(10, 2)
+  setupFeeInr        Decimal   @default(0.00) @map("setup_fee_inr") @db.Decimal(10, 2)
+  trialDays          Int       @default(0) @map("trial_days")
+  isPublic           Boolean   @default(true) @map("is_public")
+  isRecommended      Boolean   @default(false) @map("is_recommended")
+  isActive           Boolean   @default(true) @map("is_active")
+  sortOrder          Int       @default(0) @map("sort_order")
+  razorpayPlanId     String?   @unique @map("razorpay_plan_id") @db.VarChar(100)
+  razorpaySyncedAt   DateTime? @map("razorpay_synced_at")
+  razorpaySyncStatus String    @default("pending") @map("razorpay_sync_status") @db.VarChar(20) // pending, synced, failed, not_applicable
+  razorpaySyncError  String?   @map("razorpay_sync_error") @db.Text
+  maxBranches        Int       @default(1) @map("max_branches") // -1 = Unlimited
+  maxStaffUsers      Int       @default(3) @map("max_staff_users")
+  maxMedicines       Int       @default(2000) @map("max_medicines")
+  maxMonthlyInvoices Int       @default(1000) @map("max_monthly_invoices")
+  maxSuppliers       Int       @default(25) @map("max_suppliers")
+  maxRxStorageMb     Int       @default(250) @map("max_rx_storage_mb")
+  maxCustomers       Int       @default(-1) @map("max_customers")
+  maxDiscountSchemes Int       @default(5) @map("max_discount_schemes")
+  featuresJson       String    @map("features_json") @db.Text
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  subscriptions StoreSubscription[]
+  payments      SubscriptionPayment[]
+
+  @@index([isActive], name: "idx_sp_active")
+  @@index([isPublic], name: "idx_sp_public")
+  @@index([billingCycle], name: "idx_sp_cycle")
+  @@index([sortOrder], name: "idx_sp_sort")
+  @@map("subscription_plans")
+}
+
+// Table: store_subscriptions (Active/historical SaaS subscription state per Store Tenant)
+model StoreSubscription {
+  id                      Int       @id @default(autoincrement())
+  storeId                 Int       @map("store_id")
+  planId                  Int       @map("plan_id")
+  status                  String    @default("trialing") @db.VarChar(30) // trialing, active, past_due, grace_period, cancelled, expired, suspended
+  billingMode             String    @default("manual_grant") @map("billing_mode") @db.VarChar(30) // razorpay_subscription, razorpay_order, manual_grant
+  razorpaySubscriptionId  String?   @unique @map("razorpay_subscription_id") @db.VarChar(100)
+  razorpayCustomerId      String?   @map("razorpay_customer_id") @db.VarChar(100)
+  currentPeriodStart      DateTime  @default(now()) @map("current_period_start")
+  currentPeriodEnd        DateTime  @map("current_period_end")
+  trialEndsAt             DateTime? @map("trial_ends_at")
+  graceEndsAt             DateTime? @map("grace_ends_at")
+  cancelAtPeriodEnd       Boolean   @default(false) @map("cancel_at_period_end")
+  cancelledAt             DateTime? @map("cancelled_at")
+  autoRenew               Boolean   @default(true) @map("auto_renew")
+  customLimitsJson        String?   @map("custom_limits_json") @db.Text
+  customFeaturesJson      String?   @map("custom_features_json") @db.Text
+  grantedByPlatformUserId Int?      @map("granted_by_platform_user_id")
+  notes                   String?   @db.Text
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+
+  store     Settings              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  plan      SubscriptionPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  grantedBy PlatformUser?         @relation("SubscriptionGrantor", fields: [grantedByPlatformUserId], references: [id], onDelete: SetNull)
+  payments  SubscriptionPayment[]
+
+  @@index([storeId], name: "idx_ss_store")
+  @@index([planId], name: "idx_ss_plan")
+  @@index([status], name: "idx_ss_status")
+  @@index([currentPeriodEnd], name: "idx_ss_period_end")
+  @@map("store_subscriptions")
+}
+
+// Table: subscription_payments (Immutable Razorpay / offline SaaS payments and GST invoices)
+model SubscriptionPayment {
+  id                        Int       @id @default(autoincrement())
+  subscriptionId            Int?      @map("subscription_id")
+  storeId                   Int       @map("store_id")
+  planId                    Int       @map("plan_id")
+  invoiceNo                 String    @unique @map("invoice_no") @db.VarChar(60) // e.g. SUB-INV-2026-00001
+  amountSubtotal            Decimal   @map("amount_subtotal") @db.Decimal(12, 2)
+  gstPercent                Decimal   @default(18.00) @map("gst_percent") @db.Decimal(5, 2)
+  gstAmount                 Decimal   @map("gst_amount") @db.Decimal(12, 2)
+  totalAmount               Decimal   @map("total_amount") @db.Decimal(12, 2)
+  currency                  String    @default("INR") @db.VarChar(10)
+  paymentType               String    @default("initial") @map("payment_type") @db.VarChar(30) // initial, renewal, upgrade_proration, manual_offline
+  status                    String    @default("created") @db.VarChar(30) // created, authorized, captured, failed, refunded
+  razorpayOrderId           String?   @map("razorpay_order_id") @db.VarChar(100)
+  razorpayPaymentId         String?   @unique @map("razorpay_payment_id") @db.VarChar(100)
+  razorpaySubscriptionId    String?   @map("razorpay_subscription_id") @db.VarChar(100)
+  razorpaySignatureVerified Boolean   @default(false) @map("razorpay_signature_verified")
+  paymentMethod             String?   @map("payment_method") @db.VarChar(50)
+  paidAt                    DateTime? @map("paid_at")
+  failureReason             String?   @map("failure_reason") @db.Text
+  updatedAt                 DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+
+  subscription StoreSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  store        Settings           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  plan         SubscriptionPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([storeId], name: "idx_subpay_store")
+  @@index([subscriptionId], name: "idx_subpay_sub")
+  @@index([planId], name: "idx_subpay_plan")
+  @@index([status], name: "idx_subpay_status")
+  @@index([paidAt], name: "idx_subpay_paid_at")
+  @@index([razorpayOrderId], name: "idx_subpay_rzp_order")
+  @@map("subscription_payments")
+}
+
+// Table: razorpay_webhook_events (Idempotency and replay-protection ledger for Razorpay webhooks)
+model RazorpayWebhookEvent {
+  id                Int       @id @default(autoincrement())
+  eventId           String    @unique @map("event_id") @db.VarChar(150) // x-razorpay-event-id
+  eventType         String    @map("event_type") @db.VarChar(100)
+  payloadJson       String    @map("payload_json") @db.Text
+  signatureVerified Boolean   @default(false) @map("signature_verified")
+  processed         Boolean   @default(false)
+  processedAt       DateTime? @map("processed_at")
+  errorMessage      String?   @map("error_message") @db.Text
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  @@index([eventType], name: "idx_rzp_ev_type")
+  @@index([processed], name: "idx_rzp_ev_processed")
+  @@index([createdAt], name: "idx_rzp_ev_created")
+  @@map("razorpay_webhook_events")
 }

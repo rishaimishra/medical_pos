@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessPage } from "@/lib/rbac";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.18.2: Pharmacist / POS Prescription Requests Queue
@@ -20,6 +21,9 @@ export async function GET(req: NextRequest) {
       { status: 403 }
     );
   }
+
+  const rxGate = await requireStoreFeature(auth.session.storeId, "patientPortalAndRxQueue");
+  if (!rxGate.allowed) return rxGate.response!;
 
   const { searchParams } = new URL(req.url);
   const idParam = searchParams.get("id");
@@ -185,6 +189,9 @@ export async function PATCH(req: NextRequest) {
       { status: 403 }
     );
   }
+
+  const rxGate = await requireStoreFeature(auth.session.storeId, "patientPortalAndRxQueue");
+  if (!rxGate.allowed) return rxGate.response!;
 
   try {
     const body = await req.json();

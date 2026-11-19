@@ -53,6 +53,7 @@ export const ADMIN_ONLY_PAGES = [
   "/admin/users",
   "/admin/branches",
   "/admin/settings",
+  "/admin/billing",
   "/admin/updates",
   "/admin/suppliers",
 ];

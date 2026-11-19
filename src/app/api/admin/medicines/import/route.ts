@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { formatPackMetadata } from "../route";
+import { checkStoreQuota, requireStoreFeature } from "@/lib/entitlements";
 
 interface ParsedImportRow {
   rowIdx: number;
@@ -75,6 +76,9 @@ export async function POST(req: NextRequest) {
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
+
+  const importGate = await requireStoreFeature(auth.session.storeId, "bulkMedicineImport");
+  if (!importGate.allowed) return importGate.response!;
 
   const clientIp = getClientIp(req);
 
@@ -341,7 +345,13 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const bulkMedQuota = await checkStoreQuota(auth.session.storeId, "maxMedicines", {
+        incrementBy: toInsertRows.length,
+      });
+      if (!bulkMedQuota.allowed) return bulkMedQuota.response!;
+
       // Fast, batched insertion using createMany to prevent Neon serverless connection timeout
+      const storeId = auth.session.storeId ?? null;
       const dataToInsert = toInsertRows.map((r) => {
         const fullDesc = formatPackMetadata(r.description || "", {
           packUnit: r.packUnit,
@@ -351,6 +361,7 @@ export async function POST(req: NextRequest) {
         });
 
         return {
+          storeId,
           name: r.name.trim(),
           genericName: r.genericName ? r.genericName.trim() : null,
           company: r.company.trim(),

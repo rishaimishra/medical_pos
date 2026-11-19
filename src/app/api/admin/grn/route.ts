@@ -4,6 +4,7 @@ import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
 import { sendSupplierPoEmail } from "@/lib/email";
+import { requireStoreFeature } from "@/lib/entitlements";
 import crypto from "crypto";
 
 /**
@@ -28,6 +29,9 @@ export async function POST(req: NextRequest) {
   ) {
     return NextResponse.json({ success: false, message: "Forbidden: Insufficient privileges to inward stock" }, { status: 403 });
   }
+
+  const grnGate = await requireStoreFeature(auth.session.storeId, "purchasesAndGrn");
+  if (!grnGate.allowed) return grnGate.response!;
 
   try {
     const body = await req.json();

@@ -136,6 +136,13 @@ export async function GET(req: NextRequest) {
       ? tokenResult.session.lastActive
       : Date.now();
 
+    if (tokenResult.session.impersonatedByPlatformUserId) {
+      refreshedPayload.impersonatedByPlatformUserId = tokenResult.session.impersonatedByPlatformUserId;
+      refreshedPayload.impersonatorName = tokenResult.session.impersonatorName;
+      refreshedPayload.impersonationReason = tokenResult.session.impersonationReason;
+      refreshedPayload.impersonationExpiresAt = tokenResult.session.impersonationExpiresAt;
+    }
+
     const refreshedToken = createSessionToken(refreshedPayload);
     const res = NextResponse.json({
       success: true,

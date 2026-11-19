@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyCustomerRequest } from "@/lib/auth";
 import { escapeHtml, sendEmail } from "@/lib/email";
+import { requireCustomerPortalFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.20.1: Customer Side Two-Way Messages Endpoint
@@ -13,9 +14,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
 
+  const msgGate = await requireCustomerPortalFeature(
+    auth.session.customerId,
+    "twoWayMessagingInboxes"
+  );
+  if (!msgGate.allowed) return msgGate.response!;
+
+  const linkedIds = auth.session.linkedCustomerIds ?? [auth.session.customerId];
+
   try {
     const recentMsgs = await prisma.patientMessage.findMany({
-      where: { customerId: auth.session.customerId },
+      where: { customerId: { in: linkedIds } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 150,
       include: {
@@ -55,6 +64,12 @@ export async function POST(req: NextRequest) {
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
+
+  const msgGate = await requireCustomerPortalFeature(
+    auth.session.customerId,
+    "twoWayMessagingInboxes"
+  );
+  if (!msgGate.allowed) return msgGate.response!;
 
   try {
     const body = await req.json();
@@ -108,17 +123,25 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
   }
 
+  const msgGate = await requireCustomerPortalFeature(
+    auth.session.customerId,
+    "twoWayMessagingInboxes"
+  );
+  if (!msgGate.allowed) return msgGate.response!;
+
+  const linkedIds = auth.session.linkedCustomerIds ?? [auth.session.customerId];
+
   try {
     const body = await req.json();
     if (body.markAllRead) {
       await prisma.patientMessage.updateMany({
-        where: { customerId: auth.session.customerId, direction: "out", isRead: false },
+        where: { customerId: { in: linkedIds }, direction: "out", isRead: false },
         data: { isRead: true },
       });
     } else if (body.id) {
       const id = parseInt(String(body.id), 10);
       const existing = await prisma.patientMessage.findUnique({ where: { id } });
-      if (!existing || existing.customerId !== auth.session.customerId) {
+      if (!existing || !linkedIds.includes(existing.customerId)) {
         return NextResponse.json({ success: false, message: "Message not found" }, { status: 404 });
       }
       if (existing.direction === "out") {

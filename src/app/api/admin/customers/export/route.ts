@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 1.13.1: CUSTOMER DIRECTORY EXCEL CSV EXPORT
@@ -18,6 +19,9 @@ export async function GET(req: NextRequest) {
   if (!hasPermission(auth.session, "manage_customers") && auth.session.role !== "admin") {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
+
+  const exportGate = await requireStoreFeature(auth.session.storeId, "excelAndCsvExports");
+  if (!exportGate.allowed) return exportGate.response!;
 
   try {
     let customers: any[] = [];

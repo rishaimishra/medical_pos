@@ -44,7 +44,8 @@ export async function GET(
       prisma.settings.findFirst({ orderBy: { id: "asc" } }),
     ]);
 
-    if (!sale || sale.customerId !== auth.session.customerId) {
+    const linkedIds = auth.session.linkedCustomerIds ?? [auth.session.customerId];
+    if (!sale || !sale.customerId || !linkedIds.includes(sale.customerId)) {
       return NextResponse.json({ success: false, message: "Invoice not found" }, { status: 404 });
     }
 

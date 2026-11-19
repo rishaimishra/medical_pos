@@ -20,6 +20,7 @@ import { toast } from "@/stores/useToastStore";
 import { confirmAction } from "@/stores/useConfirmStore";
 import { Modal } from "@/components/ui/Modal";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { FeatureGate } from "@/components/saas/FeatureGate";
 
 interface DiscountPolicy {
   id: number;
@@ -235,14 +236,20 @@ export default function DiscountsManagementPage() {
         </div>
 
         {isAdminOrManager && (
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1F4E5B] hover:bg-[#163a44] text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+          <FeatureGate
+            feature="customDiscountsAndDayEndClose"
+            quotaResource="maxDiscountSchemes"
+            mode="disable"
           >
-            <Plus className="w-4 h-4" />
-            <span>Create Discount Policy</span>
-          </button>
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1F4E5B] hover:bg-[#163a44] text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create Discount Policy</span>
+            </button>
+          </FeatureGate>
         )}
       </div>
 

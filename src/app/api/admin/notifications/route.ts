@@ -147,9 +147,24 @@ export async function GET(req: NextRequest) {
       take: 5,
     });
 
+    // 8. Active Platform Broadcasts from CEO / Super Admin (Module 3.3.4)
+    const activeBroadcasts = await prisma.platformAnnouncement.findMany({
+      where: {
+        active: true,
+        AND: [
+          { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+          userStoreId
+            ? { OR: [{ targetStoreId: null }, { targetStoreId: userStoreId }] }
+            : { targetStoreId: null },
+        ],
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: 5,
+    });
+
     const notifications: Array<{
       id: string;
-      type: "expiry" | "stock" | "po" | "refill" | "return" | "message" | "prescription";
+      type: "expiry" | "stock" | "po" | "refill" | "return" | "message" | "prescription" | "announcement";
       title: string;
       message: string;
       href: string;
@@ -242,6 +257,18 @@ export async function GET(req: NextRequest) {
         href: `/admin/pos?rxCustomerId=${pm.customerId}&rxMessageId=${pm.id}`,
         severity: "warning",
         timestamp: pm.createdAt.toISOString(),
+      });
+    });
+
+    activeBroadcasts.forEach((ann) => {
+      notifications.push({
+        id: `ann_${ann.id}`,
+        type: "announcement",
+        title: ann.title,
+        message: ann.message,
+        href: "/admin/dashboard",
+        severity: ann.severity === "urgent" ? "danger" : ann.severity === "warning" ? "warning" : "info",
+        timestamp: ann.createdAt.toISOString(),
       });
     });
 

@@ -3,6 +3,7 @@ import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.12.1: General Income & Expense Ledger API
@@ -20,6 +21,9 @@ export async function GET(req: NextRequest) {
   if (!canAccessPage(auth.session, "/admin/financials") && !canAccessPage(auth.session, "/admin/reports")) {
     return NextResponse.json({ success: false, message: "Forbidden: Access to expenses denied" }, { status: 403 });
   }
+
+  const finGate = await requireStoreFeature(auth.session.storeId, "expenseAndFinancialLedger");
+  if (!finGate.allowed) return finGate.response!;
 
   const { searchParams } = new URL(req.url);
   const branchIdParam = searchParams.get("branchId");
@@ -182,6 +186,9 @@ export async function POST(req: NextRequest) {
   if (!canAccessPage(auth.session, "/admin/financials")) {
     return NextResponse.json({ success: false, message: "Forbidden: Insufficient privileges to record vouchers" }, { status: 403 });
   }
+
+  const finGate = await requireStoreFeature(auth.session.storeId, "expenseAndFinancialLedger");
+  if (!finGate.allowed) return finGate.response!;
 
   try {
     const body = await req.json();

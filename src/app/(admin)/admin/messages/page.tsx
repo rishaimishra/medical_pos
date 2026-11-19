@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/stores/useToastStore";
 import { confirmAction } from "@/stores/useConfirmStore";
+import { FeatureGate } from "@/components/saas/FeatureGate";
 
 interface SupplierOption {
   id: number;
@@ -332,6 +333,7 @@ export default function AdminMessagesPage() {
   const selectedPatientFromDir = ptCustomers.find((c) => c.id === selectedCustomerId);
 
   return (
+    <FeatureGate feature="twoWayMessagingInboxes" title="Two-Way Patient & Supplier Messaging Inboxes">
     <div className="space-y-5 select-text max-w-6xl mx-auto pb-10">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -865,5 +867,6 @@ export default function AdminMessagesPage() {
         </div>
       )}
     </div>
+    </FeatureGate>
   );
 }

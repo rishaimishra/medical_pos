@@ -42,6 +42,10 @@ export interface SessionPayload {
   issuedAt: number;
   lastActive: number;
   isLocked?: boolean;
+  impersonatedByPlatformUserId?: number;
+  impersonatorName?: string;
+  impersonationReason?: string;
+  impersonationExpiresAt?: number;
 }
 
 export interface RateLimitStatus {
@@ -130,6 +134,16 @@ export function verifySessionToken(
     const elapsedMs = now - (payload.lastActive || payload.issuedAt || 0);
     const inactiveSeconds = Math.floor(elapsedMs / 1000);
 
+    if (payload.impersonationExpiresAt && now > payload.impersonationExpiresAt) {
+      return {
+        valid: false,
+        expired: true,
+        locked: true,
+        session: { ...payload, isLocked: true },
+        inactiveSeconds,
+      };
+    }
+
     if (elapsedMs > timeoutMs) {
       return {
         valid: false,
@@ -186,7 +200,7 @@ export function getSessionFromRequest(req: NextRequest): {
  */
 export async function checkBruteForceLockout(
   ip: string,
-  context: "admin" | "supplier" | "customer" = "admin",
+  context: "admin" | "supplier" | "customer" | "super_admin" = "admin",
   identifier?: string,
   secondaryIdentifier?: string
 ): Promise<RateLimitStatus> {
@@ -270,7 +284,7 @@ export async function checkBruteForceLockout(
  */
 export async function recordFailedLoginAttempt(
   ip: string,
-  context: "admin" | "supplier" | "customer" = "admin",
+  context: "admin" | "supplier" | "customer" | "super_admin" = "admin",
   identifier?: string,
   secondaryIdentifier?: string
 ): Promise<RateLimitStatus> {
@@ -316,7 +330,7 @@ export async function recordFailedLoginAttempt(
  */
 export async function clearFailedLoginAttempts(
   ip: string,
-  context: "admin" | "supplier" | "customer" = "admin",
+  context: "admin" | "supplier" | "customer" | "super_admin" = "admin",
   identifier?: string,
   secondaryIdentifier?: string
 ): Promise<void> {
@@ -552,6 +566,28 @@ export interface CustomerSessionPayload {
   email: string | null;
   address: string | null;
   issuedAt: number;
+  linkedCustomerIds?: number[];
+}
+
+export async function getLinkedCustomerIds(
+  customerId: number,
+  phone?: string | null
+): Promise<number[]> {
+  let cleanPhone = (phone || "").trim();
+  if (!cleanPhone) {
+    const row = await prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { phone: true },
+    });
+    cleanPhone = row?.phone || "";
+  }
+  if (!cleanPhone) return [customerId];
+
+  const linkedRows = await prisma.customer.findMany({
+    where: { phone: cleanPhone, active: true },
+    select: { id: true },
+  });
+  return Array.from(new Set([customerId, ...linkedRows.map((r) => r.id)]));
 }
 
 export function signSupplierToken(payload: SupplierSessionPayload): string {
@@ -659,6 +695,8 @@ export async function verifyCustomerRequest(req: NextRequest): Promise<{
     };
   }
 
+  const linkedCustomerIds = await getLinkedCustomerIds(session.customerId, dbCustomer.phone);
+
   return {
     authorized: true,
     status: 200,
@@ -668,6 +706,7 @@ export async function verifyCustomerRequest(req: NextRequest): Promise<{
       phone: dbCustomer.phone,
       email: dbCustomer.email,
       address: dbCustomer.address,
+      linkedCustomerIds,
     },
   };
 }
@@ -721,5 +760,137 @@ export function verifyDiscountOverrideToken(
   } catch {
     return null;
   }
+}
+
+export const SUPER_ADMIN_COOKIE_NAME = "med_pos_super_admin_session";
+
+export type PlatformRole = "ceo" | "platform_admin" | "finance_ops" | "support_viewer";
+
+export interface SuperAdminSessionPayload {
+  platformUserId: number;
+  name: string;
+  username: string;
+  email: string;
+  role: PlatformRole;
+  issuedAt: number;
+  lastActive: number;
+}
+
+export function hasPlatformRole(
+  session: Pick<SuperAdminSessionPayload, "role"> | null | undefined,
+  allowedRoles: PlatformRole[]
+): boolean {
+  if (!session) return false;
+  if (session.role === "ceo") return true;
+  return allowedRoles.includes(session.role);
+}
+
+export function signSuperAdminToken(payload: SuperAdminSessionPayload): string {
+  const fullPayload: SuperAdminSessionPayload = {
+    ...payload,
+    issuedAt: payload.issuedAt || Date.now(),
+    lastActive: payload.lastActive || Date.now(),
+  };
+  const dataB64 = Buffer.from(JSON.stringify(fullPayload), "utf8").toString("base64url");
+  const sig = crypto
+    .createHmac("sha256", SESSION_SECRET)
+    .update(`super_admin:${dataB64}`)
+    .digest("base64url");
+  return `${dataB64}.${sig}`;
+}
+
+export function verifySuperAdminToken(
+  token?: string | null,
+  customTimeoutMinutes: number = APP_CONFIG.sessionTimeoutMinutes
+): {
+  valid: boolean;
+  expired: boolean;
+  session: SuperAdminSessionPayload | null;
+} {
+  if (!token || !token.includes(".")) {
+    return { valid: false, expired: false, session: null };
+  }
+  const [dataB64, sig] = token.split(".");
+  if (!dataB64 || !sig) {
+    return { valid: false, expired: false, session: null };
+  }
+  const expected = crypto
+    .createHmac("sha256", SESSION_SECRET)
+    .update(`super_admin:${dataB64}`)
+    .digest("base64url");
+  const sigBuf = Buffer.from(sig);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return { valid: false, expired: false, session: null };
+  }
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(dataB64, "base64url").toString("utf8")
+    ) as SuperAdminSessionPayload;
+    const elapsedMs = Date.now() - (parsed.lastActive || parsed.issuedAt || 0);
+    if (elapsedMs > customTimeoutMinutes * 60 * 1000) {
+      return { valid: false, expired: true, session: parsed };
+    }
+    return { valid: true, expired: false, session: parsed };
+  } catch {
+    return { valid: false, expired: false, session: null };
+  }
+}
+
+export async function verifySuperAdminRequest(
+  req: NextRequest,
+  allowedRoles?: PlatformRole[]
+): Promise<{
+  authorized: boolean;
+  status: number;
+  message?: string;
+  session: SuperAdminSessionPayload | null;
+}> {
+  const token = req.cookies.get(SUPER_ADMIN_COOKIE_NAME)?.value;
+  const check = verifySuperAdminToken(token);
+  if (!check.valid || !check.session) {
+    return {
+      authorized: false,
+      status: 401,
+      message: check.expired
+        ? "Super Admin session expired. Please sign in again."
+        : "Unauthorized: Super Admin authentication required.",
+      session: null,
+    };
+  }
+
+  const dbUser = await prisma.platformUser.findUnique({
+    where: { id: check.session.platformUserId },
+    select: { id: true, name: true, username: true, email: true, role: true, active: true },
+  });
+
+  if (!dbUser || !dbUser.active) {
+    return {
+      authorized: false,
+      status: 401,
+      message: "Unauthorized: Platform operator account is inactive or missing.",
+      session: null,
+    };
+  }
+
+  const normalizedRole = (dbUser.role || "support_viewer") as PlatformRole;
+  const session: SuperAdminSessionPayload = {
+    ...check.session,
+    name: dbUser.name,
+    username: dbUser.username,
+    email: dbUser.email,
+    role: normalizedRole,
+  };
+
+  if (allowedRoles && allowedRoles.length > 0 && !hasPlatformRole(session, allowedRoles)) {
+    return {
+      authorized: false,
+      status: 403,
+      message: `Forbidden: Requires platform role (${allowedRoles.join(", ")}).`,
+      session: null,
+    };
+  }
+
+  return { authorized: true, status: 200, session };
 }
 

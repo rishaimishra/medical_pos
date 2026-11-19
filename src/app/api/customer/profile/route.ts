@@ -112,8 +112,8 @@ export async function PATCH(req: NextRequest) {
       }
 
       const nextHash = await hashPassword(newPassword);
-      await prisma.customer.update({
-        where: { id: customer.id },
+      await prisma.customer.updateMany({
+        where: { phone: customer.phone },
         data: { password: nextHash },
       });
 
@@ -145,8 +145,13 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (email && email !== customer.email) {
-      const conflict = await prisma.customer.findUnique({ where: { email } });
-      if (conflict && conflict.id !== customer.id) {
+      const conflict = await prisma.customer.findFirst({
+        where: {
+          email: { equals: email, mode: "insensitive" },
+          phone: { not: customer.phone },
+        },
+      });
+      if (conflict) {
         return NextResponse.json(
           { success: false, message: "That email is already associated with another account." },
           { status: 409 }
@@ -170,34 +175,42 @@ export async function PATCH(req: NextRequest) {
     const updatedEmailChanged = Boolean(email && email !== customer.email);
     const verifyToken = updatedEmailChanged ? crypto.randomBytes(24).toString("hex") : undefined;
 
-    const updated = await prisma.customer.update({
-      where: { id: customer.id },
-      data: {
-        name,
-        address,
-        gender,
-        email,
-        ...(dobUpdate !== undefined ? { dob: dobUpdate } : {}),
-        ...(updatedEmailChanged && verifyToken
-          ? {
-              verified: false,
-              verifyToken,
-              verifySentAt: new Date(),
-              verifiedAt: null,
-            }
-          : {}),
-      },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-        email: true,
-        address: true,
-        dob: true,
-        gender: true,
-        verified: true,
-      },
-    });
+    const syncData = {
+      name,
+      address,
+      gender,
+      email,
+      ...(dobUpdate !== undefined ? { dob: dobUpdate } : {}),
+      ...(updatedEmailChanged && verifyToken
+        ? {
+            verified: false,
+            verifyToken,
+            verifySentAt: new Date(),
+            verifiedAt: null,
+          }
+        : {}),
+    };
+
+    const [, updated] = await Promise.all([
+      prisma.customer.updateMany({
+        where: { phone: customer.phone, id: { not: customer.id } },
+        data: syncData,
+      }),
+      prisma.customer.update({
+        where: { id: customer.id },
+        data: syncData,
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          email: true,
+          address: true,
+          dob: true,
+          gender: true,
+          verified: true,
+        },
+      }),
+    ]);
 
     if (updatedEmailChanged && email && verifyToken) {
       const origin = req.nextUrl?.origin || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";

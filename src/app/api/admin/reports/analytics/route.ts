@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const branchIdParam = searchParams.get("branchId");
 
-  const authCtx = await authorizeReportRequest(req, branchIdParam);
+  const authCtx = await authorizeReportRequest(req, branchIdParam, { feature: "advancedBiAndProfitReports" });
   if (!authCtx.authorized) return authCtx.response!;
 
   const range = searchParams.get("range") || "month";
