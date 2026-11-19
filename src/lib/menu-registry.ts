@@ -195,8 +195,6 @@ export const SYSTEM_MENU_REGISTRY: MenuItem[] = [
     label: "Subscription & Billing",
     href: "/admin/billing",
     icon: CreditCard,
-    requiredPermission: "manage_settings",
-    adminOnly: true,
     status: "ready",
     description: "Manage SaaS plan, Razorpay checkout, live quotas & GST tax invoices",
   },

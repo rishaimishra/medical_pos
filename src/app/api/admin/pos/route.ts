@@ -596,7 +596,7 @@ export async function POST(req: NextRequest | Request) {
             },
           });
 
-          if (!cust) {
+          if (!cust || (storeId && cust.storeId !== storeId)) {
             throw new Error("Selected customer not found for credit allocation");
           }
           if (!cust.active) {
@@ -645,7 +645,7 @@ export async function POST(req: NextRequest | Request) {
           },
         });
 
-        if (!cust) {
+        if (!cust || (storeId && cust.storeId !== storeId)) {
           throw new Error("Selected customer not found for credit sale");
         }
         if (!cust.active) {
@@ -670,13 +670,13 @@ export async function POST(req: NextRequest | Request) {
         creditAmount = grandTotal;
       }
 
-      // Validate active customer if customerId is attached to any sale
+      // Validate active customer within Store Tenant if customerId is attached to any sale
       if (custId && paymentMethod !== "credit") {
         const attachedCust = await tx.customer.findUnique({
           where: { id: custId },
-          select: { id: true, name: true, active: true },
+          select: { id: true, storeId: true, name: true, active: true },
         });
-        if (!attachedCust) {
+        if (!attachedCust || (storeId && attachedCust.storeId !== storeId)) {
           throw new Error("Selected customer not found");
         }
         if (!attachedCust.active) {

@@ -58,6 +58,9 @@ export async function GET(
       todayAgg,
       thirtyDayAgg,
       allTimeAgg,
+      todayRetAgg,
+      thirtyDayRetAgg,
+      allTimeRetAgg,
       monthlyInvoiceCount,
       medCount,
       supCount,
@@ -70,6 +73,8 @@ export async function GET(
       recentSales,
       recentPOs,
       recentExpenses,
+      recentReturns,
+      bakiCustomers,
       allPlans,
     ] = await Promise.all([
       prisma.branch.findMany({
@@ -106,7 +111,17 @@ export async function GET(
       }),
       prisma.batch.findMany({
         where: { branch: { storeId } },
-        select: { id: true, branchId: true, quantity: true, purchasePrice: true, mrp: true, expiryDate: true },
+        select: {
+          id: true,
+          batchNo: true,
+          branchId: true,
+          quantity: true,
+          purchasePrice: true,
+          mrp: true,
+          expiryDate: true,
+          medicine: { select: { name: true } },
+          branch: { select: { name: true, code: true } },
+        },
       }),
       prisma.sale.groupBy({
         by: ["branchId"],
@@ -134,6 +149,32 @@ export async function GET(
         where: { branch: { storeId } },
         _sum: { grandTotal: true },
         _count: { _all: true },
+      }),
+      prisma.return.aggregate({
+        where: {
+          branch: { storeId },
+          status: "processed",
+          OR: [
+            { processedAt: { gte: todayStartUtc } },
+            { processedAt: null, createdAt: { gte: todayStartUtc } },
+          ],
+        },
+        _sum: { refundAmount: true },
+      }),
+      prisma.return.aggregate({
+        where: {
+          branch: { storeId },
+          status: "processed",
+          OR: [
+            { processedAt: { gte: thirtyDaysAgoUtc } },
+            { processedAt: null, createdAt: { gte: thirtyDaysAgoUtc } },
+          ],
+        },
+        _sum: { refundAmount: true },
+      }),
+      prisma.return.aggregate({
+        where: { branch: { storeId }, status: "processed" },
+        _sum: { refundAmount: true },
       }),
       prisma.sale.count({
         where: { branch: { storeId }, saleDate: { gte: monthStartUtc } },
@@ -202,6 +243,30 @@ export async function GET(
         where: { storeId },
         orderBy: { expenseDate: "desc" },
         take: 20,
+      }),
+      prisma.return.findMany({
+        where: { branch: { storeId } },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        include: {
+          sale: { select: { invoiceNo: true } },
+          customer: { select: { name: true } },
+          branch: { select: { name: true } },
+        },
+      }),
+      prisma.customer.findMany({
+        where: { storeId, active: true },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          creditLimit: true,
+          sales: {
+            where: { OR: [{ paymentMethod: "credit" }, { creditAmount: { gt: 0 } }] },
+            select: { paymentMethod: true, grandTotal: true, creditAmount: true },
+          },
+          payments: { select: { amount: true } },
+        },
       }),
       prisma.subscriptionPlan.findMany({
         where: { isActive: true },
@@ -284,6 +349,69 @@ export async function GET(
 
     const activeStaffCount = staffUsers.filter((u) => u.active).length;
 
+    const refundsToday = Number(todayRetAgg._sum.refundAmount || 0);
+    const refunds30d = Number(thirtyDayRetAgg._sum.refundAmount || 0);
+    const refundsAllTime = Number(allTimeRetAgg._sum.refundAmount || 0);
+    const revenueToday = Math.max(
+      0,
+      Math.round((Number(todayAgg._sum.grandTotal || 0) - refundsToday) * 100) / 100
+    );
+    const revenue30d = Math.max(
+      0,
+      Math.round((Number(thirtyDayAgg._sum.grandTotal || 0) - refunds30d) * 100) / 100
+    );
+    const revenueAllTime = Math.max(
+      0,
+      Math.round((Number(allTimeAgg._sum.grandTotal || 0) - refundsAllTime) * 100) / 100
+    );
+
+    const lowQtyThreshold = typeof store.lowQty === "number" ? store.lowQty : 10;
+    const expiryHorizon = new Date(todayStartUtc.getTime() + 90 * 24 * 60 * 60 * 1000);
+    const alertBatches = allBatches
+      .filter((b) => {
+        const isExpired = b.expiryDate <= todayStartUtc;
+        const isExpiring = b.expiryDate <= expiryHorizon && b.quantity > 0;
+        const isLowStock = b.quantity <= lowQtyThreshold;
+        return (isExpired && b.quantity > 0) || isExpiring || isLowStock;
+      })
+      .sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime())
+      .slice(0, 25)
+      .map((b) => ({
+        id: b.id,
+        batchNo: b.batchNo,
+        medicineName: b.medicine?.name || "Medicine",
+        branchName: b.branch?.name || "-",
+        quantity: b.quantity,
+        expiryDate: b.expiryDate,
+        mrp: Number(b.mrp),
+        status:
+          b.expiryDate <= todayStartUtc
+            ? "expired"
+            : b.expiryDate <= expiryHorizon
+            ? "expiring_soon"
+            : "low_stock",
+      }));
+
+    const customerDues = bakiCustomers
+      .map((c) => {
+        const creditTotal = c.sales.reduce((sum, s) => {
+          const cAmt = Number(s.creditAmount || 0);
+          return sum + (cAmt > 0 ? cAmt : s.paymentMethod === "credit" ? Number(s.grandTotal) : 0);
+        }, 0);
+        const paidTotal = c.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+        const outstandingDue = Math.max(0, Math.round((creditTotal - paidTotal) * 100) / 100);
+        return {
+          id: c.id,
+          name: c.name,
+          phone: c.phone,
+          creditLimit: Number(c.creditLimit),
+          outstandingDue,
+        };
+      })
+      .filter((c) => c.outstandingDue > 0.01)
+      .sort((a, b) => b.outstandingDue - a.outstandingDue)
+      .slice(0, 20);
+
     return NextResponse.json({
       success: true,
       overview: {
@@ -310,11 +438,14 @@ export async function GET(
         setupDone: store.setupDone,
         createdAt: store.createdAt,
         kpis: {
-          revenueToday: Number(todayAgg._sum.grandTotal || 0),
+          revenueToday,
+          refundsToday: Math.round(refundsToday * 100) / 100,
           invoicesToday: todayAgg._count._all,
-          revenue30d: Number(thirtyDayAgg._sum.grandTotal || 0),
+          revenue30d,
+          refunds30d: Math.round(refunds30d * 100) / 100,
           invoices30d: thirtyDayAgg._count._all,
-          revenueAllTime: Number(allTimeAgg._sum.grandTotal || 0),
+          revenueAllTime,
+          refundsAllTime: Math.round(refundsAllTime * 100) / 100,
           invoicesAllTime: allTimeAgg._count._all,
           inventoryCostValue: Math.round(totalInventoryCost * 100) / 100,
         },
@@ -409,6 +540,19 @@ export async function GET(
           amount: Number(e.amount),
           expenseDate: e.expenseDate,
         })),
+        alertBatches,
+        recentReturns: recentReturns.map((r) => ({
+          id: r.id,
+          returnNumber: r.returnNumber,
+          invoiceNo: r.sale?.invoiceNo || "-",
+          customerName: r.customer?.name || "Walk-in",
+          branchName: r.branch?.name || "-",
+          refundAmount: Number(r.refundAmount),
+          refundMethod: r.refundMethod,
+          status: r.status,
+          createdAt: r.createdAt,
+        })),
+        customerDues,
       },
       plans: allPlans.map((p) => ({ ...p, priceInr: Number(p.priceInr) })),
     });
@@ -578,27 +722,42 @@ export async function PATCH(
 
       const now = new Date();
       const endDate = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
-      const sub = await prisma.storeSubscription.create({
-        data: {
-          storeId,
-          planId: plan.id,
-          status: plan.code === "FREE_TRIAL" ? "trialing" : "active",
-          billingMode: "manual_grant",
-          currentPeriodStart: now,
-          currentPeriodEnd: endDate,
-          trialEndsAt: plan.code === "FREE_TRIAL" ? endDate : null,
-          grantedByPlatformUserId: auth.session.platformUserId,
-          notes,
-        },
-      });
+      const nextStoreStatus = plan.code === "FREE_TRIAL" ? "trialing" : "active";
 
-      await prisma.settings.update({
-        where: { id: storeId },
-        data: {
-          storeStatus: plan.code === "FREE_TRIAL" ? "trialing" : "active",
-          suspensionReason: null,
-          suspendedAt: null,
-        },
+      const sub = await runInTransaction(async (tx) => {
+        // Expire any existing open subscriptions so Store Tenant never holds duplicate active plans
+        await tx.storeSubscription.updateMany({
+          where: {
+            storeId,
+            status: { in: ["active", "trialing", "grace_period", "past_due"] },
+          },
+          data: { status: "expired", autoRenew: false },
+        });
+
+        const created = await tx.storeSubscription.create({
+          data: {
+            storeId,
+            planId: plan.id,
+            status: nextStoreStatus,
+            billingMode: "manual_grant",
+            currentPeriodStart: now,
+            currentPeriodEnd: endDate,
+            trialEndsAt: plan.code === "FREE_TRIAL" ? endDate : null,
+            grantedByPlatformUserId: auth.session!.platformUserId,
+            notes,
+          },
+        });
+
+        await tx.settings.update({
+          where: { id: storeId },
+          data: {
+            storeStatus: nextStoreStatus,
+            suspensionReason: null,
+            suspendedAt: null,
+          },
+        });
+
+        return created;
       });
 
       await logPlatformAudit({
@@ -719,6 +878,14 @@ export async function PATCH(
         });
 
         if (activatePlan || !subscription) {
+          await tx.storeSubscription.updateMany({
+            where: {
+              storeId,
+              status: { in: ["active", "trialing", "grace_period", "past_due"] },
+            },
+            data: { status: "expired", autoRenew: false },
+          });
+
           const periodEnd = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
           subscription = await tx.storeSubscription.create({
             data: {
@@ -865,6 +1032,20 @@ export async function PATCH(
       }
       if (action === "toggle_user_active") {
         const active = Boolean(body.active);
+        if (target.role.toLowerCase() === "admin" && target.active && !active) {
+          const otherActiveAdmins = await prisma.user.count({
+            where: { storeId, role: "admin", active: true, id: { not: userId } },
+          });
+          if (otherActiveAdmins < 1) {
+            return NextResponse.json(
+              {
+                success: false,
+                message: "Security Protection: Cannot deactivate the last active Store Admin for this pharmacy.",
+              },
+              { status: 400 }
+            );
+          }
+        }
         const updated = await prisma.user.update({ where: { id: userId }, data: { active } });
         await logPlatformAudit({
           platformUserId: auth.session.platformUserId,

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
+import { checkStoreQuota } from "@/lib/entitlements";
 
 function isValidPhone(phone: string): boolean {
   const digits = phone.replace(/\D/g, "");
@@ -37,7 +38,9 @@ export async function GET(req: NextRequest) {
   const sortBy = searchParams.get("sort") || "recent"; // "recent" | "name_asc" | "due_desc"
 
   try {
-    const whereClause: any = {};
+    const userStoreId = auth.session.storeId ?? null;
+    const storeScope = userStoreId ? { storeId: userStoreId } : {};
+    const whereClause: any = { ...storeScope };
 
     if (activeOnly) {
       whereClause.active = true;
@@ -68,18 +71,20 @@ export async function GET(req: NextRequest) {
       orderBy = { name: "asc" };
     }
 
-    // Top KPI Aggregates
+    // Top KPI Aggregates (strictly scoped to Store Tenant)
     const [totalCustomers, chronicCount, rawDueSales, rawPayments] = await Promise.all([
-      prisma.customer.count(),
-      prisma.customer.count({ where: { isChronic: true } }),
+      prisma.customer.count({ where: storeScope }),
+      prisma.customer.count({ where: { ...storeScope, isChronic: true } }),
       prisma.sale.findMany({
         where: {
           customerId: { not: null },
+          ...(userStoreId ? { customer: { storeId: userStoreId } } : {}),
           OR: [{ paymentMethod: "credit" }, { creditAmount: { gt: 0 } }],
         },
         select: { customerId: true, paymentMethod: true, grandTotal: true, creditAmount: true },
       }),
       prisma.customerPayment.findMany({
+        where: userStoreId ? { customer: { storeId: userStoreId } } : {},
         select: { customerId: true, amount: true },
       }),
     ]);
@@ -102,11 +107,12 @@ export async function GET(req: NextRequest) {
       if (due > 0) totalOutstandingDue += due;
     }
 
-    // Count refills due within 7 days
+    // Count refills due within 7 days (scoped to Store Tenant)
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
     const refillsDueWeek = await prisma.customer.count({
       where: {
+        ...storeScope,
         isChronic: true,
         nextRefillDate: { lte: nextWeek },
       },
@@ -267,6 +273,9 @@ export async function POST(req: NextRequest) {
 
     const storeId = auth.session.storeId ?? null;
 
+    const custQuota = await checkStoreQuota(storeId, "maxCustomers");
+    if (!custQuota.allowed) return custQuota.response!;
+
     // Duplicate phone prevention (store-scoped in multi-tenant mode)
     const existing = await prisma.customer.findFirst({
       where: {
@@ -341,6 +350,7 @@ export async function POST(req: NextRequest) {
     });
 
     await logAudit({
+      storeId: storeId ?? null,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: "CUSTOMER_CREATED",

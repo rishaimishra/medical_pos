@@ -40,6 +40,11 @@ export async function GET(
   }
 
   try {
+    const sup = await prisma.supplier.findUnique({ where: { id: supplierId }, select: { storeId: true } });
+    if (!sup || (auth.session.storeId && sup.storeId !== auth.session.storeId)) {
+      return NextResponse.json({ success: false, message: "Supplier not found" }, { status: 404 });
+    }
+
     const portalUser = await prisma.supplierUser.findFirst({
       where: { supplierId },
       select: {
@@ -93,7 +98,7 @@ export async function POST(
 
   try {
     const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
-    if (!supplier) {
+    if (!supplier || (auth.session.storeId && supplier.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Supplier not found" }, { status: 404 });
     }
 
@@ -180,6 +185,7 @@ export async function POST(
     }
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: actionType,
@@ -195,7 +201,9 @@ export async function POST(
 
     if (sendEmail && email) {
       try {
-        const storeSettings = await prisma.settings.findFirst({ orderBy: { id: "asc" } });
+        const storeSettings = auth.session.storeId
+          ? await prisma.settings.findUnique({ where: { id: auth.session.storeId } })
+          : await prisma.settings.findFirst({ orderBy: { id: "asc" } });
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
         const emailRes = await sendAccountCredentialsEmail({
           name: supplier.contact || supplier.name,
@@ -206,6 +214,7 @@ export async function POST(
           accountType: "supplier",
           storeName: storeSettings?.storeName || "Medical POS Pharmacy",
           loginUrl: `${appUrl}/supplier/login`,
+          storeId: auth.session.storeId ?? supplier.storeId,
         });
         emailSent = emailRes.success;
         if (!emailRes.success) emailError = emailRes.error || "Failed to send credential email";
@@ -269,6 +278,11 @@ export async function PUT(
   }
 
   try {
+    const sup = await prisma.supplier.findUnique({ where: { id: supplierId }, select: { storeId: true } });
+    if (!sup || (auth.session.storeId && sup.storeId !== auth.session.storeId)) {
+      return NextResponse.json({ success: false, message: "Supplier not found" }, { status: 404 });
+    }
+
     const portalUser = await prisma.supplierUser.findFirst({ where: { supplierId } });
     if (!portalUser) {
       return NextResponse.json({ success: false, message: "No portal user found for this supplier" }, { status: 404 });
@@ -283,6 +297,7 @@ export async function PUT(
     });
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: active ? "SUPPLIER_PORTAL_USER_ACTIVATED" : "SUPPLIER_PORTAL_USER_DEACTIVATED",

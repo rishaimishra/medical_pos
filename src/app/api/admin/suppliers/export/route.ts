@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const suppliers = await prisma.supplier.findMany({
+      where: auth.session.storeId ? { storeId: auth.session.storeId } : undefined,
       orderBy: { name: "asc" },
       include: {
         _count: {

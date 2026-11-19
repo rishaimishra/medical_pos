@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyCustomerRequest } from "@/lib/auth";
 import { escapeHtml, sendEmail } from "@/lib/email";
-import { requireStoreFeature } from "@/lib/entitlements";
+import { requireCustomerPortalFeature, requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.19.2: Customer Return Request From Portal
@@ -17,10 +17,26 @@ export async function GET(req: NextRequest) {
   }
 
   const linkedIds = auth.session.linkedCustomerIds ?? [auth.session.customerId];
+  const { searchParams } = new URL(req.url);
+  const storeIdParam = searchParams.get("storeId");
+  const filterStoreId =
+    storeIdParam && storeIdParam !== "all" && !isNaN(Number(storeIdParam))
+      ? Number(storeIdParam)
+      : null;
+
+  const retGate = await requireCustomerPortalFeature(
+    auth.session.customerId,
+    "patientPortalAndRxQueue",
+    { linkedCustomerIds: linkedIds, targetStoreId: filterStoreId }
+  );
+  if (!retGate.allowed) return retGate.response!;
 
   try {
     const returns = await prisma.return.findMany({
-      where: { customerId: { in: linkedIds } },
+      where: {
+        customerId: { in: linkedIds },
+        ...(filterStoreId ? { branch: { storeId: filterStoreId } } : {}),
+      },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {

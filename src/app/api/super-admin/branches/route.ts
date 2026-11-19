@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.settings.findMany({
+        where: { OR: [{ setupDone: true }, { branches: { some: {} } }] },
         orderBy: { id: "asc" },
         select: { id: true, storeName: true },
       }),

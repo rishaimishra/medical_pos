@@ -708,32 +708,54 @@ function AdminBillingContent() {
                 </div>
               </div>
 
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 text-[10px] font-bold uppercase text-slate-500">
-                    <th className="py-2">Description (SaaS Cloud License)</th>
-                    <th className="py-2">SAC</th>
-                    <th className="py-2 text-right">Taxable Value</th>
-                    <th className="py-2 text-right">CGST (9%)</th>
-                    <th className="py-2 text-right">SGST (9%)</th>
-                    <th className="py-2 text-right">Total (INR)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-slate-100">
-                    <td className="py-3 font-semibold">
-                      {invoiceModal.planName} ({invoiceModal.planCode}) — {invoiceModal.paymentType}
-                    </td>
-                    <td className="py-3 font-mono">{platformCompany?.sacCode || "998314"}</td>
-                    <td className="py-3 text-right font-mono">{formatInr(invoiceModal.amountSubtotal)}</td>
-                    <td className="py-3 text-right font-mono">{formatInr(invoiceModal.gstAmount / 2)}</td>
-                    <td className="py-3 text-right font-mono">{formatInr(invoiceModal.gstAmount / 2)}</td>
-                    <td className="py-3 text-right font-mono font-extrabold text-slate-900">
-                      {formatInr(invoiceModal.totalAmount)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              {(() => {
+                const sellerGst = (platformCompany?.gstNo || "").trim();
+                const buyerGst = (storeInfo?.storeGst || "").trim();
+                const sellerState = /^\d{2}/.test(sellerGst) ? sellerGst.slice(0, 2) : null;
+                const buyerState = /^\d{2}/.test(buyerGst) ? buyerGst.slice(0, 2) : null;
+                const isInterState = Boolean(sellerState && buyerState && sellerState !== buyerState);
+
+                return (
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-[10px] font-bold uppercase text-slate-500">
+                        <th className="py-2">Description (SaaS Cloud License)</th>
+                        <th className="py-2">SAC</th>
+                        <th className="py-2 text-right">Taxable Value</th>
+                        {isInterState ? (
+                          <th className="py-2 text-right">IGST (18%)</th>
+                        ) : (
+                          <>
+                            <th className="py-2 text-right">CGST (9%)</th>
+                            <th className="py-2 text-right">SGST (9%)</th>
+                          </>
+                        )}
+                        <th className="py-2 text-right">Total (INR)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-slate-100">
+                        <td className="py-3 font-semibold">
+                          {invoiceModal.planName} ({invoiceModal.planCode}) — {invoiceModal.paymentType}
+                        </td>
+                        <td className="py-3 font-mono">{platformCompany?.sacCode || "998314"}</td>
+                        <td className="py-3 text-right font-mono">{formatInr(invoiceModal.amountSubtotal)}</td>
+                        {isInterState ? (
+                          <td className="py-3 text-right font-mono">{formatInr(invoiceModal.gstAmount)}</td>
+                        ) : (
+                          <>
+                            <td className="py-3 text-right font-mono">{formatInr(invoiceModal.gstAmount / 2)}</td>
+                            <td className="py-3 text-right font-mono">{formatInr(invoiceModal.gstAmount / 2)}</td>
+                          </>
+                        )}
+                        <td className="py-3 text-right font-mono font-extrabold text-slate-900">
+                          {formatInr(invoiceModal.totalAmount)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                );
+              })()}
 
               <div className="text-[11px] text-slate-500 pt-2">
                 This is a system-generated B2B SaaS Tax Invoice under SAC {platformCompany?.sacCode || "998314"} (Software Publishing & Cloud POS Services). Input Tax Credit eligible where Buyer GSTIN is recorded.

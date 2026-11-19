@@ -3,6 +3,7 @@ import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.10 & 2.11: SALES RETURNS, RESTOCKING & REFUND ENGINE
@@ -184,6 +185,9 @@ export async function POST(req: NextRequest) {
   const currentUserId = auth.session.userId;
   const currentStoreId = auth.session.storeId;
   const currentBranchId = auth.session.branchId;
+
+  const retGate = await requireStoreFeature(currentStoreId, "salesAndReturnsCore");
+  if (!retGate.allowed) return retGate.response!;
 
   try {
     const body = await req.json();

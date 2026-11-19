@@ -41,15 +41,22 @@ export async function GET(req: NextRequest) {
   const branchIdParam = searchParams.get("branchId");
 
   try {
+    const userStoreId = auth.session.storeId ?? null;
     const whereClause: any = {};
 
-    // Branch scoping with IDOR protection
+    // Branch & Store Tenant scoping with IDOR protection
     let targetBranchId: number | undefined;
     if (branchIdParam && branchIdParam !== "all") {
       const parsedBranch = parseInt(branchIdParam, 10);
       if (!isNaN(parsedBranch)) {
         if (!canAccessBranch(auth.session, parsedBranch)) {
           return NextResponse.json({ success: false, message: "Forbidden: Cannot access requested branch" }, { status: 403 });
+        }
+        if (userStoreId) {
+          const br = await prisma.branch.findUnique({ where: { id: parsedBranch }, select: { storeId: true } });
+          if (!br || (br.storeId && br.storeId !== userStoreId)) {
+            return NextResponse.json({ success: false, message: "Forbidden: Branch belongs to another store" }, { status: 403 });
+          }
         }
         targetBranchId = parsedBranch;
       }
@@ -59,6 +66,11 @@ export async function GET(req: NextRequest) {
 
     if (targetBranchId) {
       whereClause.branchId = targetBranchId;
+    } else if (userStoreId) {
+      whereClause.OR = [
+        { branch: { storeId: userStoreId } },
+        { supplier: { storeId: userStoreId } },
+      ];
     }
 
     if (supplierIdParam && supplierIdParam !== "all") {
@@ -70,11 +82,12 @@ export async function GET(req: NextRequest) {
     }
 
     if (search) {
-      whereClause.OR = [
+      const searchCond = [
         { poNumber: { contains: search, mode: "insensitive" } },
         { invoiceNo: { contains: search, mode: "insensitive" } },
         { supplier: { name: { contains: search, mode: "insensitive" } } },
       ];
+      whereClause.AND = [...(whereClause.AND || []), { OR: searchCond }];
     }
 
     const [totalPOs, purchaseOrders] = await Promise.all([
@@ -119,10 +132,15 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    // Calculate Summary Stats (scoped to branch if filtered)
+    // Calculate Summary Stats (scoped to branch / store)
     const statsWhere: any = {};
     if (whereClause.branchId) {
       statsWhere.branchId = whereClause.branchId;
+    } else if (userStoreId) {
+      statsWhere.OR = [
+        { branch: { storeId: userStoreId } },
+        { supplier: { storeId: userStoreId } },
+      ];
     }
     const allForStats = await prisma.purchaseOrder.findMany({
       where: statsWhere,
@@ -212,8 +230,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Supplier selection is required" }, { status: 400 });
     }
 
+    const userStoreId = auth.session.storeId ?? null;
+    if (branchId && userStoreId) {
+      const br = await prisma.branch.findUnique({ where: { id: branchId }, select: { storeId: true } });
+      if (!br || (br.storeId && br.storeId !== userStoreId)) {
+        return NextResponse.json({ success: false, message: "Selected branch does not belong to your store" }, { status: 403 });
+      }
+    }
+
     const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
-    if (!supplier) {
+    if (!supplier || (userStoreId && supplier.storeId !== userStoreId)) {
       return NextResponse.json({ success: false, message: "Selected supplier not found" }, { status: 404 });
     }
 
@@ -321,6 +347,7 @@ export async function POST(req: NextRequest) {
     });
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: branchId || auth.session.branchId,
       action: "PO_CREATED",

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, hasPermission } from "@/lib/rbac";
 import { getTodayMidnightUtc } from "@/lib/config";
+import { resolveStoreEntitlements } from "@/lib/entitlements";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAdminRequest(req);
@@ -90,12 +91,13 @@ export async function GET(req: NextRequest) {
       take: 5,
     });
 
-    // 4. Overdue Chronic Patient Refills (active patients only)
+    // 4. Overdue Chronic Patient Refills (active patients only, strictly store-scoped)
     const overdueRefills = await prisma.customer.findMany({
       where: {
         active: true,
         isChronic: true,
         nextRefillDate: { lte: todayMidnight },
+        ...(userStoreId ? { storeId: userStoreId } : {}),
       },
       select: {
         id: true,
@@ -121,11 +123,19 @@ export async function GET(req: NextRequest) {
       take: 5,
     });
 
-    // 6. Unread Supplier Portal Messages
+    // 6. Unread Supplier Portal Messages (strictly store-scoped)
     const unreadSupplierMessages = await prisma.supplierMessage.findMany({
       where: {
         direction: "in",
         status: "unread",
+        ...(userStoreId
+          ? {
+              OR: [
+                { storeId: userStoreId },
+                { storeId: null, supplier: { storeId: userStoreId } },
+              ],
+            }
+          : {}),
       },
       include: {
         supplier: { select: { name: true } },
@@ -134,11 +144,19 @@ export async function GET(req: NextRequest) {
       take: 5,
     });
 
-    // 7. Unread Patient Prescription Uploads & Order Requests (Module 2.18.2)
+    // 7. Unread Patient Prescription Uploads & Order Requests (Module 2.18.2, strictly store-scoped)
     const unreadPrescriptions = await prisma.patientMessage.findMany({
       where: {
         direction: "in",
         isRead: false,
+        ...(userStoreId
+          ? {
+              OR: [
+                { storeId: userStoreId },
+                { storeId: null, customer: { storeId: userStoreId } },
+              ],
+            }
+          : {}),
       },
       include: {
         customer: { select: { id: true, name: true, phone: true } },
@@ -147,7 +165,13 @@ export async function GET(req: NextRequest) {
       take: 5,
     });
 
-    // 8. Active Platform Broadcasts from CEO / Super Admin (Module 3.3.4)
+    // 8. Active Platform Broadcasts from CEO / Super Admin (Module 3.3.4 — Store + Plan Tier scoped)
+    const storeEnt = userStoreId ? await resolveStoreEntitlements(userStoreId) : null;
+    const storePlanCode =
+      storeEnt?.planCode && !storeEnt.planCode.startsWith("LEGACY_")
+        ? storeEnt.planCode
+        : null;
+
     const activeBroadcasts = await prisma.platformAnnouncement.findMany({
       where: {
         active: true,
@@ -156,6 +180,9 @@ export async function GET(req: NextRequest) {
           userStoreId
             ? { OR: [{ targetStoreId: null }, { targetStoreId: userStoreId }] }
             : { targetStoreId: null },
+          storePlanCode
+            ? { OR: [{ targetPlanCode: null }, { targetPlanCode: "" }, { targetPlanCode: storePlanCode }] }
+            : { OR: [{ targetPlanCode: null }, { targetPlanCode: "" }] },
         ],
       },
       orderBy: [{ createdAt: "desc" }],
@@ -276,6 +303,14 @@ export async function GET(req: NextRequest) {
       success: true,
       totalCount: notifications.length,
       notifications,
+      announcements: activeBroadcasts.map((ann) => ({
+        id: ann.id,
+        title: ann.title,
+        message: ann.message,
+        severity: ann.severity,
+        expiresAt: ann.expiresAt?.toISOString() || null,
+        createdAt: ann.createdAt.toISOString(),
+      })),
     });
   } catch (error: any) {
     return NextResponse.json(

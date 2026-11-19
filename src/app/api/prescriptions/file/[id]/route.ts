@@ -38,9 +38,25 @@ export async function GET(
     );
   }
 
-  const msg = await prisma.patientMessage.findUnique({ where: { id } });
+  const msg = await prisma.patientMessage.findUnique({
+    where: { id },
+    include: { customer: { select: { storeId: true } } },
+  });
   if (!msg || !msg.filePath) {
     return NextResponse.json({ success: false, message: "Prescription file not found" }, { status: 404 });
+  }
+
+  const msgStoreId = msg.storeId ?? msg.customer?.storeId ?? null;
+  if (
+    isAuthorizedStaff &&
+    adminAuth.session?.storeId &&
+    msgStoreId &&
+    msgStoreId !== adminAuth.session.storeId
+  ) {
+    return NextResponse.json(
+      { success: false, message: "Forbidden: Prescription file belongs to another pharmacy store" },
+      { status: 403 }
+    );
   }
 
   const linkedCustomerIds = custAuth?.session?.linkedCustomerIds ?? (custAuth?.session ? [custAuth.session.customerId] : []);

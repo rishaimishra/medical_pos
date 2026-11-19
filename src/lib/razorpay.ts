@@ -357,6 +357,17 @@ export async function reconcileAllPlansWithRazorpay() {
       continue;
     }
 
+    if (!p.isActive && !p.razorpayPlanId) {
+      details.push({
+        planId: p.id,
+        code: p.code,
+        action: "skipped_archived",
+        status: p.razorpaySyncStatus,
+        razorpayPlanId: null,
+      });
+      continue;
+    }
+
     const remote = p.razorpayPlanId ? remoteMap.get(p.razorpayPlanId) : null;
     const expectedPaise = Math.round(price * 100);
     const matchesRemote =

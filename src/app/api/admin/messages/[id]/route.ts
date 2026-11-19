@@ -36,7 +36,8 @@ export async function PATCH(
       where: { id },
       include: { supplier: true },
     });
-    if (!existing) {
+    const existingStoreId = existing?.storeId ?? existing?.supplier?.storeId ?? null;
+    if (!existing || (auth.session.storeId && existingStoreId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Message not found" }, { status: 404 });
     }
 
@@ -72,6 +73,7 @@ export async function PATCH(
       });
 
       await logAudit({
+        storeId: auth.session.storeId ?? null,
         userId: auth.session.userId,
         branchId: auth.session.branchId,
         action: "SUPPLIER_MESSAGE_REPLIED",
@@ -144,14 +146,19 @@ export async function DELETE(
   }
 
   try {
-    const existing = await prisma.supplierMessage.findUnique({ where: { id } });
-    if (!existing) {
+    const existing = await prisma.supplierMessage.findUnique({
+      where: { id },
+      include: { supplier: { select: { storeId: true } } },
+    });
+    const existingStoreId = existing?.storeId ?? existing?.supplier?.storeId ?? null;
+    if (!existing || (auth.session.storeId && existingStoreId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Message not found" }, { status: 404 });
     }
 
     await prisma.supplierMessage.delete({ where: { id } });
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: "SUPPLIER_MESSAGE_DELETED",

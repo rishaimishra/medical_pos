@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
     const whereClause: any = {
       isChronic: true,
       nextRefillDate: { not: null },
+      ...(auth.session.storeId ? { storeId: auth.session.storeId } : {}),
     };
 
     if (search) {
@@ -140,7 +141,7 @@ export async function POST(req: NextRequest) {
       where: { id: customerId },
     });
 
-    if (!customer) {
+    if (!customer || (auth.session.storeId && customer.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
     }
 
@@ -148,7 +149,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Patient is not marked as a chronic prescription refill recipient" }, { status: 400 });
     }
 
-    const settings = await prisma.settings.findFirst();
+    const settings = auth.session.storeId
+      ? await prisma.settings.findUnique({ where: { id: auth.session.storeId } })
+      : await prisma.settings.findFirst();
     const storeName = settings?.storeName || "Medical POS Pharmacy";
     const storePhone = settings?.storePhone || "";
     const storeAddress = settings?.storeAddress || "";
@@ -215,6 +218,7 @@ export async function POST(req: NextRequest) {
     }
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: "REFILL_REMINDER_SENT",

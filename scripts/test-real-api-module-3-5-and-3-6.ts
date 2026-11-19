@@ -50,6 +50,11 @@ import { GET as getAdminPatientMsgs } from "../src/app/api/admin/patient-message
 import { GET as getSupplierOrders } from "../src/app/api/supplier/orders/route";
 import { GET as getCustomerPrescriptions } from "../src/app/api/customer/prescriptions/route";
 import { GET as getCustomerMessages } from "../src/app/api/customer/messages/route";
+import { POST as postAdminReturn } from "../src/app/api/admin/returns/route";
+import { POST as postAdminAdjustment } from "../src/app/api/admin/adjustments/route";
+import { POST as postAdminSettings } from "../src/app/api/admin/settings/route";
+import { GET as getSuperAdminSubscriptions } from "../src/app/api/super-admin/subscriptions/route";
+import { GET as getSuperAdminPayments } from "../src/app/api/super-admin/payments/route";
 
 // Load .env cleanly when run via tsx CLI directly
 const envPath = path.resolve(process.cwd(), ".env");
@@ -761,6 +766,123 @@ async function main() {
         gstExportWhenSuspended.status === 200 &&
         billingWhenSuspended.status === 200,
       "3.6.4 Hard Lockout: Billing recovery (/billing/status) & Compliance Exports (/audit-logs, /gst/export) remain accessible"
+    );
+
+    // BUG-3.6-B: Suspended store also blocks returns, stock adjustments, and settings mutations (402)
+    const retWhenSuspended = await postAdminReturn(
+      makeReq(adminCookie, "http://localhost:3000/api/admin/returns", "POST", {
+        saleId: 1,
+        items: [{ saleItemId: 1, quantity: 1 }],
+      })
+    );
+    const adjWhenSuspended = await postAdminAdjustment(
+      makeReq(adminCookie, "http://localhost:3000/api/admin/adjustments", "POST", {
+        batchId: seedBatch.id,
+        type: "add",
+        quantity: 1,
+        reason: "Physical Audit Variance",
+      })
+    );
+    const setWhenSuspended = await postAdminSettings(
+      makeReq(adminCookie, "http://localhost:3000/api/admin/settings", "POST", {
+        storeName: "Blocked Edit",
+      })
+    );
+    assert(
+      retWhenSuspended.status === 402 &&
+        adjWhenSuspended.status === 402 &&
+        setWhenSuspended.status === 402,
+      "BUG-3.6-B: Suspended store blocks POST /returns, /adjustments, and /settings with HTTP 402"
+    );
+
+    // BUG-3.5-A: Plan-tampering check on /api/admin/billing/verify
+    const fakePlan = await prisma.subscriptionPlan.create({
+      data: {
+        code: `RZP_FAKE_ENT_${ts}`,
+        name: `Enterprise Fake ${ts}`,
+        billingCycle: "yearly",
+        priceInr: 49990,
+        featuresJson: "{}",
+      },
+    });
+    created.plans.push(fakePlan.id);
+
+    const tamperVerifyRes = await postBillingVerify(
+      makeReq(adminCookie, "http://localhost:3000/api/admin/billing/verify", "POST", {
+        planId: fakePlan.id,
+        razorpay_order_id: orderCheckoutJson.orderId,
+        razorpay_payment_id: `pay_tamper_${ts}`,
+        razorpay_signature: crypto
+          .createHmac("sha256", creds.keySecret)
+          .update(`${orderCheckoutJson.orderId}|pay_tamper_${ts}`)
+          .digest("hex"),
+      })
+    );
+    assert(
+      tamperVerifyRes.status === 400,
+      "BUG-3.5-A: POST /api/admin/billing/verify rejects planId tampering against an order created for a cheaper plan (400)"
+    );
+
+    // BUG-3.5-D: Super Admin Subscriptions & Payments APIs
+    const saSubsRes = await getSuperAdminSubscriptions(
+      makeReq(superCookie, "http://localhost:3000/api/super-admin/subscriptions")
+    );
+    const saSubsJson = await saSubsRes.json();
+    const saPayRes = await getSuperAdminPayments(
+      makeReq(superCookie, "http://localhost:3000/api/super-admin/payments")
+    );
+    const saPayJson = await saPayRes.json();
+    assert(
+      saSubsRes.status === 200 &&
+        saSubsJson.success &&
+        Array.isArray(saSubsJson.subscriptions) &&
+        saPayRes.status === 200 &&
+        saPayJson.success &&
+        saPayJson.platformCompany?.sacCode === "998314",
+      "BUG-3.5-D: GET /api/super-admin/subscriptions & /api/super-admin/payments return global SaaS registries"
+    );
+
+    // BUG-3.6-A: Multi-store customer portal feature resolution
+    const store2 = await prisma.settings.create({
+      data: {
+        storeName: `Unlocked Growth Pharma ${ts}`,
+        storeStatus: "active",
+        setupDone: true,
+      },
+    });
+    created.stores.push(store2.id);
+
+    const cust2 = await prisma.customer.create({
+      data: {
+        storeId: store2.id,
+        name: cust.name,
+        phone: cust.phone,
+        email: cust.email,
+        active: true,
+        verified: true,
+      },
+    });
+    created.customers.push(cust2.id);
+
+    const multiCustCookie = `${CUSTOMER_COOKIE_NAME}=${signCustomerToken({
+      customerId: cust.id, // Primary row is on suspended Store 1!
+      linkedCustomerIds: [cust.id, cust2.id],
+      phone: cust.phone,
+      name: cust.name,
+      email: cust.email || "",
+      address: null,
+      issuedAt: Date.now(),
+    })}`;
+
+    const multiRxAllRes = await getCustomerPrescriptions(
+      makeReq(multiCustCookie, "http://localhost:3000/api/customer/prescriptions")
+    );
+    const multiRxLockedStoreRes = await getCustomerPrescriptions(
+      makeReq(multiCustCookie, `http://localhost:3000/api/customer/prescriptions?storeId=${store.id}`)
+    );
+    assert(
+      multiRxAllRes.status === 200 && multiRxLockedStoreRes.status === 403,
+      "BUG-3.6-A: Multi-store customer accesses portal via unlocked Store 2 (200) while explicit Store 1 filter returns 403"
     );
   } finally {
     console.log("\n[Cleanup] Removing temporary test records...");

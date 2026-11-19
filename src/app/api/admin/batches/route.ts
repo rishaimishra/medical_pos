@@ -428,12 +428,12 @@ export async function POST(req: NextRequest) {
       validPurchasePrice = parseDecimal(purchasePrice);
     }
 
-    // 3. Verify Medicine Exists
+    // 3. Verify Medicine Exists within Store Tenant
     const targetMedicine = await prisma.medicine.findUnique({
       where: { id: parseInt(medicineId, 10) },
-      select: { id: true, name: true },
+      select: { id: true, name: true, storeId: true },
     });
-    if (!targetMedicine) {
+    if (!targetMedicine || (userStoreId && targetMedicine.storeId !== userStoreId)) {
       return NextResponse.json({ success: false, message: "Medicine not found in catalog." }, { status: 404 });
     }
 
@@ -498,12 +498,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6. Validate Supplier if Provided
+    // 6. Validate Supplier within Store Tenant if Provided
     let effectiveSupplierId: number | null = null;
     if (supplierId) {
       const parsedSup = parseInt(supplierId, 10);
-      const supplierExists = await prisma.supplier.findUnique({ where: { id: parsedSup } });
-      if (supplierExists) {
+      const supplierExists = await prisma.supplier.findUnique({
+        where: { id: parsedSup },
+        select: { id: true, storeId: true },
+      });
+      if (supplierExists && (!userStoreId || supplierExists.storeId === userStoreId)) {
         effectiveSupplierId = supplierExists.id;
       }
     }
@@ -739,6 +742,28 @@ export async function PUT(req: NextRequest) {
       }
     }
 
+    let validatedSupplierId = existing.supplierId;
+    if (supplierId !== undefined) {
+      if (supplierId) {
+        const parsedSupId = parseInt(supplierId, 10);
+        const supObj = !isNaN(parsedSupId)
+          ? await prisma.supplier.findUnique({
+              where: { id: parsedSupId },
+              select: { id: true, storeId: true },
+            })
+          : null;
+        if (!supObj || (userStoreId && supObj.storeId !== userStoreId)) {
+          return NextResponse.json(
+            { success: false, message: "Selected supplier does not exist in your store." },
+            { status: 400 }
+          );
+        }
+        validatedSupplierId = supObj.id;
+      } else {
+        validatedSupplierId = null;
+      }
+    }
+
     // 3. Execute DB Update
     const updated = await prisma.batch.update({
       where: { id: batchId },
@@ -749,7 +774,7 @@ export async function PUT(req: NextRequest) {
         quantity: finalQty,
         purchasePrice: finalPurchasePrice,
         mrp: finalMrp,
-        supplierId: supplierId !== undefined ? (supplierId ? parseInt(supplierId, 10) : null) : existing.supplierId,
+        supplierId: validatedSupplierId,
         branchId: targetBranchId,
       },
       include: {

@@ -84,6 +84,70 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Plan not found." }, { status: 404 });
     }
 
+    // Security Guard (BUG-3.5-A): Prevent plan-tampering where an order/subscription initiated for a cheaper tier is verified against a higher tier planId
+    if (orderId) {
+      const orderPayment = await prisma.subscriptionPayment.findFirst({
+        where: { razorpayOrderId: orderId },
+      });
+      if (orderPayment && (orderPayment.storeId !== storeId || orderPayment.planId !== plan.id)) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Security Error: Razorpay Order does not match the requested subscription plan or store.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (subscriptionId) {
+      const existingSubRow = await prisma.storeSubscription.findUnique({
+        where: { razorpaySubscriptionId: subscriptionId },
+      });
+      if (existingSubRow && (existingSubRow.storeId !== storeId || existingSubRow.planId !== plan.id)) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Security Error: Razorpay Subscription belongs to a different store or plan.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const initAudit = await prisma.auditLog.findFirst({
+        where: {
+          action: "SAAS_CHECKOUT_SUBSCRIPTION_INITIATED",
+          details: { contains: subscriptionId },
+        },
+        orderBy: { id: "desc" },
+      });
+      if (initAudit) {
+        if (initAudit.storeId && initAudit.storeId !== storeId) {
+          return NextResponse.json(
+            { success: false, message: "Security Error: Subscription was initiated by another store." },
+            { status: 400 }
+          );
+        }
+        try {
+          const parsedDetails = JSON.parse(initAudit.details || "{}");
+          if (
+            (parsedDetails.planId && Number(parsedDetails.planId) !== plan.id) ||
+            (parsedDetails.planCode && parsedDetails.planCode !== plan.code)
+          ) {
+            return NextResponse.json(
+              {
+                success: false,
+                message: `Security Error: Razorpay Subscription was initiated for plan '${parsedDetails.planCode || parsedDetails.planId}', not '${plan.code}'.`,
+              },
+              { status: 400 }
+            );
+          }
+        } catch {
+          // ignore non-JSON details
+        }
+      }
+    }
+
     // Idempotency guard if already verified & captured
     const alreadyCaptured = await prisma.subscriptionPayment.findUnique({
       where: { razorpayPaymentId: paymentId },

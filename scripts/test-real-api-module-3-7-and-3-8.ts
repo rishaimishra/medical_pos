@@ -34,6 +34,8 @@ import { POST as postBillingCheckout } from "../src/app/api/admin/billing/checko
 import { POST as postBillingVerify } from "../src/app/api/admin/billing/verify/route";
 import { GET as getCeoDashboard } from "../src/app/api/super-admin/dashboard/route";
 import { POST as postPlan } from "../src/app/api/super-admin/plans/route";
+import { canAccessPage } from "../src/lib/rbac";
+import { getVisibleMenuItems } from "../src/lib/menu-registry";
 
 const envPath = path.resolve(process.cwd(), ".env");
 if (fs.existsSync(envPath) && typeof (process as any).loadEnvFile === "function") {
@@ -362,6 +364,58 @@ async function main() {
     assert(
       (ceoDashJson.feeds?.atRiskAlerts || []).some((a: any) => a.storeId === upsellStore.id),
       "Churn / At-Risk Alerts flags store expiring within 72h cleanly"
+    );
+
+    // BUG-3.7-B: Non-admin staff can access /admin/billing in Read-Only mode
+    const staffCanViewBilling =
+      canAccessPage({ role: "pharmacist" }, "/admin/billing") &&
+      getVisibleMenuItems({ role: "pharmacist" }).some((m) => m.id === "billing");
+    assert(
+      staffCanViewBilling,
+      "BUG-3.7-B: Non-admin staff roles can access /admin/billing in read-only mode"
+    );
+
+    // BUG-3.8-A & BUG-3.8-B: Unfinished draft excluded & expired one-time order sub does not inflate MRR
+    const mrrBefore = ceoDashJson.financialKpis.mrr;
+    const abandonedWizardDraft = await prisma.settings.create({
+      data: {
+        storeName: `Abandoned Draft ${ts}`,
+        setupDone: false,
+        setupStep: 1,
+      },
+    });
+    created.stores.push(abandonedWizardDraft.id);
+
+    const expiredOrderStore = await prisma.settings.create({
+      data: {
+        storeName: `Expired Order Store ${ts}`,
+        storeStatus: "active",
+        setupDone: true,
+      },
+    });
+    created.stores.push(expiredOrderStore.id);
+
+    await prisma.storeSubscription.create({
+      data: {
+        storeId: expiredOrderStore.id,
+        planId: yPlan.id, // 12000/yr = 1000/mo if active
+        status: "active",
+        billingMode: "razorpay_order",
+        currentPeriodStart: new Date(Date.now() - 60 * 86_400_000),
+        currentPeriodEnd: new Date(Date.now() - 2 * 86_400_000), // Expired 2 days ago!
+        autoRenew: false,
+      },
+    });
+
+    const ceoDashAfterRes = await getCeoDashboard(
+      makeReq(superCookie, "http://localhost:3000/api/super-admin/dashboard")
+    );
+    const ceoDashAfterJson = await ceoDashAfterRes.json();
+    const recentStoreIds = (ceoDashAfterJson.feeds?.recentStores || []).map((s: any) => s.id);
+    assert(
+      !recentStoreIds.includes(abandonedWizardDraft.id) &&
+        ceoDashAfterJson.financialKpis.mrr === mrrBefore,
+      "BUG-3.8-A/B: Unfinished wizard draft is excluded from CEO Dashboard & past-end order subscription does not inflate MRR"
     );
   } finally {
     console.log("\n[Cleanup] Removing temporary test records...");

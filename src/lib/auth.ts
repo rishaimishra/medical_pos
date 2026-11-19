@@ -492,7 +492,26 @@ export async function verifyAdminRequest(
     };
   }
 
+  if (
+    tokenResult.session.impersonatedByPlatformUserId &&
+    tokenResult.session.impersonationExpiresAt &&
+    Date.now() > tokenResult.session.impersonationExpiresAt
+  ) {
+    return {
+      authorized: false,
+      status: 401,
+      message: "CEO Support Session expired (30-minute limit). Please re-launch from Super Admin.",
+      session: null,
+    };
+  }
+
   const freshSession = buildUserSessionPayload(dbUser, false);
+  if (tokenResult.session.impersonatedByPlatformUserId) {
+    freshSession.impersonatedByPlatformUserId = tokenResult.session.impersonatedByPlatformUserId;
+    freshSession.impersonatorName = tokenResult.session.impersonatorName;
+    freshSession.impersonationReason = tokenResult.session.impersonationReason;
+    freshSession.impersonationExpiresAt = tokenResult.session.impersonationExpiresAt;
+  }
 
   if (options?.requiredRole && freshSession.role !== options.requiredRole && freshSession.role !== "admin") {
     return {
@@ -569,25 +588,101 @@ export interface CustomerSessionPayload {
   linkedCustomerIds?: number[];
 }
 
+export function normalizePhoneValue(phone?: string | null): string {
+  return (phone || "").replace(/\s+/g, "").trim();
+}
+
 export async function getLinkedCustomerIds(
   customerId: number,
   phone?: string | null
 ): Promise<number[]> {
-  let cleanPhone = (phone || "").trim();
-  if (!cleanPhone) {
+  let rawPhone = (phone || "").trim();
+  if (!rawPhone) {
     const row = await prisma.customer.findUnique({
       where: { id: customerId },
       select: { phone: true },
     });
-    cleanPhone = row?.phone || "";
+    rawPhone = (row?.phone || "").trim();
   }
-  if (!cleanPhone) return [customerId];
+  const cleanPhone = normalizePhoneValue(rawPhone);
+  const variants = Array.from(new Set([rawPhone, cleanPhone].filter(Boolean)));
+  if (variants.length === 0) return [customerId];
 
   const linkedRows = await prisma.customer.findMany({
-    where: { phone: cleanPhone, active: true },
+    where: { phone: { in: variants }, active: true },
     select: { id: true },
   });
   return Array.from(new Set([customerId, ...linkedRows.map((r) => r.id)]));
+}
+
+/**
+ * Resolves the target pharmacy Store & Customer row for cross-store customers submitting Rx uploads or messages.
+ */
+export async function resolveCustomerTargetStore(
+  customerId: number,
+  linkedIds: number[],
+  requestedStoreId?: number | null
+): Promise<{
+  storeId: number | null;
+  targetCustomerId: number;
+  storeName: string | null;
+  storeEmail: string | null;
+}> {
+  const allProfiles = await prisma.customer.findMany({
+    where: { id: { in: linkedIds } },
+    select: { id: true, storeId: true },
+    orderBy: { id: "asc" },
+  });
+
+  let chosenStoreId: number | null = null;
+  if (requestedStoreId && Number.isFinite(requestedStoreId)) {
+    const ownsProfile = allProfiles.some((p) => p.storeId === requestedStoreId);
+    const hasSaleAtStore = ownsProfile
+      ? true
+      : Boolean(
+          await prisma.sale.findFirst({
+            where: { customerId: { in: linkedIds }, branch: { storeId: requestedStoreId } },
+            select: { id: true },
+          })
+        );
+    if (hasSaleAtStore) {
+      chosenStoreId = requestedStoreId;
+    }
+  }
+
+  if (!chosenStoreId) {
+    const latestSale = await prisma.sale.findFirst({
+      where: { customerId: { in: linkedIds }, branch: { storeId: { not: null } } },
+      orderBy: [{ saleDate: "desc" }, { id: "desc" }],
+      select: { customerId: true, branch: { select: { storeId: true } } },
+    });
+    chosenStoreId =
+      latestSale?.branch?.storeId ??
+      allProfiles.find((p) => p.storeId !== null)?.storeId ??
+      null;
+  }
+
+  const matchingProfile =
+    allProfiles.find((p) => p.storeId === chosenStoreId) ??
+    allProfiles.find((p) => p.id === customerId) ??
+    allProfiles[0];
+
+  const storeSettings = chosenStoreId
+    ? await prisma.settings.findUnique({
+        where: { id: chosenStoreId },
+        select: { id: true, storeName: true, storeEmail: true },
+      })
+    : await prisma.settings.findFirst({
+        orderBy: { id: "asc" },
+        select: { id: true, storeName: true, storeEmail: true },
+      });
+
+  return {
+    storeId: chosenStoreId ?? storeSettings?.id ?? null,
+    targetCustomerId: matchingProfile?.id ?? customerId,
+    storeName: storeSettings?.storeName ?? null,
+    storeEmail: storeSettings?.storeEmail ?? null,
+  };
 }
 
 export function signSupplierToken(payload: SupplierSessionPayload): string {

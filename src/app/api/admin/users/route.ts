@@ -32,12 +32,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const storeScope = auth.session.storeId ? { storeId: auth.session.storeId } : {};
+    const supplierScope = auth.session.storeId ? { supplier: { storeId: auth.session.storeId } } : {};
 
     // 1. Fetch summary counts for the 3 tabs (strictly scoped to store tenant)
     const [staffCount, supplierCount, patientCount] = await Promise.all([
       prisma.user.count({ where: storeScope }),
-      prisma.supplierUser.count(),
-      prisma.customer.count(),
+      prisma.supplierUser.count({ where: supplierScope }),
+      prisma.customer.count({ where: storeScope }),
     ]);
 
     // 2. Fetch active branches & suppliers list for modal dropdown selectors
@@ -53,6 +54,7 @@ export async function GET(req: NextRequest) {
         orderBy: [{ isMain: "desc" }, { name: "asc" }],
       }),
       prisma.supplier.findMany({
+        where: storeScope,
         select: { id: true, name: true, phone: true, email: true },
         orderBy: { name: "asc" },
       }),
@@ -60,7 +62,7 @@ export async function GET(req: NextRequest) {
 
     // 3. Tab-specific data resolution
     if (tab === "suppliers") {
-      const whereClause: any = {};
+      const whereClause: any = { ...supplierScope };
       if (search) {
         whereClause.OR = [
           { name: { contains: search, mode: "insensitive" } },
@@ -98,7 +100,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (tab === "patients") {
-      const whereClause: any = {};
+      const whereClause: any = { ...storeScope };
       if (search) {
         whereClause.OR = [
           { name: { contains: search, mode: "insensitive" } },
@@ -384,7 +386,7 @@ export async function POST(req: NextRequest) {
       if (!supGate.allowed) return supGate.response!;
 
       const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
-      if (!supplier) {
+      if (!supplier || (auth.session.storeId && supplier.storeId !== auth.session.storeId)) {
         return NextResponse.json({ success: false, message: "Affiliated supplier vendor not found." }, { status: 404 });
       }
 
@@ -463,7 +465,7 @@ export async function POST(req: NextRequest) {
       if (!custQuota.allowed) return custQuota.response!;
 
       const name = (body.name || "").trim();
-      const phone = (body.phone || "").trim();
+      const phone = (body.phone || "").replace(/\s+/g, "").trim();
       const email = body.email ? body.email.trim().toLowerCase() : null;
       const address = body.address ? body.address.trim() : null;
       const dob = body.dob ? new Date(body.dob) : null;
@@ -644,6 +646,11 @@ export async function PUT(req: NextRequest) {
           }
         }
 
+        if (!existingUser.active && targetActive) {
+          const staffQuota = await checkStoreQuota(auth.session.storeId, "maxStaffUsers");
+          if (!staffQuota.allowed) return staffQuota.response!;
+        }
+
         const updated = await prisma.user.update({
           where: { id },
           data: { active: targetActive },
@@ -744,6 +751,11 @@ export async function PUT(req: NextRequest) {
         }
       }
 
+      if (!existingUser.active && active) {
+        const staffQuota = await checkStoreQuota(auth.session.storeId, "maxStaffUsers");
+        if (!staffQuota.allowed) return staffQuota.response!;
+      }
+
       const updateData: any = {
         name,
         email,
@@ -795,8 +807,11 @@ export async function PUT(req: NextRequest) {
 
     // ── 2. UPDATE SUPPLIER USER ───────────────────────────────────────
     if (type === "supplier") {
-      const existing = await prisma.supplierUser.findUnique({ where: { id } });
-      if (!existing) {
+      const existing = await prisma.supplierUser.findUnique({
+        where: { id },
+        include: { supplier: { select: { storeId: true } } },
+      });
+      if (!existing || (auth.session.storeId && existing.supplier?.storeId !== auth.session.storeId)) {
         return NextResponse.json({ success: false, message: "Supplier portal user not found." }, { status: 404 });
       }
 
@@ -831,6 +846,12 @@ export async function PUT(req: NextRequest) {
       const email = (body.email || existing.email).trim().toLowerCase();
       const phone = body.phone !== undefined ? (body.phone ? body.phone.trim() : null) : existing.phone;
       const supplierId = body.supplierId ? parseInt(body.supplierId, 10) : existing.supplierId;
+      if (supplierId !== existing.supplierId && auth.session.storeId) {
+        const nextSup = await prisma.supplier.findUnique({ where: { id: supplierId }, select: { storeId: true } });
+        if (!nextSup || nextSup.storeId !== auth.session.storeId) {
+          return NextResponse.json({ success: false, message: "Selected supplier vendor does not belong to your store." }, { status: 404 });
+        }
+      }
       const active = body.active !== undefined ? Boolean(body.active) : existing.active;
       const verified = body.verified !== undefined ? Boolean(body.verified) : existing.verified;
 
@@ -873,7 +894,7 @@ export async function PUT(req: NextRequest) {
     // ── 3. UPDATE PATIENT / CUSTOMER ──────────────────────────────────
     if (type === "patient") {
       const existing = await prisma.customer.findUnique({ where: { id } });
-      if (!existing) {
+      if (!existing || (auth.session.storeId && existing.storeId !== auth.session.storeId)) {
         return NextResponse.json({ success: false, message: "Patient record not found." }, { status: 404 });
       }
 
@@ -900,7 +921,7 @@ export async function PUT(req: NextRequest) {
       }
 
       const name = (body.name || existing.name).trim();
-      const phone = (body.phone || existing.phone).trim();
+      const phone = (body.phone || existing.phone).replace(/\s+/g, "").trim();
       const email = body.email ? body.email.trim().toLowerCase() : null;
       const address = body.address !== undefined ? body.address : existing.address;
       const dob = body.dob ? new Date(body.dob) : existing.dob;
@@ -1096,8 +1117,11 @@ export async function DELETE(req: NextRequest) {
 
     // ── 2. DELETE SUPPLIER USER ───────────────────────────────────────
     if (type === "supplier") {
-      const target = await prisma.supplierUser.findUnique({ where: { id } });
-      if (!target) {
+      const target = await prisma.supplierUser.findUnique({
+        where: { id },
+        include: { supplier: { select: { storeId: true } } },
+      });
+      if (!target || (auth.session.storeId && target.supplier?.storeId !== auth.session.storeId)) {
         return NextResponse.json({ success: false, message: "Supplier user not found." }, { status: 404 });
       }
 
@@ -1123,7 +1147,7 @@ export async function DELETE(req: NextRequest) {
         where: { id },
         include: { _count: { select: { sales: true, returns: true } } },
       });
-      if (!target) {
+      if (!target || (auth.session.storeId && target.storeId !== auth.session.storeId)) {
         return NextResponse.json({ success: false, message: "Patient account not found." }, { status: 404 });
       }
 

@@ -43,11 +43,14 @@ export async function GET(req: NextRequest) {
       recentWebhooks,
       staffGroups,
       medGroups,
+      supGroups,
+      custGroups,
       monthlySalesByBranch,
       lastSaleByBranch,
       recentPlatformEvents,
     ] = await Promise.all([
       prisma.settings.findMany({
+        where: { OR: [{ setupDone: true }, { branches: { some: {} } }] },
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
@@ -75,6 +78,8 @@ export async function GET(req: NextRequest) {
               maxStaffUsers: true,
               maxMedicines: true,
               maxMonthlyInvoices: true,
+              maxSuppliers: true,
+              maxCustomers: true,
             },
           },
         },
@@ -123,6 +128,16 @@ export async function GET(req: NextRequest) {
         where: { storeId: { not: null } },
         _count: { _all: true },
       }),
+      prisma.supplier.groupBy({
+        by: ["storeId"],
+        where: { storeId: { not: null } },
+        _count: { _all: true },
+      }),
+      prisma.customer.groupBy({
+        by: ["storeId"],
+        where: { storeId: { not: null } },
+        _count: { _all: true },
+      }),
       prisma.sale.groupBy({
         by: ["branchId"],
         where: { branchId: { not: null }, saleDate: { gte: monthStartUtc } },
@@ -157,6 +172,16 @@ export async function GET(req: NextRequest) {
     const medCountByStore = new Map<number, number>();
     medGroups.forEach((g) => {
       if (g.storeId) medCountByStore.set(g.storeId, g._count._all);
+    });
+
+    const supCountByStore = new Map<number, number>();
+    supGroups.forEach((g) => {
+      if (g.storeId) supCountByStore.set(g.storeId, g._count._all);
+    });
+
+    const custCountByStore = new Map<number, number>();
+    custGroups.forEach((g) => {
+      if (g.storeId) custCountByStore.set(g.storeId, g._count._all);
     });
 
     const monthlyInvByStore = new Map<number, number>();
@@ -215,7 +240,14 @@ export async function GET(req: NextRequest) {
 
     for (const store of stores) {
       const sub = latestSubByStore.get(store.id);
-      const subStatus = (sub?.status || store.storeStatus || "active").toLowerCase();
+      const rawSubStatus = (sub?.status || store.storeStatus || "active").toLowerCase();
+      const isPeriodExpired = Boolean(
+        sub &&
+          ["active", "trialing"].includes(rawSubStatus) &&
+          sub.currentPeriodEnd &&
+          sub.currentPeriodEnd < now
+      );
+      const subStatus = isPeriodExpired ? "expired" : rawSubStatus;
       const price = sub ? Number(sub.plan.priceInr) : 0;
 
       if (sub && subStatus === "active" && price > 0) {
@@ -248,11 +280,15 @@ export async function GET(req: NextRequest) {
         const maxSt = customLim.maxStaffUsers ?? sub.plan.maxStaffUsers;
         const maxMed = customLim.maxMedicines ?? sub.plan.maxMedicines;
         const maxInv = customLim.maxMonthlyInvoices ?? sub.plan.maxMonthlyInvoices;
+        const maxSup = customLim.maxSuppliers ?? sub.plan.maxSuppliers;
+        const maxCust = customLim.maxCustomers ?? sub.plan.maxCustomers;
 
         const usedBr = branchCountByStore.get(store.id) || 0;
         const usedSt = staffCountByStore.get(store.id) || 0;
         const usedMed = medCountByStore.get(store.id) || 0;
         const usedInv = monthlyInvByStore.get(store.id) || 0;
+        const usedSup = supCountByStore.get(store.id) || 0;
+        const usedCust = custCountByStore.get(store.id) || 0;
 
         const triggers: string[] = [];
         let maxPct = 0;
@@ -267,6 +303,8 @@ export async function GET(req: NextRequest) {
         checkRatio("Staff", usedSt, maxSt);
         checkRatio("Medicines", usedMed, maxMed);
         checkRatio("Monthly Bills", usedInv, maxInv);
+        checkRatio("Suppliers", usedSup, maxSup);
+        checkRatio("Customers", usedCust, maxCust);
 
         if (triggers.length > 0) {
           upsellLeads.push({

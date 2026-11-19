@@ -33,7 +33,8 @@ import { useBranchStore } from "@/stores/useBranchStore";
 import { useCartStore } from "@/stores/useCartStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useSubscriptionStore } from "@/stores/useSubscriptionStore";
-import { getVisibleMenuItems } from "@/lib/menu-registry";
+import { SYSTEM_MENU_REGISTRY, getVisibleMenuItems } from "@/lib/menu-registry";
+import { FeatureGate } from "@/components/saas/FeatureGate";
 import { UpgradeRequiredModal } from "@/components/saas/UpgradeRequiredModal";
 import { ToastProvider } from "@/components/ui/ToastProvider";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -62,6 +63,7 @@ export default function AdminLayout({
     lockScreen,
     unlockScreen,
     logout,
+    clearLocalAuth,
     touchActivity,
     canAccessPage,
     hasPermission,
@@ -83,6 +85,8 @@ export default function AdminLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [dismissedAnnIds, setDismissedAnnIds] = useState<number[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
   // Close mobile drawer on route navigation
@@ -99,6 +103,7 @@ export default function AdminLayout({
         const data = await res.json();
         if (data.success && Array.isArray(data.notifications)) {
           setNotifications(data.notifications);
+          setAnnouncements(Array.isArray(data.announcements) ? data.announcements : []);
           setUnreadCount(data.totalCount || 0);
         }
       }
@@ -268,6 +273,9 @@ export default function AdminLayout({
   );
   const isBranchLockedForUser = !canSwitchBranch;
   const pageAllowed = pathname ? canAccessPage(pathname) : true;
+  const currentMenuItem = SYSTEM_MENU_REGISTRY.find(
+    (it) => pathname === it.href || (it.href !== "/admin/dashboard" && pathname?.startsWith(it.href))
+  );
 
   const menuItems = getVisibleMenuItems(user);
 
@@ -570,12 +578,15 @@ export default function AdminLayout({
             <button
               type="button"
               onClick={async () => {
+                const redirectTarget = user.storeId
+                  ? `/super-admin/stores/${user.storeId}`
+                  : "/super-admin/stores";
                 await fetch("/api/super-admin/impersonate", { method: "DELETE" }).catch(() => {});
+                clearLocalAuth();
+                clearSubscription();
                 clearCart(true);
                 clearBranches();
-                router.replace(
-                  user.storeId ? `/super-admin/stores/${user.storeId}` : "/super-admin/stores"
-                );
+                router.replace(redirectTarget);
               }}
               className="px-3 py-1 rounded-lg bg-white text-rose-700 hover:bg-rose-50 font-bold text-[11px] shrink-0 cursor-pointer transition-colors"
             >
@@ -583,6 +594,44 @@ export default function AdminLayout({
             </button>
           </div>
         )}
+        {/* Active Platform Broadcast Banners (Module 3.3.4) */}
+        {announcements
+          .filter((a) => !dismissedAnnIds.includes(a.id))
+          .slice(0, 2)
+          .map((ann) => {
+            const isUrgent = ann.severity === "urgent";
+            const isWarning = ann.severity === "warning";
+            const barClass = isUrgent
+              ? "bg-rose-50 border-rose-200 text-rose-900"
+              : isWarning
+              ? "bg-amber-50 border-amber-200 text-amber-900"
+              : "bg-sky-50 border-sky-200 text-sky-900";
+            return (
+              <div
+                key={ann.id}
+                className={`border-b px-4 sm:px-6 py-2 text-xs flex items-center justify-between gap-3 shrink-0 ${barClass}`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <p className="truncate">
+                    <span className="font-extrabold uppercase text-[10px] mr-2 px-1.5 py-0.5 rounded bg-white/70 border border-current/20">
+                      {ann.severity || "notice"}
+                    </span>
+                    <strong className="mr-1.5">{ann.title}:</strong>
+                    <span>{ann.message}</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDismissedAnnIds((prev) => [...prev, ann.id])}
+                  className="p-1 rounded hover:bg-black/10 shrink-0 cursor-pointer"
+                  title="Dismiss announcement"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            );
+          })}
         {/* Top Welcome & Search Bar */}
         <header className="px-4 sm:px-6 pt-5 pb-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -839,6 +888,13 @@ export default function AdminLayout({
                 </Link>
               </div>
             </div>
+          ) : currentMenuItem?.requiredFeature ? (
+            <FeatureGate
+              feature={currentMenuItem.requiredFeature}
+              title={`${currentMenuItem.label} Locked on Current Plan`}
+            >
+              {children}
+            </FeatureGate>
           ) : (
             children
           )}

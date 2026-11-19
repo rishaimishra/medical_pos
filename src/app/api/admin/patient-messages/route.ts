@@ -35,8 +35,19 @@ export async function GET(req: NextRequest) {
   const search = (searchParams.get("search") || "").trim().toLowerCase();
 
   try {
+    const userStoreId = auth.session.storeId ?? null;
+    const pmStoreScope: any = userStoreId
+      ? {
+          OR: [
+            { storeId: userStoreId },
+            { storeId: null, customer: { storeId: userStoreId } },
+          ],
+        }
+      : {};
+
     const [allMessages, totalUnreadCount, customers] = await Promise.all([
       prisma.patientMessage.findMany({
+        where: pmStoreScope,
         orderBy: { createdAt: "desc" },
         take: 500,
         include: {
@@ -49,10 +60,10 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.patientMessage.count({
-        where: { direction: "in", isRead: false },
+        where: { direction: "in", isRead: false, ...pmStoreScope },
       }),
       prisma.customer.findMany({
-        where: { active: true },
+        where: { active: true, ...(userStoreId ? { storeId: userStoreId } : {}) },
         orderBy: { name: "asc" },
         take: 100,
         select: { id: true, name: true, phone: true, email: true },
@@ -117,7 +128,7 @@ export async function GET(req: NextRequest) {
     const threadRows =
       selectedCustomerId && !isNaN(selectedCustomerId)
         ? await prisma.patientMessage.findMany({
-            where: { customerId: selectedCustomerId },
+            where: { customerId: selectedCustomerId, ...pmStoreScope },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: 200,
             include: {
@@ -192,12 +203,14 @@ export async function POST(req: NextRequest) {
     }
 
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
-    if (!customer) {
+    if (!customer || (auth.session.storeId && customer.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Customer not found." }, { status: 404 });
     }
 
+    const userStoreId = auth.session.storeId ?? null;
     const created = await prisma.patientMessage.create({
       data: {
+        storeId: userStoreId ?? customer.storeId ?? null,
         customerId,
         direction: "out",
         message: messageText,
@@ -209,13 +222,21 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Also mark patient's inbound unread messages as read since staff replied
+    // Also mark patient's inbound unread messages in this store as read since staff replied
     await prisma.patientMessage.updateMany({
-      where: { customerId, direction: "in", isRead: false },
+      where: {
+        customerId,
+        direction: "in",
+        isRead: false,
+        ...(userStoreId
+          ? { OR: [{ storeId: userStoreId }, { storeId: null }] }
+          : {}),
+      },
       data: { isRead: true },
     });
 
     await logAudit({
+      storeId: userStoreId,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: "PATIENT_MESSAGE_REPLIED",
@@ -281,9 +302,14 @@ export async function PATCH(req: NextRequest) {
     const customerId = body.customerId ? parseInt(String(body.customerId), 10) : null;
     const isRead = body.isRead !== undefined ? Boolean(body.isRead) : true;
 
+    const userStoreId = auth.session.storeId ?? null;
     if (msgId && !isNaN(msgId)) {
-      const existing = await prisma.patientMessage.findUnique({ where: { id: msgId } });
-      if (!existing) {
+      const existing = await prisma.patientMessage.findUnique({
+        where: { id: msgId },
+        include: { customer: { select: { storeId: true } } },
+      });
+      const existingStoreId = existing?.storeId ?? existing?.customer?.storeId ?? null;
+      if (!existing || (userStoreId && existingStoreId !== userStoreId)) {
         return NextResponse.json({ success: false, message: "Message not found" }, { status: 404 });
       }
       if (existing.direction !== "in") {
@@ -300,8 +326,18 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (customerId && !isNaN(customerId)) {
+      if (userStoreId) {
+        const cust = await prisma.customer.findUnique({ where: { id: customerId }, select: { storeId: true } });
+        if (!cust || cust.storeId !== userStoreId) {
+          return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
+        }
+      }
       const updated = await prisma.patientMessage.updateMany({
-        where: { customerId, direction: "in" },
+        where: {
+          customerId,
+          direction: "in",
+          ...(userStoreId ? { OR: [{ storeId: userStoreId }, { storeId: null }] } : {}),
+        },
         data: { isRead },
       });
       return NextResponse.json({ success: true, updatedCount: updated.count });
@@ -338,19 +374,25 @@ export async function DELETE(req: NextRequest) {
   const customerIdParam = searchParams.get("customerId");
 
   try {
+    const userStoreId = auth.session.storeId ?? null;
     if (idParam) {
       const id = parseInt(idParam, 10);
       if (isNaN(id)) {
         return NextResponse.json({ success: false, message: "Invalid message ID" }, { status: 400 });
       }
-      const existing = await prisma.patientMessage.findUnique({ where: { id } });
-      if (!existing) {
+      const existing = await prisma.patientMessage.findUnique({
+        where: { id },
+        include: { customer: { select: { storeId: true } } },
+      });
+      const existingStoreId = existing?.storeId ?? existing?.customer?.storeId ?? null;
+      if (!existing || (userStoreId && existingStoreId !== userStoreId)) {
         return NextResponse.json({ success: false, message: "Message not found" }, { status: 404 });
       }
       await prisma.patientMessage.delete({ where: { id } });
       await deletePrescriptionFile(existing.filePath);
 
       await logAudit({
+        storeId: userStoreId,
         userId: auth.session.userId,
         branchId: auth.session.branchId,
         action: "PATIENT_MESSAGE_DELETED",
@@ -368,13 +410,24 @@ export async function DELETE(req: NextRequest) {
       if (isNaN(customerId)) {
         return NextResponse.json({ success: false, message: "Invalid customerId" }, { status: 400 });
       }
-      const msgs = await prisma.patientMessage.findMany({ where: { customerId } });
-      await prisma.patientMessage.deleteMany({ where: { customerId } });
+      if (userStoreId) {
+        const cust = await prisma.customer.findUnique({ where: { id: customerId }, select: { storeId: true } });
+        if (!cust || cust.storeId !== userStoreId) {
+          return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
+        }
+      }
+      const msgWhere: any = {
+        customerId,
+        ...(userStoreId ? { OR: [{ storeId: userStoreId }, { storeId: null }] } : {}),
+      };
+      const msgs = await prisma.patientMessage.findMany({ where: msgWhere });
+      await prisma.patientMessage.deleteMany({ where: msgWhere });
       for (const m of msgs) {
         await deletePrescriptionFile(m.filePath);
       }
 
       await logAudit({
+        storeId: userStoreId,
         userId: auth.session.userId,
         branchId: auth.session.branchId,
         action: "PATIENT_CONVERSATION_DELETED",

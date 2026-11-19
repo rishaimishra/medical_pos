@@ -65,8 +65,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const supplierRecord = await prisma.supplier.findUnique({
+      where: { id: auth.session.supplierId },
+      select: { storeId: true },
+    });
+    const targetStoreId = supplierRecord?.storeId ?? null;
+
     const created = await prisma.supplierMessage.create({
       data: {
+        storeId: targetStoreId,
         supplierId: auth.session.supplierId,
         supplierName: auth.session.companyName || auth.session.name,
         senderEmail: auth.session.email,
@@ -78,16 +85,22 @@ export async function POST(req: NextRequest) {
     });
 
     // Notify pharmacy store email if configured (best-effort)
-    const storeSettings = await prisma.settings.findFirst({
-      orderBy: { id: "asc" },
-      select: { storeEmail: true, storeName: true },
-    });
+    const storeSettings = targetStoreId
+      ? await prisma.settings.findUnique({
+          where: { id: targetStoreId },
+          select: { id: true, storeEmail: true, storeName: true },
+        })
+      : await prisma.settings.findFirst({
+          orderBy: { id: "asc" },
+          select: { id: true, storeEmail: true, storeName: true },
+        });
     if (storeSettings?.storeEmail) {
       sendEmail({
         to: storeSettings.storeEmail,
         subject: `[Supplier Message] ${subject} — ${auth.session.companyName}`,
         html: `<p><strong>From Supplier:</strong> ${escapeHtml(auth.session.companyName)} (${escapeHtml(auth.session.email)})</p><p><strong>Subject:</strong> ${escapeHtml(subject)}</p><p>${escapeHtml(message).replace(/\n/g, "<br/>")}</p>`,
         text: `Supplier Message from ${auth.session.companyName} (${auth.session.email})\nSubject: ${subject}\n\n${message}`,
+        storeId: storeSettings.id,
       }).catch(() => {});
     }
 

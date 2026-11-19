@@ -8,6 +8,7 @@ import {
   Building2,
   CalendarPlus,
   CheckCircle2,
+  Clock,
   CreditCard,
   ExternalLink,
   GitBranch,
@@ -373,7 +374,17 @@ export default function SuperAdminStoresPage() {
                         >
                           <CreditCard className="w-3.5 h-3.5" />
                         </button>
-                        {s.storeStatus === "suspended" ? (
+                        {s.storeStatus !== "grace_period" && s.storeStatus !== "suspended" && (
+                          <button
+                            type="button"
+                            onClick={() => quickSetStatus(s, "grace_period")}
+                            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 cursor-pointer"
+                            title="Put in Read-Only Grace Mode"
+                          >
+                            <Clock className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {s.storeStatus === "suspended" || s.storeStatus === "grace_period" ? (
                           <button
                             type="button"
                             onClick={() => quickSetStatus(s, "active")}
@@ -382,7 +393,8 @@ export default function SuperAdminStoresPage() {
                           >
                             <PlayCircle className="w-3.5 h-3.5" />
                           </button>
-                        ) : (
+                        ) : null}
+                        {s.storeStatus !== "suspended" && (
                           <button
                             type="button"
                             onClick={() => {

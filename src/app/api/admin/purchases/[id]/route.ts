@@ -48,7 +48,11 @@ export async function GET(
       },
     });
 
-    if (!po) {
+    if (
+      !po ||
+      (auth.session.storeId &&
+        (po.branch?.storeId ?? po.supplier?.storeId) !== auth.session.storeId)
+    ) {
       return NextResponse.json({ success: false, message: "Purchase Order not found" }, { status: 404 });
     }
 
@@ -88,21 +92,33 @@ export async function PUT(
     try {
       existing = await prisma.purchaseOrder.findUnique({
         where: { id },
-        include: { items: true },
+        include: {
+          items: true,
+          branch: { select: { storeId: true } },
+          supplier: { select: { storeId: true } },
+        },
       });
     } catch (err: any) {
       if (err?.code === "P1017" || err?.message?.includes("closed the connection")) {
         await prisma.$connect().catch(() => {});
         existing = await prisma.purchaseOrder.findUnique({
           where: { id },
-          include: { items: true },
+          include: {
+            items: true,
+            branch: { select: { storeId: true } },
+            supplier: { select: { storeId: true } },
+          },
         });
       } else {
         throw err;
       }
     }
 
-    if (!existing) {
+    if (
+      !existing ||
+      (auth.session.storeId &&
+        (existing.branch?.storeId ?? existing.supplier?.storeId) !== auth.session.storeId)
+    ) {
       return NextResponse.json({ success: false, message: "Purchase Order not found" }, { status: 404 });
     }
 
@@ -295,10 +311,18 @@ export async function DELETE(
   try {
     const po = await prisma.purchaseOrder.findUnique({
       where: { id },
-      include: { items: true },
+      include: {
+        items: true,
+        branch: { select: { storeId: true } },
+        supplier: { select: { storeId: true } },
+      },
     });
 
-    if (!po) {
+    if (
+      !po ||
+      (auth.session.storeId &&
+        (po.branch?.storeId ?? po.supplier?.storeId) !== auth.session.storeId)
+    ) {
       return NextResponse.json({ success: false, message: "Purchase Order not found" }, { status: 404 });
     }
 

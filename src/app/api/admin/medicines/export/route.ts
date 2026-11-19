@@ -22,10 +22,15 @@ export async function GET(req: NextRequest) {
     : null;
 
   try {
+    const storeId = auth.session.storeId ?? null;
     const medicines = await prisma.medicine.findMany({
+      where: storeId ? { storeId } : undefined,
       include: {
         batches: {
-          where: effectiveBranchId ? { branchId: effectiveBranchId } : {},
+          where: {
+            ...(effectiveBranchId ? { branchId: effectiveBranchId } : {}),
+            ...(storeId ? { branch: { storeId } } : {}),
+          },
           select: { quantity: true, mrp: true },
         },
       },

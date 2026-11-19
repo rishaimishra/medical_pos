@@ -89,8 +89,24 @@ export async function GET(req: NextRequest) {
       : null;
 
   try {
-    // 1. Build SQL where clause
-    const where: any = {};
+    const storeId = auth.session.storeId ?? null;
+    if (effectiveBranchId && storeId) {
+      const brCheck = await prisma.branch.findUnique({
+        where: { id: effectiveBranchId },
+        select: { storeId: true },
+      });
+      if (!brCheck || (brCheck.storeId && brCheck.storeId !== storeId)) {
+        return NextResponse.json(
+          { success: false, message: "Forbidden: Branch belongs to another store." },
+          { status: 403 }
+        );
+      }
+    }
+
+    // 1. Build SQL where clause (strictly scoped to Store Tenant)
+    const where: any = {
+      ...(storeId ? { storeId } : {}),
+    };
 
     if (search) {
       where.OR = [
@@ -135,7 +151,10 @@ export async function GET(req: NextRequest) {
     }
 
     // 2. Fetch summary counts & categories in parallel
-    const batchWhere: any = { quantity: { gt: 0 } };
+    const batchWhere: any = {
+      quantity: { gt: 0 },
+      ...(storeId ? { branch: { storeId } } : {}),
+    };
     if (effectiveBranchId) {
       batchWhere.branchId = effectiveBranchId;
     }
@@ -145,6 +164,7 @@ export async function GET(req: NextRequest) {
       prisma.batch.count({ where: batchWhere }),
       prisma.medicine.count({
         where: {
+          ...(storeId ? { storeId } : {}),
           scheduleType: { in: ["schedule_h", "schedule_h1", "narcotic"] },
         },
       }),
@@ -157,13 +177,16 @@ export async function GET(req: NextRequest) {
         : null,
     ]);
 
-    // 3. Paginated medicine items with branch-specific batches
+    // 3. Paginated medicine items with branch/store-specific batches
     const skip = (page - 1) * limit;
     const medicines = await prisma.medicine.findMany({
       where,
       include: {
         batches: {
-          where: effectiveBranchId ? { branchId: effectiveBranchId } : {},
+          where: {
+            ...(effectiveBranchId ? { branchId: effectiveBranchId } : {}),
+            ...(storeId ? { branch: { storeId } } : {}),
+          },
           select: {
             id: true,
             batchNo: true,
@@ -486,18 +509,19 @@ export async function PUT(req: NextRequest) {
     }
 
     const targetMed = await prisma.medicine.findUnique({ where: { id: medicineId } });
-    if (!targetMed) {
+    if (!targetMed || (auth.session.storeId && targetMed.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Medicine record not found." }, { status: 404 });
     }
 
     const trimmedName = (name !== undefined ? name : targetMed.name).trim();
     const trimmedCompany = (company !== undefined ? company : targetMed.company).trim();
 
-    // Duplicate Detection on PUT (Bug 12): check if another medicine already has this name & company
+    // Duplicate Detection on PUT (Bug 12): check within Store Tenant if another medicine already has this name & company
     if (trimmedName.toLowerCase() !== targetMed.name.toLowerCase() || trimmedCompany.toLowerCase() !== targetMed.company.toLowerCase()) {
       const duplicate = await prisma.medicine.findFirst({
         where: {
           id: { not: medicineId },
+          ...(auth.session.storeId ? { storeId: auth.session.storeId } : {}),
           name: { equals: trimmedName, mode: "insensitive" },
           company: { equals: trimmedCompany, mode: "insensitive" },
         },
@@ -665,7 +689,7 @@ export async function DELETE(req: NextRequest) {
       },
     });
 
-    if (!med) {
+    if (!med || (auth.session.storeId && med.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Medicine not found." }, { status: 404 });
     }
 

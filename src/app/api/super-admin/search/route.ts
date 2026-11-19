@@ -29,12 +29,17 @@ export async function GET(req: NextRequest) {
     const [stores, branches, plans, invoices] = await Promise.all([
       prisma.settings.findMany({
         where: {
-          OR: [
-            { storeName: { contains: q, mode: "insensitive" } },
-            { storeGst: { contains: q, mode: "insensitive" } },
-            { storeEmail: { contains: q, mode: "insensitive" } },
-            { ownerEmail: { contains: q, mode: "insensitive" } },
-            { city: { contains: q, mode: "insensitive" } },
+          AND: [
+            { OR: [{ setupDone: true }, { branches: { some: {} } }] },
+            {
+              OR: [
+                { storeName: { contains: q, mode: "insensitive" } },
+                { storeGst: { contains: q, mode: "insensitive" } },
+                { storeEmail: { contains: q, mode: "insensitive" } },
+                { ownerEmail: { contains: q, mode: "insensitive" } },
+                { city: { contains: q, mode: "insensitive" } },
+              ],
+            },
           ],
         },
         take: 6,

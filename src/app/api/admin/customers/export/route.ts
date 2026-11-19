@@ -24,13 +24,15 @@ export async function GET(req: NextRequest) {
   if (!exportGate.allowed) return exportGate.response!;
 
   try {
+    const storeWhere = auth.session.storeId ? { storeId: auth.session.storeId } : undefined;
     let customers: any[] = [];
     try {
       customers = await prisma.customer.findMany({
+        where: storeWhere,
         orderBy: { id: "asc" },
         include: {
           sales: {
-            select: { grandTotal: true, paymentMethod: true },
+            select: { grandTotal: true, paymentMethod: true, creditAmount: true },
           },
           payments: {
             select: { amount: true },
@@ -41,10 +43,11 @@ export async function GET(req: NextRequest) {
       if (err?.code === "P1017" || err?.message?.includes("closed the connection")) {
         await prisma.$connect().catch(() => {});
         customers = await prisma.customer.findMany({
+          where: storeWhere,
           orderBy: { id: "asc" },
           include: {
             sales: {
-              select: { grandTotal: true, paymentMethod: true },
+              select: { grandTotal: true, paymentMethod: true, creditAmount: true },
             },
             payments: {
               select: { amount: true },

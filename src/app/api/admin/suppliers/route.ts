@@ -50,7 +50,9 @@ export async function GET(req: NextRequest) {
   const all = searchParams.get("all") === "true"; // For dropdown selectors
 
   try {
-    const whereClause: any = {};
+    const userStoreId = auth.session.storeId ?? null;
+    const storeScope = userStoreId ? { storeId: userStoreId } : {};
+    const whereClause: any = { ...storeScope };
     if (search) {
       whereClause.OR = [
         { name: { contains: search, mode: "insensitive" } },
@@ -159,8 +161,9 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Calculate Summary KPIs across all suppliers
+    // Calculate Summary KPIs across Store Tenant suppliers
     const allSuppliersForKpis = await prisma.supplier.findMany({
+      where: storeScope,
       include: {
         purchaseOrders: {
           select: { total: true, status: true, poDate: true },
@@ -195,6 +198,7 @@ export async function GET(req: NextRequest) {
     const totalActivePortalUsers = await prisma.supplierUser.count({
       where: {
         active: true,
+        ...(userStoreId ? { supplier: { storeId: userStoreId } } : {}),
       },
     });
 
@@ -353,7 +357,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const existing = await prisma.supplier.findUnique({ where: { id } });
-    if (!existing) {
+    if (!existing || (auth.session.storeId && existing.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Supplier not found" }, { status: 404 });
     }
 
@@ -395,6 +399,7 @@ export async function PUT(req: NextRequest) {
     const duplicate = await prisma.supplier.findFirst({
       where: {
         id: { not: id },
+        ...(auth.session.storeId ? { storeId: auth.session.storeId } : {}),
         OR: duplicateConditions,
       },
     });
@@ -484,7 +489,7 @@ export async function DELETE(req: NextRequest) {
       },
     });
 
-    if (!supplier) {
+    if (!supplier || (auth.session.storeId && supplier.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Supplier not found" }, { status: 404 });
     }
 

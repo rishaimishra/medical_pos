@@ -66,6 +66,8 @@ interface OrderRow {
   paymentMethod: string;
   doctorName: string | null;
   doctorRegNo: string | null;
+  storeId?: number | null;
+  storeName?: string | null;
   branch?: { id: number; code: string; name: string; phone: string | null; address: string | null } | null;
   items: OrderItemRow[];
   returns: Array<{ id: number; returnNumber: string; refundAmount: number; status: string }>;
@@ -73,6 +75,8 @@ interface OrderRow {
 
 interface PrescriptionRecord {
   id: number;
+  storeId?: number | null;
+  storeName?: string | null;
   direction: string;
   message: string | null;
   hasFile: boolean;
@@ -106,11 +110,14 @@ export default function CustomerDashboardPage() {
   const [sendingSupport, setSendingSupport] = useState(false);
 
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [availableStores, setAvailableStores] = useState<Array<{ id: number; name: string }>>([]);
+  const [storeFilter, setStoreFilter] = useState<string>("all");
   const [ordersSummary, setOrdersSummary] = useState<any>(null);
   const [customerDetails, setCustomerDetails] = useState<any>(null);
   const [orderFilter, setOrderFilter] = useState<"all" | "rx">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [targetStoreId, setTargetStoreId] = useState<string>("");
 
   // Module 2.19.2: Customer Return Requests
   const [returnsList, setReturnsList] = useState<any[]>([]);
@@ -163,19 +170,21 @@ export default function CustomerDashboardPage() {
     try {
       const p = new URLSearchParams();
       if (orderFilter !== "all") p.set("filter", orderFilter);
+      if (storeFilter !== "all") p.set("storeId", storeFilter);
       if (searchQuery.trim()) p.set("search", searchQuery.trim());
 
       const res = await fetch(`/api/customer/orders?${p.toString()}`, { cache: "no-store" });
       const data = await res.json();
       if (res.ok && data.success) {
         setOrders(data.orders || []);
+        setAvailableStores(Array.isArray(data.availableStores) ? data.availableStores : []);
         setOrdersSummary(data.summary || null);
         setCustomerDetails(data.customer || null);
       }
     } finally {
       setOrdersLoading(false);
     }
-  }, [orderFilter, searchQuery]);
+  }, [orderFilter, storeFilter, searchQuery]);
 
   const loadPrescriptions = useCallback(async () => {
     const res = await fetch("/api/customer/prescriptions", { cache: "no-store" });
@@ -247,7 +256,10 @@ export default function CustomerDashboardPage() {
       const res = await fetch("/api/customer/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: supportText.trim() }),
+        body: JSON.stringify({
+          message: supportText.trim(),
+          ...(targetStoreId ? { storeId: Number(targetStoreId) } : {}),
+        }),
       });
       if (res.ok) {
         setSupportText("");
@@ -396,6 +408,7 @@ export default function CustomerDashboardPage() {
       form.append("doctorName", rxDoctor.trim());
       form.append("fulfillmentMode", rxMode);
       form.append("message", rxNotes.trim());
+      if (targetStoreId) form.append("storeId", targetStoreId);
 
       const res = await fetch("/api/customer/prescriptions", {
         method: "POST",
@@ -650,9 +663,17 @@ export default function CustomerDashboardPage() {
                                 </span>
                               )}
                             </div>
-                            <p className="text-[11px] text-slate-500 mt-0.5">
-                              {new Date(o.saleDate).toLocaleDateString("en-IN")} • {o.items.length} medicine(s) •{" "}
-                              {o.branch?.name || "Main Pharmacy"}
+                            <p className="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-1.5">
+                              <span>{new Date(o.saleDate).toLocaleDateString("en-IN")}</span>
+                              <span>•</span>
+                              <span>{o.items.length} medicine(s)</span>
+                              {o.storeName && (
+                                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px]">
+                                  {o.storeName}
+                                </span>
+                              )}
+                              <span>•</span>
+                              <span>{o.branch?.name || "Main Pharmacy"}</span>
                             </p>
                           </div>
                           <div className="flex items-center gap-3">
@@ -706,25 +727,45 @@ export default function CustomerDashboardPage() {
           {/* ========================================================== */}
           {activeNav === "My Orders" && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setOrderFilter("all")}
-                  className={`px-3 py-1.5 rounded-lg font-bold cursor-pointer ${
-                    orderFilter === "all" ? "bg-[#0F5A47] text-white" : "bg-white text-slate-600"
-                  }`}
-                >
-                  All Invoices
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOrderFilter("rx")}
-                  className={`px-3 py-1.5 rounded-lg font-bold cursor-pointer ${
-                    orderFilter === "rx" ? "bg-[#0F5A47] text-white" : "bg-white text-slate-600"
-                  }`}
-                >
-                  Prescription (Rx) Bills Only
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOrderFilter("all")}
+                    className={`px-3 py-1.5 rounded-lg font-bold cursor-pointer ${
+                      orderFilter === "all" ? "bg-[#0F5A47] text-white" : "bg-white text-slate-600"
+                    }`}
+                  >
+                    All Invoices
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderFilter("rx")}
+                    className={`px-3 py-1.5 rounded-lg font-bold cursor-pointer ${
+                      orderFilter === "rx" ? "bg-[#0F5A47] text-white" : "bg-white text-slate-600"
+                    }`}
+                  >
+                    Prescription (Rx) Bills Only
+                  </button>
+                </div>
+
+                {availableStores.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-500">Store:</span>
+                    <select
+                      value={storeFilter}
+                      onChange={(e) => setStoreFilter(e.target.value)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 cursor-pointer"
+                    >
+                      <option value="all">All Pharmacies ({availableStores.length})</option>
+                      {availableStores.map((st) => (
+                        <option key={st.id} value={String(st.id)}>
+                          {st.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
@@ -733,6 +774,7 @@ export default function CustomerDashboardPage() {
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase text-slate-500">
                         <th className="py-3 px-4">Invoice No</th>
+                        <th className="py-3 px-4">Store &amp; Branch</th>
                         <th className="py-3 px-4">Date</th>
                         <th className="py-3 px-4">Prescribing Doctor</th>
                         <th className="py-3 px-4">Medicines</th>
@@ -744,7 +786,7 @@ export default function CustomerDashboardPage() {
                     <tbody className="divide-y divide-slate-100">
                       {orders.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="py-10 text-center text-slate-400">
+                          <td colSpan={8} className="py-10 text-center text-slate-400">
                             No matching invoices found.
                           </td>
                         </tr>
@@ -752,6 +794,16 @@ export default function CustomerDashboardPage() {
                         orders.map((o) => (
                           <tr key={o.id} className="hover:bg-slate-50">
                             <td className="py-3 px-4 font-extrabold text-[#0F5A47]">{o.invoiceNo}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex w-fit px-2 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-teal-800 text-[10px] font-bold">
+                                  {o.storeName || "Pharmacy"}
+                                </span>
+                                <span className="text-[11px] text-slate-500 font-semibold">
+                                  {o.branch?.name || "Main Branch"}
+                                </span>
+                              </div>
+                            </td>
                             <td className="py-3 px-4 text-slate-600">
                               {new Date(o.saleDate).toLocaleDateString("en-IN")}
                             </td>
@@ -819,6 +871,24 @@ export default function CustomerDashboardPage() {
                 )}
 
                 <form onSubmit={handleUploadPrescription} className="space-y-3">
+                  {availableStores.length > 1 && (
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Target Pharmacy Store</label>
+                      <select
+                        value={targetStoreId}
+                        onChange={(e) => setTargetStoreId(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold bg-white"
+                      >
+                        <option value="">Recent Pharmacy (Auto)</option>
+                        {availableStores.map((st) => (
+                          <option key={st.id} value={String(st.id)}>
+                            {st.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div>
                     <label className="text-xs font-bold text-slate-700 block mb-1">
                       Prescription Photo / PDF (PDF, JPG, PNG, HEIC — Max 10 MB)
@@ -887,14 +957,21 @@ export default function CustomerDashboardPage() {
                   prescriptions.map((rx) => (
                     <div key={rx.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            rx.isRead ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"
-                          }`}
-                        >
-                          {rx.isRead ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                          {rx.statusLabel}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                              rx.isRead ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {rx.isRead ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                            {rx.statusLabel}
+                          </span>
+                          {rx.storeName && (
+                            <span className="px-2 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-teal-800 text-[10px] font-bold">
+                              {rx.storeName}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[11px] text-slate-400">
                           {new Date(rx.createdAt).toLocaleString("en-IN")}
                         </span>
@@ -1034,7 +1111,21 @@ export default function CustomerDashboardPage() {
                 )}
               </div>
 
-              <form onSubmit={handleSendSupportMessage} className="flex gap-2 pt-2 border-t border-slate-100">
+              <form onSubmit={handleSendSupportMessage} className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                {availableStores.length > 1 && (
+                  <select
+                    value={targetStoreId}
+                    onChange={(e) => setTargetStoreId(e.target.value)}
+                    className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold bg-white"
+                  >
+                    <option value="">Recent Store</option>
+                    {availableStores.map((st) => (
+                      <option key={st.id} value={String(st.id)}>
+                        {st.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <input
                   type="text"
                   required

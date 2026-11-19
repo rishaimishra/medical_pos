@@ -391,25 +391,34 @@ export default function SuperAdminStoreDetailPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white border border-slate-200 rounded-2xl p-4">
-              <p className="text-[11px] font-bold uppercase text-slate-400">Today Gross Sales</p>
+              <p className="text-[11px] font-bold uppercase text-slate-400">Net Revenue Today</p>
               <p className="text-2xl font-extrabold text-slate-900 mt-1">
                 ₹{overview.kpis.revenueToday.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
               </p>
-              <p className="text-[11px] text-slate-500 mt-1">{overview.kpis.invoicesToday} invoices today</p>
+              <p className="text-[11px] text-slate-500 mt-1">
+                {overview.kpis.invoicesToday} invoices today
+                {overview.kpis.refundsToday > 0 ? ` • -₹${overview.kpis.refundsToday.toFixed(0)} returns` : ""}
+              </p>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-4">
-              <p className="text-[11px] font-bold uppercase text-slate-400">30-Day Retail GMV</p>
+              <p className="text-[11px] font-bold uppercase text-slate-400">Net Revenue (30d)</p>
               <p className="text-2xl font-extrabold text-teal-700 mt-1">
                 ₹{overview.kpis.revenue30d.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
               </p>
-              <p className="text-[11px] text-slate-500 mt-1">{overview.kpis.invoices30d} bills last 30d</p>
+              <p className="text-[11px] text-slate-500 mt-1">
+                {overview.kpis.invoices30d} bills last 30d
+                {overview.kpis.refunds30d > 0 ? ` • -₹${overview.kpis.refunds30d.toFixed(0)} returns` : ""}
+              </p>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-4">
-              <p className="text-[11px] font-bold uppercase text-slate-400">All-Time Platform GMV</p>
+              <p className="text-[11px] font-bold uppercase text-slate-400">Net Revenue (All-Time)</p>
               <p className="text-2xl font-extrabold text-slate-900 mt-1">
                 ₹{overview.kpis.revenueAllTime.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
               </p>
-              <p className="text-[11px] text-slate-500 mt-1">{overview.kpis.invoicesAllTime} total bills</p>
+              <p className="text-[11px] text-slate-500 mt-1">
+                {overview.kpis.invoicesAllTime} total bills
+                {overview.kpis.refundsAllTime > 0 ? ` • -₹${overview.kpis.refundsAllTime.toFixed(0)} returns` : ""}
+              </p>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-4">
               <p className="text-[11px] font-bold uppercase text-slate-400">Inventory Cost Value</p>
@@ -850,6 +859,78 @@ export default function SuperAdminStoreDetailPage() {
                 <span className="font-mono">₹{e.amount.toFixed(2)}</span>
               </div>
             ))}
+          </div>
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
+            <h3 className="font-extrabold text-slate-800">
+              Expiring &amp; Low-Stock Batches ({operations.alertBatches?.length || 0})
+            </h3>
+            {!operations.alertBatches?.length ? (
+              <p className="text-slate-400 py-3">No expired, near-expiry, or low-stock batches.</p>
+            ) : (
+              operations.alertBatches.map((b: any) => (
+                <div key={b.id} className="flex justify-between py-1.5 border-b border-slate-100">
+                  <div>
+                    <span className="font-bold text-slate-800">{b.medicineName}</span>
+                    <span className="text-slate-500 ml-2 font-mono">{b.batchNo}</span>
+                    <span className="text-slate-400 ml-1">({b.branchName})</span>
+                  </div>
+                  <span
+                    className={`font-mono font-bold ${
+                      b.status === "expired"
+                        ? "text-rose-600"
+                        : b.status === "expiring_soon"
+                        ? "text-amber-600"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {b.quantity}u • {new Date(b.expiryDate).toLocaleDateString("en-IN")}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
+            <h3 className="font-extrabold text-slate-800">
+              Customer Baki Khata Dues ({operations.customerDues?.length || 0})
+            </h3>
+            {!operations.customerDues?.length ? (
+              <p className="text-slate-400 py-3">No outstanding customer credit dues.</p>
+            ) : (
+              operations.customerDues.map((c: any) => (
+                <div key={c.id} className="flex justify-between py-1.5 border-b border-slate-100">
+                  <div>
+                    <span className="font-bold text-slate-800">{c.name}</span>
+                    <span className="text-slate-500 ml-2 font-mono">{c.phone}</span>
+                  </div>
+                  <span className="font-mono font-bold text-rose-700">
+                    ₹{c.outstandingDue.toFixed(2)}
+                    {c.creditLimit > 0 ? ` / ₹${c.creditLimit.toFixed(0)}` : ""}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 text-xs lg:col-span-2">
+            <h3 className="font-extrabold text-slate-800">
+              Recent Sales Returns &amp; Refunds ({operations.recentReturns?.length || 0})
+            </h3>
+            {!operations.recentReturns?.length ? (
+              <p className="text-slate-400 py-3">No sales returns recorded for this store.</p>
+            ) : (
+              operations.recentReturns.map((r: any) => (
+                <div key={r.id} className="flex justify-between py-1.5 border-b border-slate-100">
+                  <div>
+                    <span className="font-mono font-bold text-slate-800">{r.returnNumber}</span>
+                    <span className="text-slate-500 ml-2">
+                      Inv {r.invoiceNo} • {r.customerName} ({r.branchName})
+                    </span>
+                  </div>
+                  <span className="font-mono font-bold text-slate-700">
+                    ₹{r.refundAmount.toFixed(2)} ({r.status})
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

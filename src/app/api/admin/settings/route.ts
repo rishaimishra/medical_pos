@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { getClientIp, logAudit } from "@/lib/audit";
+import { requireStoreFeature, resolveStoreEntitlements } from "@/lib/entitlements";
 
 /**
  * API: /api/admin/settings
@@ -111,6 +112,12 @@ export async function POST(req: NextRequest) {
         },
         { status: authGuard.status || 403 }
       );
+    }
+
+    const ent = await resolveStoreEntitlements(authGuard.session.storeId);
+    if (ent.isReadOnlyLocked) {
+      const lockGate = await requireStoreFeature(authGuard.session.storeId, "posBilling");
+      if (!lockGate.allowed) return lockGate.response!;
     }
 
     const body = await req.json();

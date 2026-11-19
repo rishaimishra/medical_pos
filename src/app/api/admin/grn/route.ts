@@ -60,6 +60,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Purchase Order not found" }, { status: 404 });
     }
 
+    const userStoreId = auth.session.storeId ?? null;
+    const poStoreId = po.branch?.storeId ?? po.supplier?.storeId ?? null;
+    if (userStoreId && poStoreId && poStoreId !== userStoreId) {
+      return NextResponse.json({ success: false, message: "Purchase Order not found" }, { status: 404 });
+    }
+
     if (po.status === "cancelled" || po.status === "draft" || po.status === "received") {
       return NextResponse.json(
         { success: false, message: `Cannot receive goods for Purchase Order with status '${po.status}'` },
@@ -67,7 +73,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const branchId = po.branchId || body.branchId || auth.session.branchId || null;
+    const branchId = po.branchId || (body.branchId ? Number(body.branchId) : null) || auth.session.branchId || null;
+    if (userStoreId && branchId && branchId !== po.branchId) {
+      const branchCheck = await prisma.branch.findUnique({ where: { id: branchId }, select: { storeId: true } });
+      if (!branchCheck || (branchCheck.storeId && branchCheck.storeId !== userStoreId)) {
+        return NextResponse.json({ success: false, message: "Forbidden: Branch belongs to another store" }, { status: 403 });
+      }
+    }
 
     // Validate inward lines
     const validLines: any[] = [];
@@ -296,6 +308,7 @@ export async function POST(req: NextRequest) {
     });
 
     await logAudit({
+      storeId: userStoreId,
       userId: auth.session.userId,
       branchId: branchId || auth.session.branchId,
       action: "GRN_INWARD_COMPLETED",
@@ -322,6 +335,7 @@ export async function POST(req: NextRequest) {
         itemsCount: validLines.length,
         branchName: po.branch?.name,
         notes: invoiceNo ? `Inwarded with Invoice: ${invoiceNo}` : undefined,
+        storeId: userStoreId,
       }).catch((err) => console.error("Supplier PO received email error:", err));
     }
 

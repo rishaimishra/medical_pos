@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const filter = (searchParams.get("filter") || "all").toLowerCase();
   const search = (searchParams.get("search") || "").trim().toLowerCase();
+  const includeDrafts = searchParams.get("includeDrafts") === "true";
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
   const limit = Math.min(100, Math.max(5, parseInt(searchParams.get("limit") || "25", 10) || 25));
 
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest) {
       staffGroups,
       medicineGroups,
       supplierGroups,
+      customerGroups,
       subscriptions,
       sales30dByBranch,
       monthlySalesByBranch,
@@ -40,6 +42,9 @@ export async function GET(req: NextRequest) {
       plans,
     ] = await Promise.all([
       prisma.settings.findMany({
+        where: includeDrafts
+          ? undefined
+          : { OR: [{ setupDone: true }, { branches: { some: {} } }] },
         orderBy: [{ id: "asc" }],
         select: {
           id: true,
@@ -77,6 +82,11 @@ export async function GET(req: NextRequest) {
         where: { storeId: { not: null } },
         _count: { _all: true },
       }),
+      prisma.customer.groupBy({
+        by: ["storeId"],
+        where: { storeId: { not: null } },
+        _count: { _all: true },
+      }),
       prisma.storeSubscription.findMany({
         orderBy: [{ id: "desc" }],
         include: {
@@ -92,6 +102,7 @@ export async function GET(req: NextRequest) {
               maxMedicines: true,
               maxMonthlyInvoices: true,
               maxSuppliers: true,
+              maxCustomers: true,
             },
           },
         },
@@ -143,6 +154,11 @@ export async function GET(req: NextRequest) {
       if (g.storeId) supCountByStore.set(g.storeId, g._count._all);
     });
 
+    const custCountByStore = new Map<number, number>();
+    customerGroups.forEach((g) => {
+      if (g.storeId) custCountByStore.set(g.storeId, g._count._all);
+    });
+
     const latestSubByStore = new Map<number, (typeof subscriptions)[number]>();
     for (const sub of subscriptions) {
       if (!latestSubByStore.has(sub.storeId)) {
@@ -183,6 +199,7 @@ export async function GET(req: NextRequest) {
       const staffCount = staffCountByStore.get(s.id) || 0;
       const medicineCount = medCountByStore.get(s.id) || 0;
       const supplierCount = supCountByStore.get(s.id) || 0;
+      const customerCount = custCountByStore.get(s.id) || 0;
       const monthlyInvoices = monthlyInvoicesByStore.get(s.id) || 0;
       const gmv30d = Math.round((gmv30dByStore.get(s.id) || 0) * 100) / 100;
       const lastSaleAt = lastSaleByStore.get(s.id) || null;
@@ -191,12 +208,16 @@ export async function GET(req: NextRequest) {
       const maxStaffUsers = overrides.maxStaffUsers ?? sub?.plan.maxStaffUsers ?? -1;
       const maxMedicines = overrides.maxMedicines ?? sub?.plan.maxMedicines ?? -1;
       const maxMonthlyInvoices = overrides.maxMonthlyInvoices ?? sub?.plan.maxMonthlyInvoices ?? -1;
+      const maxSuppliers = overrides.maxSuppliers ?? sub?.plan.maxSuppliers ?? -1;
+      const maxCustomers = overrides.maxCustomers ?? sub?.plan.maxCustomers ?? -1;
 
       const nearQuota =
         (maxBranches > 0 && branchCount / maxBranches >= 0.8) ||
         (maxStaffUsers > 0 && staffCount / maxStaffUsers >= 0.8) ||
         (maxMedicines > 0 && medicineCount / maxMedicines >= 0.8) ||
-        (maxMonthlyInvoices > 0 && monthlyInvoices / maxMonthlyInvoices >= 0.8);
+        (maxMonthlyInvoices > 0 && monthlyInvoices / maxMonthlyInvoices >= 0.8) ||
+        (maxSuppliers > 0 && supplierCount / maxSuppliers >= 0.8) ||
+        (maxCustomers > 0 && customerCount / maxCustomers >= 0.8);
 
       const subStatus = sub?.status || (s.storeStatus === "suspended" ? "suspended" : "none");
       const isPaid = Boolean(sub && sub.status === "active" && Number(sub.plan.priceInr) > 0);
@@ -254,6 +275,8 @@ export async function GET(req: NextRequest) {
                 maxStaffUsers,
                 maxMedicines,
                 maxMonthlyInvoices,
+                maxSuppliers,
+                maxCustomers,
               },
             }
           : null,

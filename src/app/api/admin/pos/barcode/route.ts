@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { getTodayMidnightUtc } from "@/lib/config";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 2.3.1: Hardware Barcode Scanner Lookup Endpoint
@@ -19,6 +20,10 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
+  const featureToCheck =
+    searchParams.get("mode") === "label_print" ? "barcodeAndThermalLabels" : "posBilling";
+  const barcodeGate = await requireStoreFeature(auth.session.storeId, featureToCheck);
+  if (!barcodeGate.allowed) return barcodeGate.response!;
   const rawCode = (searchParams.get("code") || "").trim();
   const branchParam = searchParams.get("branchId");
 
@@ -119,9 +124,10 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 2. Try matching by Medicine Name (exact) or HSN Code (disambiguate shared HSNs)
+    // 2. Try matching by Medicine Name (exact) or HSN Code (disambiguate shared HSNs) within Store Tenant
     const medicineMatches = await prisma.medicine.findMany({
       where: {
+        ...(userStoreId ? { storeId: userStoreId } : {}),
         OR: [
           { name: { equals: rawCode, mode: "insensitive" } },
           { hsnCode: { equals: rawCode, mode: "insensitive" } },

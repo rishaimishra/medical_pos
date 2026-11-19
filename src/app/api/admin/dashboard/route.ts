@@ -251,6 +251,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.medicine.findMany({
+        where: storeId ? { storeId } : undefined,
         select: { id: true, name: true },
       }),
       prisma.batch.findMany({
@@ -268,7 +269,7 @@ export async function GET(req: NextRequest) {
         where: { ...branchScope, status: "pending" },
       }),
       prisma.customer.count({
-        where: { active: true },
+        where: { active: true, ...(storeId ? { storeId } : {}) },
       }),
     ]);
 

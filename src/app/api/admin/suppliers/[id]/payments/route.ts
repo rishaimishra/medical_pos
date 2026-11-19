@@ -67,7 +67,7 @@ export async function GET(
       },
     });
 
-    if (!supplier) {
+    if (!supplier || (auth.session.storeId && supplier.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Supplier not found" }, { status: 404 });
     }
 
@@ -183,7 +183,7 @@ export async function POST(
 
   try {
     const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
-    if (!supplier) {
+    if (!supplier || (auth.session.storeId && supplier.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Supplier not found" }, { status: 404 });
     }
 
@@ -236,6 +236,7 @@ export async function POST(
     });
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: branchId || auth.session.branchId,
       action: "SUPPLIER_PAYMENT_RECORDED",

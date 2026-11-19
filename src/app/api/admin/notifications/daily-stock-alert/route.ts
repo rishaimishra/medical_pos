@@ -28,9 +28,12 @@ async function handleDailyStockAlert(req: NextRequest) {
   const force = searchParams.get("force") === "true";
 
   try {
-    const settings = await prisma.settings.findFirst({
-      orderBy: { id: "asc" },
-    });
+    const userStoreId = auth.session.storeId ?? null;
+    const settings = userStoreId
+      ? await prisma.settings.findUnique({ where: { id: userStoreId } })
+      : await prisma.settings.findFirst({
+          orderBy: { id: "asc" },
+        });
 
     const storeName = settings?.storeName || "Medical POS Pharmacy";
     const recipientEmail = settings?.storeEmail || auth.session.email || "admin@example.com";
@@ -51,11 +54,15 @@ async function handleDailyStockAlert(req: NextRequest) {
       }
     }
 
-    // 1. Calculate sellable (unexpired) stock per medicine to find low-stock items
+    // 1. Calculate sellable (unexpired) stock per medicine in Store Tenant to find low-stock items
     const medicines = await prisma.medicine.findMany({
+      where: userStoreId ? { storeId: userStoreId } : undefined,
       include: {
         batches: {
-          where: { expiryDate: { gt: now } },
+          where: {
+            expiryDate: { gt: now },
+            ...(userStoreId ? { branch: { storeId: userStoreId } } : {}),
+          },
           select: { quantity: true },
         },
       },
@@ -81,6 +88,7 @@ async function handleDailyStockAlert(req: NextRequest) {
       where: {
         quantity: { gt: 0 },
         expiryDate: { lte: expiryCutoff },
+        ...(userStoreId ? { branch: { storeId: userStoreId } } : {}),
       },
       include: { medicine: { select: { name: true } } },
       orderBy: { expiryDate: "asc" },
@@ -106,6 +114,7 @@ async function handleDailyStockAlert(req: NextRequest) {
       storeName,
       lowStockItems,
       expiringBatches,
+      storeId: userStoreId,
     });
 
     if (!emailResult.success) {
@@ -128,6 +137,7 @@ async function handleDailyStockAlert(req: NextRequest) {
     }
 
     await logAudit({
+      storeId: userStoreId,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: "DAILY_STOCK_ALERT_SENT",

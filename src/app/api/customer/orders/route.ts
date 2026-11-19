@@ -17,12 +17,16 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = (searchParams.get("search") || "").trim();
   const filter = (searchParams.get("filter") || "all").toLowerCase(); // all | rx
+  const storeIdParam = searchParams.get("storeId");
+  const filterStoreId =
+    storeIdParam && storeIdParam !== "all" ? parseInt(storeIdParam, 10) : null;
 
   try {
-    const customer = await prisma.customer.findUnique({
-      where: { id: customerId },
+    const linkedProfiles = await prisma.customer.findMany({
+      where: { id: { in: linkedIds } },
       select: {
         id: true,
+        storeId: true,
         name: true,
         phone: true,
         email: true,
@@ -34,13 +38,56 @@ export async function GET(req: NextRequest) {
         lastRefillDate: true,
         creditLimit: true,
       },
+      orderBy: { id: "asc" },
     });
 
-    if (!customer) {
+    const primaryProfile = linkedProfiles.find((p) => p.id === customerId) || linkedProfiles[0];
+    if (!primaryProfile) {
       return NextResponse.json({ success: false, message: "Customer profile not found" }, { status: 404 });
     }
 
+    // Aggregate chronic care, refill dates & credit limit across all store-linked profiles for this mobile number
+    const chronicProfiles = linkedProfiles.filter((p) => p.isChronic);
+    const mergedConditions = Array.from(
+      new Set(
+        chronicProfiles
+          .flatMap((p) => (p.chronicDiseases || "").split(","))
+          .map((s) => s.trim())
+          .filter(Boolean)
+      )
+    );
+    const earliestNextRefill = chronicProfiles
+      .map((p) => p.nextRefillDate)
+      .filter((d): d is Date => Boolean(d))
+      .sort((a, b) => a.getTime() - b.getTime())[0] ?? primaryProfile.nextRefillDate;
+    const latestLastRefill = chronicProfiles
+      .map((p) => p.lastRefillDate)
+      .filter((d): d is Date => Boolean(d))
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? primaryProfile.lastRefillDate;
+
+    const customer = {
+      id: primaryProfile.id,
+      name: primaryProfile.name,
+      phone: primaryProfile.phone,
+      email: primaryProfile.email,
+      address: primaryProfile.address,
+      isChronic: chronicProfiles.length > 0 || primaryProfile.isChronic,
+      chronicDiseases:
+        mergedConditions.length > 0 ? mergedConditions.join(", ") : primaryProfile.chronicDiseases,
+      refillDays:
+        chronicProfiles.find((p) => p.refillDays)?.refillDays ?? primaryProfile.refillDays,
+      nextRefillDate: earliestNextRefill,
+      lastRefillDate: latestLastRefill,
+      creditLimit: Math.max(
+        Number(primaryProfile.creditLimit || 0),
+        ...linkedProfiles.map((p) => Number(p.creditLimit || 0))
+      ),
+    };
+
     const whereClause: any = { customerId: { in: linkedIds } };
+    if (filterStoreId && !isNaN(filterStoreId)) {
+      whereClause.branch = { storeId: filterStoreId };
+    }
     if (filter === "rx") {
       whereClause.OR = [
         { doctorName: { not: null } },
@@ -104,6 +151,12 @@ export async function GET(req: NextRequest) {
           creditAmount: true,
           paymentMethod: true,
           doctorName: true,
+          branch: {
+            select: {
+              storeId: true,
+              store: { select: { id: true, storeName: true } },
+            },
+          },
           items: {
             select: {
               medicineId: true,
@@ -168,9 +221,23 @@ export async function GET(req: NextRequest) {
         totalSpent: Number(m.totalSpent.toFixed(2)),
       }));
 
+    const availableStoresMap = new Map<number, string>();
+    for (const s of allSalesForStats) {
+      const sId = s.branch?.store?.id || s.branch?.storeId;
+      const sName = s.branch?.store?.storeName;
+      if (sId && sName && !availableStoresMap.has(sId)) {
+        availableStoresMap.set(sId, sName);
+      }
+    }
+    const availableStores = Array.from(availableStoresMap.entries()).map(([id, name]) => ({
+      id,
+      name,
+    }));
+
     return NextResponse.json({
       success: true,
       customer,
+      availableStores,
       orders: orders.map((o) => ({
         id: o.id,
         invoiceNo: o.invoiceNo,

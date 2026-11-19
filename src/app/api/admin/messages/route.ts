@@ -34,7 +34,17 @@ export async function GET(req: NextRequest) {
   const search = (searchParams.get("search") || "").trim();
 
   try {
-    const where: any = {};
+    const userStoreId = auth.session.storeId ?? null;
+    const smStoreScope: any = userStoreId
+      ? {
+          OR: [
+            { storeId: userStoreId },
+            { storeId: null, supplier: { storeId: userStoreId } },
+          ],
+        }
+      : {};
+
+    const where: any = { ...smStoreScope };
 
     if (supplierIdParam && supplierIdParam !== "all") {
       const sId = parseInt(supplierIdParam, 10);
@@ -50,12 +60,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (search) {
-      where.OR = [
+      const searchCond = [
         { subject: { contains: search, mode: "insensitive" } },
         { message: { contains: search, mode: "insensitive" } },
         { supplierName: { contains: search, mode: "insensitive" } },
         { senderEmail: { contains: search, mode: "insensitive" } },
       ];
+      where.AND = [...(where.AND || []), { OR: searchCond }];
     }
 
     const [messages, unreadCount, suppliers] = await Promise.all([
@@ -70,9 +81,10 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.supplierMessage.count({
-        where: { direction: "in", status: "unread" },
+        where: { direction: "in", status: "unread", ...smStoreScope },
       }),
       prisma.supplier.findMany({
+        where: userStoreId ? { storeId: userStoreId } : undefined,
         orderBy: { name: "asc" },
         select: { id: true, name: true, email: true, phone: true },
       }),
@@ -126,12 +138,13 @@ export async function POST(req: NextRequest) {
     }
 
     const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
-    if (!supplier) {
+    if (!supplier || (auth.session.storeId && supplier.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Supplier not found." }, { status: 404 });
     }
 
     const created = await prisma.supplierMessage.create({
       data: {
+        storeId: auth.session.storeId ?? supplier.storeId ?? null,
         supplierId: supplier.id,
         supplierName: supplier.name,
         senderEmail: auth.session.email,
@@ -148,6 +161,7 @@ export async function POST(req: NextRequest) {
     });
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: "SUPPLIER_MESSAGE_SENT",

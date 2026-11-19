@@ -90,8 +90,10 @@ export default function SuperAdminPlansPage() {
       if (!json.success) {
         toast.error(json.message || "Failed to seed plans");
       } else {
+        const createdCount = json.created ?? json.createdCodes?.length ?? 0;
+        const updatedCount = json.updated ?? 0;
         toast.success(
-          `4-tier blueprint synced (${json.created ?? 0} created, ${json.updated ?? 0} updated).`
+          `4-tier blueprint synced (${createdCount} created, ${updatedCount} updated; ${json.totalPlans ?? 4} total).`
         );
         await loadPlans();
       }
@@ -183,10 +185,13 @@ export default function SuperAdminPlansPage() {
       if (!json.success) {
         toast.error(json.message || "Failed to save subscription plan");
       } else {
+        const syncState = json.plan?.razorpaySyncStatus;
         toast.success(
           editingPlan
-            ? json.billingChanged
-              ? "Plan updated (Razorpay sync set to pending)"
+            ? syncState === "synced" && json.billingChanged
+              ? "Plan updated & new version synced to Razorpay"
+              : syncState === "pending" || syncState === "failed"
+              ? "Plan updated (Razorpay sync pending — run Reconcile All)"
               : "Plan updated successfully"
             : `Plan '${json.plan?.code}' created`
         );
@@ -521,11 +526,24 @@ export default function SuperAdminPlansPage() {
             </div>
 
             <form onSubmit={handleSavePlan} className="overflow-y-auto p-6 space-y-6 text-xs">
+              {editingPlan && (
+                <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 flex items-start gap-2">
+                  <Users className="w-4 h-4 shrink-0 mt-0.5 text-indigo-600" />
+                  <div>
+                    <strong>Live Subscriber Impact:</strong>{" "}
+                    <span className="font-extrabold">
+                      {editingPlan.activeSubscribers ?? 0} active store subscriber(s)
+                    </span>{" "}
+                    currently on <code className="font-mono">{editingPlan.code}</code> will immediately reflect updated feature gates and quota limits upon saving.
+                  </div>
+                </div>
+              )}
+
               {billingChangedWarning && (
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
                   <div>
-                    <strong>Razorpay Re-Sync Notice:</strong> Changing price or billing cycle on an already-synced plan sets Razorpay sync status to <code className="font-mono">pending</code> while preserving existing grandfathered subscribers on their prior plan version.
+                    <strong>Razorpay Plan Versioning:</strong> Changing price or billing cycle automatically publishes a new immutable Razorpay Plan ID while preserving existing grandfathered subscribers on their prior cycle rate.
                   </div>
                 </div>
               )}

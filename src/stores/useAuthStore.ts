@@ -28,6 +28,7 @@ interface AuthState {
   unlockScreen: (password: string) => Promise<AuthResult>;
   lockScreen: (reason?: string) => Promise<void>;
   logout: () => Promise<void>;
+  clearLocalAuth: () => void;
   touchActivity: () => void;
   hasPermission: (permission: PermissionKey) => boolean;
   canAccessPage: (pathname: string) => boolean;
@@ -177,6 +178,15 @@ export const useAuthStore = create<AuthState>()(
         } catch {
           // Ignore network error on logout
         }
+        set({
+          user: null,
+          isAuthenticated: false,
+          isLocked: false,
+          loading: false,
+        });
+      },
+
+      clearLocalAuth: () => {
         set({
           user: null,
           isAuthenticated: false,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyCustomerRequest } from "@/lib/auth";
+import { resolveCustomerTargetStore, verifyCustomerRequest } from "@/lib/auth";
 import { savePrescriptionBuffer } from "@/lib/prescriptionFiles";
 import { escapeHtml, sendEmail } from "@/lib/email";
 import { checkStoreQuota, requireCustomerPortalFeature, requireStoreFeature } from "@/lib/entitlements";
@@ -17,24 +17,41 @@ export async function GET(req: NextRequest) {
   }
 
   const linkedIds = auth.session.linkedCustomerIds ?? [auth.session.customerId];
+  const { searchParams } = new URL(req.url);
+  const storeIdParam = searchParams.get("storeId");
+  const filterStoreId =
+    storeIdParam && storeIdParam !== "all" && !isNaN(Number(storeIdParam))
+      ? Number(storeIdParam)
+      : null;
 
   const rxPortalGate = await requireCustomerPortalFeature(
     auth.session.customerId,
-    "patientPortalAndRxQueue"
+    "patientPortalAndRxQueue",
+    { linkedCustomerIds: linkedIds, targetStoreId: filterStoreId }
   );
   if (!rxPortalGate.allowed) return rxPortalGate.response!;
 
   try {
     const records = await prisma.patientMessage.findMany({
-      where: { customerId: { in: linkedIds } },
+      where: {
+        customerId: { in: linkedIds },
+        ...(filterStoreId
+          ? { OR: [{ storeId: filterStoreId }, { storeId: null, customer: { storeId: filterStoreId } }] }
+          : {}),
+      },
       orderBy: { createdAt: "desc" },
       take: 100,
+      include: {
+        store: { select: { id: true, storeName: true } },
+      },
     });
 
     return NextResponse.json({
       success: true,
       prescriptions: records.map((r) => ({
         id: r.id,
+        storeId: r.storeId,
+        storeName: r.store?.storeName || null,
         direction: r.direction,
         message: r.message,
         hasFile: Boolean(r.filePath),
@@ -62,59 +79,75 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const cust = await prisma.customer.findUnique({
-      where: { id: auth.session.customerId },
-      select: { storeId: true },
-    });
-    const targetStoreId = cust?.storeId ?? null;
-
-    const rxFeature = await requireStoreFeature(targetStoreId, "patientPortalAndRxQueue", {
-      forExternalPortal: true,
-    });
-    if (!rxFeature.allowed) return rxFeature.response!;
-
+    const linkedIds = auth.session.linkedCustomerIds ?? [auth.session.customerId];
     const contentType = (req.headers.get("content-type") || "").toLowerCase();
     let notes = "";
     let doctorName = "";
     let fulfillmentMode = "pickup";
-    let storedRelativePath: string | null = null;
-    let safeFileName: string | null = null;
-    let normalizedMime: string | null = null;
+    let requestedStoreId: number | null = null;
+    let formFile: File | null = null;
 
     if (contentType.includes("multipart/form-data")) {
       const form = await req.formData();
       notes = String(form.get("message") || form.get("notes") || "").trim();
       doctorName = String(form.get("doctorName") || "").trim();
       fulfillmentMode = String(form.get("fulfillmentMode") || "pickup").trim();
+      const rawStoreId = form.get("storeId");
+      if (rawStoreId) {
+        const parsed = parseInt(String(rawStoreId), 10);
+        if (!isNaN(parsed) && parsed > 0) requestedStoreId = parsed;
+      }
 
       const fileField = form.get("file");
       if (fileField && typeof fileField === "object" && "arrayBuffer" in fileField) {
         const f = fileField as File;
-        if (f.size > 0) {
-          const uploadMb = Math.max(0.01, f.size / (1024 * 1024));
-          const rxStorageQuota = await checkStoreQuota(targetStoreId, "maxRxStorageMb", {
-            incrementBy: uploadMb,
-            forExternalPortal: true,
-          });
-          if (!rxStorageQuota.allowed) return rxStorageQuota.response!;
-
-          const arrayBuf = await f.arrayBuffer();
-          const saved = await savePrescriptionBuffer(
-            auth.session.customerId,
-            f.name || "prescription.jpg",
-            f.type || "",
-            Buffer.from(arrayBuf)
-          );
-          storedRelativePath = saved.storedRelativePath;
-          safeFileName = saved.safeFileName;
-          normalizedMime = saved.normalizedMime;
-        }
+        if (f.size > 0) formFile = f;
       }
     } else {
       const body = await req.json();
       notes = String(body.message || body.notes || "").trim();
       doctorName = String(body.doctorName || "").trim();
       fulfillmentMode = String(body.fulfillmentMode || "pickup").trim();
+      if (body.storeId) {
+        const parsed = parseInt(String(body.storeId), 10);
+        if (!isNaN(parsed) && parsed > 0) requestedStoreId = parsed;
+      }
+    }
+
+    const resolvedStore = await resolveCustomerTargetStore(
+      auth.session.customerId,
+      linkedIds,
+      requestedStoreId
+    );
+    const targetStoreId = resolvedStore.storeId;
+
+    const rxFeature = await requireStoreFeature(targetStoreId, "patientPortalAndRxQueue", {
+      forExternalPortal: true,
+    });
+    if (!rxFeature.allowed) return rxFeature.response!;
+
+    let storedRelativePath: string | null = null;
+    let safeFileName: string | null = null;
+    let normalizedMime: string | null = null;
+
+    if (formFile) {
+      const uploadMb = Math.max(0.01, formFile.size / (1024 * 1024));
+      const rxStorageQuota = await checkStoreQuota(targetStoreId, "maxRxStorageMb", {
+        incrementBy: uploadMb,
+        forExternalPortal: true,
+      });
+      if (!rxStorageQuota.allowed) return rxStorageQuota.response!;
+
+      const arrayBuf = await formFile.arrayBuffer();
+      const saved = await savePrescriptionBuffer(
+        resolvedStore.targetCustomerId,
+        formFile.name || "prescription.jpg",
+        formFile.type || "",
+        Buffer.from(arrayBuf)
+      );
+      storedRelativePath = saved.storedRelativePath;
+      safeFileName = saved.safeFileName;
+      normalizedMime = saved.normalizedMime;
     }
 
     if (!storedRelativePath && !notes) {
@@ -132,7 +165,8 @@ export async function POST(req: NextRequest) {
 
     const created = await prisma.patientMessage.create({
       data: {
-        customerId: auth.session.customerId,
+        storeId: targetStoreId,
+        customerId: resolvedStore.targetCustomerId,
         direction: "in",
         message: formattedMessageParts.join("\n") || "Prescription uploaded for billing review.",
         filePath: storedRelativePath,
@@ -142,17 +176,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Notify pharmacy store email best-effort
-    const store = await prisma.settings.findFirst({
-      orderBy: { id: "asc" },
-      select: { storeEmail: true, storeName: true },
-    });
-    if (store?.storeEmail) {
+    // Notify originating pharmacy store email best-effort
+    if (resolvedStore.storeEmail) {
       sendEmail({
-        to: store.storeEmail,
+        to: resolvedStore.storeEmail,
         subject: `[New Prescription Request] ${auth.session.name} (${auth.session.phone})`,
         html: `<p>Patient <strong>${escapeHtml(auth.session.name)}</strong> (${escapeHtml(auth.session.phone)}) submitted a prescription / order request.</p><p>${escapeHtml(created.message || "").replace(/\n/g, "<br/>")}</p>`,
         text: `New Prescription Request from ${auth.session.name} (${auth.session.phone}):\n${created.message || ""}`,
+        storeId: targetStoreId,
       }).catch(() => {});
     }
 

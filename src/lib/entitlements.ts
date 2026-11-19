@@ -372,7 +372,10 @@ export async function requireStoreFeature(
 
 async function computeRxStorageMbForStore(storeId: number): Promise<number> {
   const files = await prisma.patientMessage.findMany({
-    where: { filePath: { not: null }, customer: { storeId } },
+    where: {
+      filePath: { not: null },
+      OR: [{ storeId }, { storeId: null, customer: { storeId } }],
+    },
     select: { filePath: true },
   });
   let totalBytes = 0;
@@ -547,16 +550,49 @@ export async function requireSupplierPortalFeature(
 }
 
 /**
- * Resolves primary store ownership from a Customer ID and checks external patient portal entitlement.
+ * Resolves store ownership from a Customer ID (or linked multi-store Customer IDs / explicit targetStoreId)
+ * and checks external patient portal entitlement.
  */
 export async function requireCustomerPortalFeature(
   customerId: number | null | undefined,
-  featureKey: FeatureKey
+  featureKey: FeatureKey,
+  options?: {
+    linkedCustomerIds?: number[];
+    targetStoreId?: number | null;
+  }
 ) {
-  if (!customerId) return requireStoreFeature(null, featureKey, { forExternalPortal: true });
-  const cust = await prisma.customer.findUnique({
-    where: { id: customerId },
-    select: { storeId: true },
+  if (options?.targetStoreId) {
+    return requireStoreFeature(options.targetStoreId, featureKey, { forExternalPortal: true });
+  }
+
+  const candidateIds =
+    options?.linkedCustomerIds && options.linkedCustomerIds.length > 0
+      ? options.linkedCustomerIds
+      : customerId
+      ? [customerId]
+      : [];
+
+  if (candidateIds.length === 0) {
+    return requireStoreFeature(null, featureKey, { forExternalPortal: true });
+  }
+
+  const rows = await prisma.customer.findMany({
+    where: { id: { in: candidateIds } },
+    select: { id: true, storeId: true },
   });
-  return requireStoreFeature(cust?.storeId ?? null, featureKey, { forExternalPortal: true });
+
+  const storeIds = Array.from(new Set(rows.map((r) => r.storeId).filter((s): s is number => s !== null)));
+  if (storeIds.length <= 1) {
+    return requireStoreFeature(storeIds[0] ?? null, featureKey, { forExternalPortal: true });
+  }
+
+  // Multi-store customer: allow viewing if at least one linked pharmacy store has the feature unlocked
+  let lastGate: Awaited<ReturnType<typeof requireStoreFeature>> | null = null;
+  for (const sId of storeIds) {
+    const gate = await requireStoreFeature(sId, featureKey, { forExternalPortal: true });
+    if (gate.allowed) return gate;
+    lastGate = gate;
+  }
+
+  return lastGate || requireStoreFeature(storeIds[0] ?? null, featureKey, { forExternalPortal: true });
 }

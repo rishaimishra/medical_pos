@@ -108,7 +108,9 @@ export async function generateSqlDump(options?: {
 
   const now = new Date();
   const timestampStr = now.toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
-  const filename = `medical_pos_backup_${timestampStr}.sql`;
+  const filename = options?.storeId
+    ? `medical_pos_store_${options.storeId}_backup_${timestampStr}.sql`
+    : `medical_pos_backup_${timestampStr}.sql`;
 
   const dmmfModels = Prisma.dmmf.datamodel.models;
   const dmmfMap = new Map(dmmfModels.map((m) => [m.name, m]));
@@ -137,17 +139,70 @@ export async function generateSqlDump(options?: {
     const delegate = (prisma as any)[entry.clientKey];
     if (!delegate || typeof delegate.findMany !== "function") continue;
 
-    // Build filter if multi-tenant storeId is specified and model supports it
-    const whereClause: any = {};
+    // Build filter if multi-tenant storeId is specified (including relational child tables)
+    let whereClause: any = {};
     if (options?.storeId) {
-      if (entry.modelName === "Settings") {
-        whereClause.id = options.storeId;
-      } else {
-        const hasStoreId = dmmfModel.fields.some(
-          (f) => f.name === "storeId" || f.dbName === "store_id"
-        );
-        if (hasStoreId) {
-          whereClause.storeId = options.storeId;
+      const sId = options.storeId;
+      switch (entry.modelName) {
+        case "Settings":
+          whereClause = { id: sId };
+          break;
+        case "Category":
+          whereClause = {};
+          break;
+        case "SupplierMessage":
+          whereClause = { OR: [{ storeId: sId }, { supplier: { storeId: sId } }] };
+          break;
+        case "PatientMessage":
+          whereClause = { OR: [{ storeId: sId }, { customer: { storeId: sId } }] };
+          break;
+        case "SupplierUser":
+          whereClause = { supplier: { storeId: sId } };
+          break;
+        case "Batch":
+          whereClause = { OR: [{ branch: { storeId: sId } }, { medicine: { storeId: sId } }] };
+          break;
+        case "PurchaseOrder":
+          whereClause = { OR: [{ branch: { storeId: sId } }, { supplier: { storeId: sId } }] };
+          break;
+        case "POItem":
+          whereClause = { purchaseOrder: { OR: [{ branch: { storeId: sId } }, { supplier: { storeId: sId } }] } };
+          break;
+        case "Sale":
+          whereClause = { branch: { storeId: sId } };
+          break;
+        case "SaleItem":
+          whereClause = { sale: { branch: { storeId: sId } } };
+          break;
+        case "Return":
+          whereClause = { branch: { storeId: sId } };
+          break;
+        case "ReturnItem":
+          whereClause = { returnReturn: { branch: { storeId: sId } } };
+          break;
+        case "StockAdjustment":
+          whereClause = { OR: [{ branch: { storeId: sId } }, { medicine: { storeId: sId } }] };
+          break;
+        case "SupplierPayment":
+          whereClause = { supplier: { storeId: sId } };
+          break;
+        case "CustomerPayment":
+          whereClause = { customer: { storeId: sId } };
+          break;
+        case "CustomerPurchaseLog":
+          whereClause = { customer: { storeId: sId } };
+          break;
+        case "LoginAttempt":
+          whereClause = { id: -1 };
+          break;
+        default: {
+          const hasStoreId = dmmfModel.fields.some(
+            (f) => f.name === "storeId" || f.dbName === "store_id"
+          );
+          if (hasStoreId) {
+            whereClause = { storeId: sId };
+          }
+          break;
         }
       }
     }
@@ -476,7 +531,7 @@ export async function restoreSqlDump(
 /**
  * List all saved .sql backups on disk.
  */
-export function listSavedBackups(): {
+export function listSavedBackups(storeId?: number | null): {
   filename: string;
   sizeBytes: number;
   sizeFormatted: string;
@@ -486,8 +541,9 @@ export function listSavedBackups(): {
 
   try {
     const files = fs.readdirSync(BACKUP_DIR);
+    const storePrefix = storeId ? `medical_pos_store_${storeId}_backup_` : null;
     return files
-      .filter((f) => f.endsWith(".sql"))
+      .filter((f) => f.endsWith(".sql") && (!storePrefix || f.startsWith(storePrefix)))
       .map((f) => {
         const fullPath = path.join(BACKUP_DIR, f);
         const stats = fs.statSync(fullPath);

@@ -85,14 +85,41 @@ export async function POST(req: NextRequest) {
 
     if (body.action === "seed_defaults") {
       const seedRes = await ensureDefaultPlansSeeded();
+      let razorpaySyncedCount = 0;
+
+      if (isRazorpayConfigured() && body.skipRazorpaySync !== true) {
+        const pendingPaidDefaults = await prisma.subscriptionPlan.findMany({
+          where: {
+            code: { in: ["STARTER", "GROWTH", "ENTERPRISE"] },
+            priceInr: { gt: 0 },
+            razorpaySyncStatus: { in: ["pending", "failed"] },
+          },
+          select: { id: true },
+        });
+        for (const p of pendingPaidDefaults) {
+          try {
+            const syncRes = await syncPlanToRazorpay(p.id);
+            if (syncRes.success && !syncRes.skipped) razorpaySyncedCount += 1;
+          } catch {
+            // Non-blocking: seeding succeeds even if Razorpay network call fails
+          }
+        }
+      }
+
       await logPlatformAudit({
         platformUserId: auth.session.platformUserId,
         action: "SAAS_DEFAULT_PLANS_SEEDED",
         entity: "subscription_plans",
-        details: seedRes,
+        details: { ...seedRes, razorpaySyncedCount },
         ipAddress: ip,
       });
-      return NextResponse.json({ success: true, ...seedRes });
+      return NextResponse.json({
+        success: true,
+        ...seedRes,
+        created: seedRes.createdCodes.length,
+        updated: 0,
+        razorpaySyncedCount,
+      });
     }
 
     const code = String(body.code || "")

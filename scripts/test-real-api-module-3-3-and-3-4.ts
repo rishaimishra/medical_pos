@@ -46,6 +46,8 @@ import {
   DELETE as deletePlan,
 } from "../src/app/api/super-admin/plans/[id]/route";
 import { GET as getAdminNotifications } from "../src/app/api/admin/notifications/route";
+import { POST as postAdminCustomer } from "../src/app/api/admin/customers/route";
+import { DEFAULT_SAAS_PLANS } from "../src/lib/saasFeatures";
 
 let passedTests = 0;
 let failedTests = 0;
@@ -385,10 +387,22 @@ async function main() {
     const seedRes = await postPlan(
       makeSuperReq(ceoToken, "http://localhost:3000/api/super-admin/plans", "POST", {
         action: "seed_defaults",
+        skipRazorpaySync: true,
       })
     );
     const seedJson = await seedRes.json();
-    assert(seedRes.status === 200 && seedJson.success, "POST /api/super-admin/plans (seed_defaults) succeeds");
+    assert(
+      seedRes.status === 200 &&
+        seedJson.success &&
+        typeof seedJson.created === "number" &&
+        typeof seedJson.updated === "number",
+      "POST /api/super-admin/plans (seed_defaults) succeeds & returns created/updated counts"
+    );
+    const starterPlanDef = DEFAULT_SAAS_PLANS.find((p) => p.code === "STARTER");
+    assert(
+      starterPlanDef?.features.barcodeAndThermalLabels === false,
+      "BUG-3.4-C: STARTER_FEATURES aligns with Growth-tier barcodeAndThermalLabels=false"
+    );
 
     // GET plans & verify 16 features + 8 quotas
     const plansRes = await getPlans(makeSuperReq(ceoToken, "http://localhost:3000/api/super-admin/plans"));
@@ -777,6 +791,224 @@ async function main() {
       makeSuperReq(ceoToken, "http://localhost:3000/api/super-admin/announcements")
     );
     assert(listAnnRes.status === 200, "GET /announcements succeeds");
+
+    // =========================================================================
+    // REGRESSION CHECKS FOR FIXED BUGS (3.3-A, 3.3-B, 3.3-C, 3.3-D, 3.3-E, 3.4-C)
+    // =========================================================================
+    console.log("\n[Module 3.3 & 3.4] Testing Broadcast Plan Targeting, Sub Uniqueness, Last-Admin & Quotas...");
+
+    // BUG-3.3-A: targetPlanCode filtering in /api/admin/notifications
+    const wrongPlanTitle = `Enterprise Only Notice ${ts}`;
+    const wrongPlanAnnRes = await postAnnouncement(
+      makeSuperReq(ceoToken, "http://localhost:3000/api/super-admin/announcements", "POST", {
+        title: wrongPlanTitle,
+        message: "Only for ENTERPRISE stores",
+        severity: "info",
+        targetPlanCode: "ENTERPRISE",
+      })
+    );
+    const wrongPlanAnnJson = await wrongPlanAnnRes.json();
+    if (wrongPlanAnnJson.announcement?.id) createdIds.announcements.push(wrongPlanAnnJson.announcement.id);
+
+    const matchPlanTitle = `Tight Plan Notice ${ts}`;
+    const matchPlanAnnRes = await postAnnouncement(
+      makeSuperReq(ceoToken, "http://localhost:3000/api/super-admin/announcements", "POST", {
+        title: matchPlanTitle,
+        message: "Targeted to Store A plan code",
+        severity: "warning",
+        targetPlanCode: `TEST_SUB_PLAN_${ts}`,
+      })
+    );
+    const matchPlanAnnJson = await matchPlanAnnRes.json();
+    if (matchPlanAnnJson.announcement?.id) createdIds.announcements.push(matchPlanAnnJson.announcement.id);
+
+    const planNotifRes = await getAdminNotifications(
+      makeAdminReq(adminAToken, "http://localhost:3000/api/admin/notifications")
+    );
+    const planNotifJson = await planNotifRes.json();
+    assert(
+      planNotifRes.status === 200 &&
+        (planNotifJson.notifications || []).some((n: any) => n.title === matchPlanTitle) &&
+        !(planNotifJson.notifications || []).some((n: any) => n.title === wrongPlanTitle) &&
+        Array.isArray(planNotifJson.announcements) &&
+        planNotifJson.announcements.some((a: any) => a.title === matchPlanTitle),
+      "BUG-3.3-A: targetPlanCode filters broadcasts accurately & exposes top-banner announcements array"
+    );
+
+    // BUG-3.3-B: grant_plan must expire prior open subscriptions on Store A (max 1 active subscription per store)
+    const starterDbPlan = await prisma.subscriptionPlan.findUnique({ where: { code: "STARTER" } });
+    if (starterDbPlan) {
+      const regrantRes = await patchStoreLifecycle(
+        makeSuperReq(ceoToken, `http://localhost:3000/api/super-admin/stores/${storeA.id}`, "PATCH", {
+          action: "grant_plan",
+          planId: starterDbPlan.id,
+          durationDays: 30,
+          notes: "Upgrade test",
+        }),
+        { params: Promise.resolve({ id: String(storeA.id) }) }
+      );
+      const regrantJson = await regrantRes.json();
+      if (regrantJson.subscription?.id) createdIds.subscriptions.push(regrantJson.subscription.id);
+      const openSubCount = await prisma.storeSubscription.count({
+        where: { storeId: storeA.id, status: { in: ["active", "trialing", "grace_period", "past_due"] } },
+      });
+      assert(
+        regrantRes.status === 200 && openSubCount === 1,
+        "BUG-3.3-B: grant_plan expires prior open subscription so store holds only 1 active subscription"
+      );
+    }
+
+    // BUG-3.3-C: Unfinished Setup Wizard Draft hidden by default & nearQuota detects maxSuppliers
+    const draftStore = await prisma.settings.create({
+      data: {
+        storeName: `Draft Store ${ts}`,
+        storeStatus: "suspended",
+        setupDone: false,
+      },
+    });
+    createdIds.stores.push(draftStore.id);
+    const dirNoDraftRes = await getStoresDirectory(
+      makeSuperReq(ceoToken, `http://localhost:3000/api/super-admin/stores?search=Draft%20Store%20${ts}`)
+    );
+    const dirNoDraftJson = await dirNoDraftRes.json();
+    assert(
+      dirNoDraftRes.status === 200 && (dirNoDraftJson.stores || []).length === 0,
+      "BUG-3.3-C: Unfinished Setup Wizard draft (setupDone=false, 0 branches) is hidden from Stores Directory"
+    );
+
+    // Also verify nearQuota triggers on maxSuppliers (>=80%)
+    const latestSubBeforeSupQuota = await prisma.storeSubscription.findFirst({
+      where: { storeId: storeA.id },
+      orderBy: { id: "desc" },
+    });
+    if (latestSubBeforeSupQuota) {
+      await patchStoreLifecycle(
+        makeSuperReq(ceoToken, `http://localhost:3000/api/super-admin/stores/${storeA.id}`, "PATCH", {
+          action: "set_overrides",
+          customLimits: { maxBranches: 50, maxStaffUsers: 50, maxMedicines: 500, maxMonthlyInvoices: 500, maxSuppliers: 1, maxCustomers: 100 },
+        }),
+        { params: Promise.resolve({ id: String(storeA.id) }) }
+      );
+      const supNearQuotaRes = await getStoresDirectory(
+        makeSuperReq(ceoToken, `http://localhost:3000/api/super-admin/stores?filter=near_quota&search=${ts}`)
+      );
+      const supNearQuotaJson = await supNearQuotaRes.json();
+      assert(
+        supNearQuotaRes.status === 200 && (supNearQuotaJson.stores || []).some((s: any) => s.id === storeA.id),
+        "BUG-3.3-C: Stores directory filter=near_quota detects 80%+ maxSuppliers consumption"
+      );
+    }
+
+    // BUG-3.3-D: Last-Admin protection in Global Users & Store 360 + storeId-filtered tab badge counts
+    const lastAdmGlobalFail = await patchGlobalUser(
+      makeSuperReq(ceoToken, "http://localhost:3000/api/super-admin/users", "PATCH", {
+        userType: "store_user",
+        id: adminA.id,
+        active: false,
+      })
+    );
+    const lastAdm360Fail = await patchStoreLifecycle(
+      makeSuperReq(ceoToken, `http://localhost:3000/api/super-admin/stores/${storeA.id}`, "PATCH", {
+        action: "toggle_user_active",
+        userId: adminA.id,
+        active: false,
+      }),
+      { params: Promise.resolve({ id: String(storeA.id) }) }
+    );
+    const storeAFilteredUsersRes = await getGlobalUsers(
+      makeSuperReq(ceoToken, `http://localhost:3000/api/super-admin/users?tab=store_admins&storeId=${storeA.id}`)
+    );
+    const storeAFilteredUsersJson = await storeAFilteredUsersRes.json();
+    assert(
+      lastAdmGlobalFail.status === 400 &&
+        lastAdm360Fail.status === 400 &&
+        storeAFilteredUsersJson.counts?.suppliers === 1 &&
+        storeAFilteredUsersJson.counts?.patients === 1,
+      "BUG-3.3-D: Last-Admin protection blocks disabling sole store admin & counts respect storeId filter"
+    );
+
+    // BUG-3.3-E: Store 360 Net Revenue subtracts processed returns & returns alertBatches/recentReturns/customerDues
+    const retA = await prisma.return.create({
+      data: {
+        returnNumber: `RET-33E-${ts}`,
+        saleId: saleA.id,
+        customerId: customerA.id,
+        branchId: mainBranchA.id,
+        reason: "Partial refund check",
+        refundAmount: 100,
+        status: "processed",
+        processedAt: new Date(),
+      },
+    });
+    await prisma.sale.create({
+      data: {
+        branchId: mainBranchA.id,
+        createdBy: adminA.id,
+        customerId: customerA.id,
+        invoiceNo: `INV-CRED-${ts}`,
+        totalAmount: 200,
+        gstAmount: 0,
+        grandTotal: 200,
+        paymentMethod: "credit",
+        creditAmount: 200,
+        saleDate: new Date(),
+      },
+    }).then((s) => createdIds.sales.push(s.id));
+
+    const detailNetRes = await getStoreDetail(
+      makeSuperReq(ceoToken, `http://localhost:3000/api/super-admin/stores/${storeA.id}`),
+      { params: Promise.resolve({ id: String(storeA.id) }) }
+    );
+    const detailNetJson = await detailNetRes.json();
+    await prisma.return.delete({ where: { id: retA.id } });
+    // Expected net revenue today: 448 + 200 - 100 = 548
+    assert(
+      detailNetRes.status === 200 &&
+        Math.abs(Number(detailNetJson.overview?.kpis?.revenueToday) - 548) < 0.01 &&
+        Array.isArray(detailNetJson.operations?.recentReturns) &&
+        detailNetJson.operations.recentReturns.length >= 1 &&
+        Array.isArray(detailNetJson.operations?.customerDues) &&
+        detailNetJson.operations.customerDues.some((c: any) => c.id === customerA.id && c.outstandingDue >= 200) &&
+        Array.isArray(detailNetJson.operations?.alertBatches),
+      "BUG-3.3-E: Store 360 computes Net Revenue minus returns & exposes recentReturns, customerDues & alertBatches"
+    );
+
+    // BUG-3.4-C: maxCustomers quota enforced on POST /api/admin/customers
+    const latestSubA = await prisma.storeSubscription.findFirst({
+      where: { storeId: storeA.id },
+      orderBy: { id: "desc" },
+    });
+    if (latestSubA) {
+      await prisma.storeSubscription.update({
+        where: { id: latestSubA.id },
+        data: { customLimitsJson: JSON.stringify({ maxCustomers: 1 }) },
+      });
+      await patchStoreLifecycle(
+        makeSuperReq(ceoToken, `http://localhost:3000/api/super-admin/stores/${storeA.id}`, "PATCH", {
+          action: "set_overrides",
+          customLimits: { maxCustomers: 1 },
+        }),
+        { params: Promise.resolve({ id: String(storeA.id) }) }
+      );
+      const custQuotaFailRes = await postAdminCustomer(
+        new NextRequest(new URL("http://localhost:3000/api/admin/customers"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            cookie: `${SESSION_COOKIE_NAME}=${adminAToken}`,
+          },
+          body: JSON.stringify({
+            name: `Blocked Patient ${ts}`,
+            phone: `977${String(ts).slice(-7)}`,
+          }),
+        })
+      );
+      const custQuotaJson = await custQuotaFailRes.json();
+      assert(
+        custQuotaFailRes.status === 402 && custQuotaJson.reason === "QUOTA_LIMIT_EXCEEDED",
+        "BUG-3.4-C: POST /api/admin/customers enforces maxCustomers plan quota (402)"
+      );
+    }
   } finally {
     console.log("\n[Cleanup] Removing temporary test records...");
     if (createdIds.announcements.length) {
@@ -788,6 +1020,9 @@ async function main() {
     }
     if (createdIds.platformUsers.length) {
       await prisma.platformAuditLog.deleteMany({ where: { platformUserId: { in: createdIds.platformUsers } } });
+    }
+    if (createdIds.branches.length) {
+      await prisma.return.deleteMany({ where: { branchId: { in: createdIds.branches } } });
     }
     if (createdIds.sales.length) {
       await prisma.sale.deleteMany({ where: { id: { in: createdIds.sales } } });

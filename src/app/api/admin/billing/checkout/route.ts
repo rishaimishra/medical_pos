@@ -131,6 +131,7 @@ export async function POST(req: NextRequest) {
 
       const totalCount =
         plan.billingCycle === "yearly" ? 10 : plan.billingCycle === "quarterly" ? 20 : 60;
+      const subTax = calculateSaasTaxFromSubtotal(basePrice, 18);
 
       const rzpSub = await razorpayRequest<{ id: string; status: string }>("POST", "/subscriptions", {
         plan_id: plan.razorpayPlanId,
@@ -141,6 +142,10 @@ export async function POST(req: NextRequest) {
           planId: String(plan.id),
           planCode: plan.code,
           userId: String(auth.session.userId),
+          razorpayCustomerId: razorpayCustomerId || "",
+          amountSubtotal: String(subTax.amountSubtotal),
+          gstAmount: String(subTax.gstAmount),
+          totalAmount: String(subTax.totalAmount),
         },
       });
 
@@ -149,7 +154,12 @@ export async function POST(req: NextRequest) {
         userId: auth.session.userId,
         action: "SAAS_CHECKOUT_SUBSCRIPTION_INITIATED",
         entity: "store_subscriptions",
-        details: { planCode: plan.code, razorpaySubscriptionId: rzpSub.id },
+        details: {
+          planId: plan.id,
+          planCode: plan.code,
+          razorpaySubscriptionId: rzpSub.id,
+          razorpayCustomerId,
+        },
         ipAddress: getClientIp(req),
       });
 
@@ -159,6 +169,8 @@ export async function POST(req: NextRequest) {
         razorpayKeyId,
         subscriptionId: rzpSub.id,
         customerId: razorpayCustomerId,
+        amountPaise: Math.round(subTax.totalAmount * 100),
+        gstBreakdown: subTax,
         currency: "INR",
         plan: {
           id: plan.id,

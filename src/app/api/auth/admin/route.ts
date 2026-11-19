@@ -15,13 +15,44 @@ import { ROLE_MATRIX } from "@/lib/rbac";
 
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 12; // 12-hour cookie container (2-hour inactivity enforced inside token)
 
-function attachSessionCookie(res: NextResponse, token: string) {
+function attachSessionCookie(
+  res: NextResponse,
+  token: string,
+  maxAgeSeconds = COOKIE_MAX_AGE_SECONDS
+) {
   res.cookies.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    maxAge: COOKIE_MAX_AGE_SECONDS,
+    maxAge: maxAgeSeconds,
   });
+}
+
+function getEffectiveCookieMaxAge(session: {
+  impersonatedByPlatformUserId?: number;
+  impersonationExpiresAt?: number;
+}): number {
+  if (!session.impersonatedByPlatformUserId) return COOKIE_MAX_AGE_SECONDS;
+  if (!session.impersonationExpiresAt) return 60 * 30;
+  return Math.max(1, Math.floor((session.impersonationExpiresAt - Date.now()) / 1000));
+}
+
+function copyImpersonationMetadata(
+  target: ReturnType<typeof buildUserSessionPayload>,
+  source?: {
+    impersonatedByPlatformUserId?: number;
+    impersonatorName?: string;
+    impersonationReason?: string;
+    impersonationExpiresAt?: number;
+  } | null
+) {
+  if (source?.impersonatedByPlatformUserId) {
+    target.impersonatedByPlatformUserId = source.impersonatedByPlatformUserId;
+    target.impersonatorName = source.impersonatorName;
+    target.impersonationReason = source.impersonationReason;
+    target.impersonationExpiresAt = source.impersonationExpiresAt;
+  }
+  return target;
 }
 
 /**
@@ -42,6 +73,25 @@ export async function GET(req: NextRequest) {
         session: null,
         roleMatrix: ROLE_MATRIX,
       });
+    }
+
+    if (
+      tokenResult.session.impersonatedByPlatformUserId &&
+      tokenResult.session.impersonationExpiresAt &&
+      Date.now() > tokenResult.session.impersonationExpiresAt
+    ) {
+      const res = NextResponse.json({
+        success: true,
+        authenticated: false,
+        setupDone: true,
+        locked: false,
+        expired: true,
+        session: null,
+        roleMatrix: ROLE_MATRIX,
+        message: "CEO Support Session expired (30m limit).",
+      });
+      res.cookies.delete(SESSION_COOKIE_NAME);
+      return res;
     }
 
     // Fetch live user record to handle mid-session role/permission updates or account deactivation
@@ -109,7 +159,10 @@ export async function GET(req: NextRequest) {
         ipAddress: getClientIp(req),
       });
 
-      const lockedPayload = buildUserSessionPayload(dbUser, true);
+      const lockedPayload = copyImpersonationMetadata(
+        buildUserSessionPayload(dbUser, true),
+        tokenResult.session
+      );
       lockedPayload.issuedAt = tokenResult.session.issuedAt;
       lockedPayload.lastActive = tokenResult.session.lastActive;
       const lockedToken = createSessionToken(lockedPayload);
@@ -125,23 +178,19 @@ export async function GET(req: NextRequest) {
         roleMatrix: ROLE_MATRIX,
         message: "Session auto-locked after 2 hours of inactivity.",
       });
-      attachSessionCookie(res, lockedToken);
+      attachSessionCookie(res, lockedToken, getEffectiveCookieMaxAge(lockedPayload));
       return res;
     }
 
     const isLocked = Boolean(tokenResult.locked);
-    const refreshedPayload = buildUserSessionPayload(dbUser, isLocked);
+    const refreshedPayload = copyImpersonationMetadata(
+      buildUserSessionPayload(dbUser, isLocked),
+      tokenResult.session
+    );
     refreshedPayload.issuedAt = tokenResult.session.issuedAt;
     refreshedPayload.lastActive = isLocked
       ? tokenResult.session.lastActive
       : Date.now();
-
-    if (tokenResult.session.impersonatedByPlatformUserId) {
-      refreshedPayload.impersonatedByPlatformUserId = tokenResult.session.impersonatedByPlatformUserId;
-      refreshedPayload.impersonatorName = tokenResult.session.impersonatorName;
-      refreshedPayload.impersonationReason = tokenResult.session.impersonationReason;
-      refreshedPayload.impersonationExpiresAt = tokenResult.session.impersonationExpiresAt;
-    }
 
     const refreshedToken = createSessionToken(refreshedPayload);
     const res = NextResponse.json({
@@ -153,7 +202,7 @@ export async function GET(req: NextRequest) {
       session: refreshedPayload,
       roleMatrix: ROLE_MATRIX,
     });
-    attachSessionCookie(res, refreshedToken);
+    attachSessionCookie(res, refreshedToken, getEffectiveCookieMaxAge(refreshedPayload));
     return res;
   } catch (error) {
     console.error("[GET /api/auth/admin Error]:", error);
@@ -308,7 +357,10 @@ export async function POST(req: NextRequest) {
       }
 
       await clearFailedLoginAttempts(ip, "admin", dbUser.username, dbUser.email);
-      const unlockedPayload = buildUserSessionPayload(dbUser, false);
+      const unlockedPayload = copyImpersonationMetadata(
+        buildUserSessionPayload(dbUser, false),
+        current.session
+      );
       const token = createSessionToken(unlockedPayload);
 
       await logAudit({
@@ -330,7 +382,7 @@ export async function POST(req: NextRequest) {
         token,
         message: "Screen unlocked successfully.",
       });
-      attachSessionCookie(res, token);
+      attachSessionCookie(res, token, getEffectiveCookieMaxAge(unlockedPayload));
       return res;
     }
 
@@ -646,7 +698,7 @@ export async function PUT(req: NextRequest) {
         session: lockedSession,
         message: "Screen locked.",
       });
-      attachSessionCookie(res, token);
+      attachSessionCookie(res, token, getEffectiveCookieMaxAge(lockedSession));
       return res;
     }
 
@@ -662,6 +714,23 @@ export async function PUT(req: NextRequest) {
       );
     }
 
+    if (
+      current.session.impersonatedByPlatformUserId &&
+      current.session.impersonationExpiresAt &&
+      Date.now() > current.session.impersonationExpiresAt
+    ) {
+      const res = NextResponse.json(
+        {
+          success: false,
+          authenticated: false,
+          message: "CEO Support Session expired (30m limit).",
+        },
+        { status: 401 }
+      );
+      res.cookies.delete(SESSION_COOKIE_NAME);
+      return res;
+    }
+
     const updatedSession = {
       ...current.session,
       lastActive: Date.now(),
@@ -672,7 +741,7 @@ export async function PUT(req: NextRequest) {
       locked: false,
       session: updatedSession,
     });
-    attachSessionCookie(res, token);
+    attachSessionCookie(res, token, getEffectiveCookieMaxAge(updatedSession));
     return res;
   } catch (error) {
     console.error("[PUT /api/auth/admin Error]:", error);

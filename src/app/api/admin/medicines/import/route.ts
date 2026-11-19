@@ -135,8 +135,9 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Fetch all existing medicines to detect duplicates case-insensitively on Name + Company (Bug 12)
+      // Fetch all existing medicines in Store Tenant to detect duplicates case-insensitively on Name + Company (Bug 12)
       const existingMeds = await prisma.medicine.findMany({
+        where: auth.session.storeId ? { storeId: auth.session.storeId } : undefined,
         select: { name: true, company: true },
       });
       const existingSet = new Set(
@@ -326,8 +327,9 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Re-verify duplicates against DB to ensure zero duplicate insertion (Bug 12)
+      // Re-verify duplicates against Store Tenant DB to ensure zero duplicate insertion (Bug 12)
       const currentDbMeds = await prisma.medicine.findMany({
+        where: auth.session.storeId ? { storeId: auth.session.storeId } : undefined,
         select: { name: true, company: true },
       });
       const currentDbKeys = new Set(

@@ -99,7 +99,10 @@ export async function GET(req: NextRequest) {
       prisma.customer.count({ where: { storeId } }),
       prisma.discount.count({ where: { storeId, active: true } }),
       prisma.patientMessage.findMany({
-        where: { filePath: { not: null }, customer: { storeId } },
+        where: {
+          filePath: { not: null },
+          OR: [{ storeId }, { storeId: null, customer: { storeId } }],
+        },
         select: { filePath: true },
       }),
     ]);

@@ -486,6 +486,7 @@ export interface SupplierPoEmailOptions {
   storeName?: string;
   branchName?: string;
   notes?: string;
+  storeId?: number | null;
 }
 
 /**
@@ -602,12 +603,14 @@ export async function sendSupplierPoEmail(options: SupplierPoEmailOptions): Prom
     subject: config.subject,
     html,
     text: `${config.title}\nPO: ${options.poNumber}\nTotal: ₹${formattedTotal}\nItems: ${options.itemsCount}\nStore: ${store}`,
+    storeId: options.storeId,
   });
 }
 
 export interface DailyStockAlertEmailOptions {
   adminEmail: string;
   storeName?: string;
+  storeId?: number | null;
   lowStockItems: Array<{ name: string; stock: number; threshold: number; unit?: string }>;
   expiringBatches: Array<{ name: string; batchNo: string; expiryDate: string; daysLeft: number; stock: number }>;
 }
@@ -729,6 +732,7 @@ export async function sendDailyStockAlertEmail(options: DailyStockAlertEmailOpti
     subject: `[Daily Stock Alert] ${options.lowStockItems.length} Low Stock, ${options.expiringBatches.length} Expiring - ${store}`,
     html,
     text: `Daily Inventory Alert for ${store}\nLow Stock Items: ${options.lowStockItems.length}\nExpiring Batches: ${options.expiringBatches.length}`,
+    storeId: options.storeId,
   });
 }
 

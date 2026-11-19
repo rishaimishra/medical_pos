@@ -38,10 +38,21 @@ export async function GET(req: NextRequest) {
     hasPermission(auth.session, "view_cost_price");
 
   try {
+    const userStoreId = auth.session.storeId ?? null;
+    if (branchId && userStoreId) {
+      const brCheck = await prisma.branch.findUnique({
+        where: { id: branchId },
+        select: { storeId: true },
+      });
+      if (!brCheck || (brCheck.storeId && brCheck.storeId !== userStoreId)) {
+        return NextResponse.json({ success: false, message: "Forbidden: Branch belongs to another store" }, { status: 403 });
+      }
+    }
+
     // 1. Fetch store threshold
-    const settings = await prisma.settings.findFirst({
-      select: { lowQty: true },
-    });
+    const settings = userStoreId
+      ? await prisma.settings.findUnique({ where: { id: userStoreId }, select: { lowQty: true } })
+      : await prisma.settings.findFirst({ select: { lowQty: true } });
     const lowStockThreshold = settings?.lowQty ?? APP_CONFIG.lowQtyThreshold;
 
     // 2. Fetch pending on-order quantities (pending, price_updated, confirmed, shipped) to prevent duplicate ordering
@@ -49,7 +60,7 @@ export async function GET(req: NextRequest) {
       where: {
         purchaseOrder: {
           status: { in: ["pending", "price_updated", "confirmed", "shipped"] },
-          branchId: branchId ? branchId : undefined,
+          ...(branchId ? { branchId } : userStoreId ? { branch: { storeId: userStoreId } } : {}),
         },
       },
       select: {
@@ -72,7 +83,7 @@ export async function GET(req: NextRequest) {
       where: {
         sale: {
           saleDate: { gte: thirtyDaysAgo },
-          branchId: branchId ? branchId : undefined,
+          ...(branchId ? { branchId } : userStoreId ? { branch: { storeId: userStoreId } } : {}),
         },
       },
       _sum: { quantity: true },
@@ -83,12 +94,16 @@ export async function GET(req: NextRequest) {
       salesVelocityMap[rs.medicineId] = rs._sum?.quantity ?? 0;
     }
 
-    // 4. Fetch all medicines with their batches for this branch
+    // 4. Fetch all medicines in Store Tenant with their batches
     const medicines = await prisma.medicine.findMany({
+      where: userStoreId ? { storeId: userStoreId } : undefined,
       orderBy: { name: "asc" },
       include: {
         batches: {
-          where: branchId ? { branchId } : undefined,
+          where: {
+            ...(branchId ? { branchId } : {}),
+            ...(userStoreId ? { branch: { storeId: userStoreId } } : {}),
+          },
           orderBy: { id: "desc" },
           include: {
             supplier: {
@@ -106,8 +121,9 @@ export async function GET(req: NextRequest) {
       estimatedTotal: number;
     }> = {};
 
-    // Also fetch a fallback default supplier if an item has no previous batches
+    // Also fetch a fallback default supplier in Store Tenant if an item has no previous batches
     const defaultSupplier = await prisma.supplier.findFirst({
+      where: userStoreId ? { storeId: userStoreId } : undefined,
       orderBy: { id: "asc" },
       select: { id: true, name: true, phone: true, email: true },
     });

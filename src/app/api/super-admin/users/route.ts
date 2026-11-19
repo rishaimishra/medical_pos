@@ -24,6 +24,12 @@ export async function GET(req: NextRequest) {
 
   const filterStoreId =
     storeIdParam && storeIdParam !== "all" ? parseInt(storeIdParam, 10) : null;
+  const storeScope =
+    filterStoreId && !isNaN(filterStoreId) ? { storeId: filterStoreId } : {};
+  const supplierStoreScope =
+    filterStoreId && !isNaN(filterStoreId)
+      ? { supplier: { storeId: filterStoreId } }
+      : {};
 
   try {
     const [
@@ -34,11 +40,15 @@ export async function GET(req: NextRequest) {
       patientCount,
       platformCount,
     ] = await Promise.all([
-      prisma.settings.findMany({ orderBy: { id: "asc" }, select: { id: true, storeName: true } }),
-      prisma.user.count({ where: { role: "admin" } }),
-      prisma.user.count({ where: { role: { not: "admin" } } }),
-      prisma.supplierUser.count(),
-      prisma.customer.count(),
+      prisma.settings.findMany({
+        where: { OR: [{ setupDone: true }, { branches: { some: {} } }] },
+        orderBy: { id: "asc" },
+        select: { id: true, storeName: true },
+      }),
+      prisma.user.count({ where: { role: "admin", ...storeScope } }),
+      prisma.user.count({ where: { role: { not: "admin" }, ...storeScope } }),
+      prisma.supplierUser.count({ where: supplierStoreScope }),
+      prisma.customer.count({ where: storeScope }),
       prisma.platformUser.count(),
     ]);
 
@@ -264,9 +274,37 @@ export async function PATCH(req: NextRequest) {
     const ip = getClientIp(req);
 
     if (userType === "store_user") {
+      const targetUser = await prisma.user.findUnique({
+        where: { id },
+        select: { id: true, storeId: true, role: true, active: true, username: true },
+      });
+      if (!targetUser) {
+        return NextResponse.json({ success: false, message: "Store user not found." }, { status: 404 });
+      }
+      const nextActive = Boolean(body.active);
+      if (targetUser.role.toLowerCase() === "admin" && targetUser.active && !nextActive) {
+        const otherActiveAdmins = await prisma.user.count({
+          where: {
+            role: "admin",
+            active: true,
+            id: { not: id },
+            ...(targetUser.storeId ? { storeId: targetUser.storeId } : {}),
+          },
+        });
+        if (otherActiveAdmins < 1) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: "Security Protection: Cannot deactivate the last active Store Admin for this pharmacy.",
+            },
+            { status: 400 }
+          );
+        }
+      }
+
       const updated = await prisma.user.update({
         where: { id },
-        data: { active: Boolean(body.active) },
+        data: { active: nextActive },
       });
       await logPlatformAudit({
         platformUserId: auth.session.platformUserId,

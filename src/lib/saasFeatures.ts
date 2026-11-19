@@ -279,7 +279,7 @@ const STARTER_FEATURES: PlanFeatureFlags = {
   salesAndReturnsCore: true,
   purchasesAndGrn: true,
   bakiKhataCreditLedger: true,
-  barcodeAndThermalLabels: true,
+  barcodeAndThermalLabels: false,
 };
 
 const ENTERPRISE_FEATURES: PlanFeatureFlags = buildEmptyFeatureFlags(true);

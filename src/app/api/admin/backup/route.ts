@@ -36,9 +36,9 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
 
-    // List past backups
+    // List past backups (strictly scoped to this store)
     if (searchParams.get("list") === "true") {
-      const backups = listSavedBackups();
+      const backups = listSavedBackups(auth.session.storeId);
       return NextResponse.json({
         success: true,
         backups,
@@ -49,6 +49,15 @@ export async function GET(req: NextRequest) {
     const specificFile = searchParams.get("file");
     if (specificFile) {
       const safeFilename = path.basename(specificFile);
+      if (
+        auth.session.storeId &&
+        !safeFilename.startsWith(`medical_pos_store_${auth.session.storeId}_backup_`)
+      ) {
+        return NextResponse.json(
+          { success: false, error: "Forbidden: You may only download backups belonging to your store." },
+          { status: 403 }
+        );
+      }
       const filePath = path.join(BACKUP_DIR, safeFilename);
 
       if (!fs.existsSync(filePath)) {

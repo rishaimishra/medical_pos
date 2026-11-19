@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import {
   CUSTOMER_COOKIE_NAME,
+  getLinkedCustomerIds,
   hashPassword,
+  resolveCustomerTargetStore,
   signCustomerToken,
   verifyCustomerRequest,
   verifyPassword,
@@ -20,7 +22,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const [customer, store] = await Promise.all([
+    const linkedIds = auth.session.linkedCustomerIds ?? [auth.session.customerId];
+    const [customer, resolvedStore] = await Promise.all([
       prisma.customer.findUnique({
         where: { id: auth.session.customerId },
         select: {
@@ -40,22 +43,29 @@ export async function GET(req: NextRequest) {
           lastLogin: true,
         },
       }),
-      prisma.settings.findFirst({
-        orderBy: { id: "asc" },
-        select: { storeName: true, storeEmail: true, storePhone: true },
-      }),
+      resolveCustomerTargetStore(auth.session.customerId, linkedIds),
     ]);
 
     if (!customer) {
       return NextResponse.json({ success: false, message: "Customer profile not found" }, { status: 404 });
     }
 
+    const store = resolvedStore.storeId
+      ? await prisma.settings.findUnique({
+          where: { id: resolvedStore.storeId },
+          select: { storeName: true, storeEmail: true, storePhone: true },
+        })
+      : await prisma.settings.findFirst({
+          orderBy: { id: "asc" },
+          select: { storeName: true, storeEmail: true, storePhone: true },
+        });
+
     return NextResponse.json({
       success: true,
       profile: customer,
       storeContact: {
-        name: store?.storeName || "Medical POS Pharmacy",
-        email: store?.storeEmail || null,
+        name: store?.storeName || resolvedStore.storeName || "Medical POS Pharmacy",
+        email: store?.storeEmail || resolvedStore.storeEmail || null,
         phone: store?.storePhone || null,
       },
     });
@@ -112,8 +122,9 @@ export async function PATCH(req: NextRequest) {
       }
 
       const nextHash = await hashPassword(newPassword);
+      const linkedIds = await getLinkedCustomerIds(customer.id, customer.phone);
       await prisma.customer.updateMany({
-        where: { phone: customer.phone },
+        where: { OR: [{ id: { in: linkedIds } }, { phone: customer.phone }] },
         data: { password: nextHash },
       });
 
@@ -191,11 +202,15 @@ export async function PATCH(req: NextRequest) {
         : {}),
     };
 
+    const linkedIds = await getLinkedCustomerIds(customer.id, customer.phone);
+    const otherLinkedIds = linkedIds.filter((lid) => lid !== customer.id);
     const [, updated] = await Promise.all([
-      prisma.customer.updateMany({
-        where: { phone: customer.phone, id: { not: customer.id } },
-        data: syncData,
-      }),
+      otherLinkedIds.length > 0
+        ? prisma.customer.updateMany({
+            where: { id: { in: otherLinkedIds } },
+            data: syncData,
+          })
+        : Promise.resolve({ count: 0 }),
       prisma.customer.update({
         where: { id: customer.id },
         data: syncData,

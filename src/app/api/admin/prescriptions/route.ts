@@ -30,6 +30,16 @@ export async function GET(req: NextRequest) {
   const filter = (searchParams.get("filter") || "all").toLowerCase(); // all | unread
 
   try {
+    const userStoreId = auth.session.storeId ?? null;
+    const pmStoreScope: any = userStoreId
+      ? {
+          OR: [
+            { storeId: userStoreId },
+            { storeId: null, customer: { storeId: userStoreId } },
+          ],
+        }
+      : {};
+
     if (idParam) {
       const id = parseInt(idParam, 10);
       if (isNaN(id)) {
@@ -41,6 +51,7 @@ export async function GET(req: NextRequest) {
           customer: {
             select: {
               id: true,
+              storeId: true,
               name: true,
               phone: true,
               email: true,
@@ -51,7 +62,8 @@ export async function GET(req: NextRequest) {
           },
         },
       });
-      if (!single) {
+      const singleStoreId = single?.storeId ?? single?.customer?.storeId ?? null;
+      if (!single || (userStoreId && singleStoreId !== userStoreId)) {
         return NextResponse.json({ success: false, message: "Prescription request not found" }, { status: 404 });
       }
       let singleDue = 0;
@@ -90,6 +102,7 @@ export async function GET(req: NextRequest) {
 
     const where: any = {
       direction: "in",
+      ...pmStoreScope,
     };
     if (filter === "unread") {
       where.isRead = false;
@@ -115,7 +128,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.patientMessage.count({
-        where: { direction: "in", isRead: false },
+        where: { direction: "in", isRead: false, ...pmStoreScope },
       }),
     ]);
 
@@ -198,6 +211,15 @@ export async function PATCH(req: NextRequest) {
     const id = parseInt(String(body.id || ""), 10);
     if (!id || isNaN(id)) {
       return NextResponse.json({ success: false, message: "Valid prescription message ID required" }, { status: 400 });
+    }
+
+    const existing = await prisma.patientMessage.findUnique({
+      where: { id },
+      include: { customer: { select: { storeId: true } } },
+    });
+    const existingStoreId = existing?.storeId ?? existing?.customer?.storeId ?? null;
+    if (!existing || (auth.session.storeId && existingStoreId !== auth.session.storeId)) {
+      return NextResponse.json({ success: false, message: "Prescription request not found" }, { status: 404 });
     }
 
     const updated = await prisma.patientMessage.update({

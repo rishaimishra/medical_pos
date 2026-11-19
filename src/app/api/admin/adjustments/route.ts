@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { canAccessBranch } from "@/lib/rbac";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * MODULE 1.9: STOCK ADJUSTMENTS & PHYSICAL AUDIT RECONCILIATION
@@ -318,6 +319,9 @@ export async function POST(req: NextRequest) {
   const clientIp = getClientIp(req);
   const userStoreId = auth.session.storeId;
   const currentUserId = auth.session.userId;
+
+  const adjGate = await requireStoreFeature(userStoreId, "posBilling");
+  if (!adjGate.allowed) return adjGate.response!;
 
   try {
     const body = await req.json();

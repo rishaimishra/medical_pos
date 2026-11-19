@@ -46,15 +46,27 @@ export async function POST(req: NextRequest) {
     }
 
     // Prefer store's active primary admin; fallback to first active staff user in store
-    const targetUser = await prisma.user.findFirst({
-      where: { storeId, active: true },
-      orderBy: [{ role: "asc" }, { id: "asc" }],
-      include: {
-        branch: {
-          select: { id: true, storeId: true, code: true, name: true, active: true, isMain: true },
-        },
+    const branchInclude = {
+      branch: {
+        select: { id: true, storeId: true, code: true, name: true, active: true, isMain: true },
       },
-    });
+    };
+    const targetUser =
+      (await prisma.user.findFirst({
+        where: { storeId, active: true, role: "admin" },
+        orderBy: [{ id: "asc" }],
+        include: branchInclude,
+      })) ||
+      (await prisma.user.findFirst({
+        where: { storeId, active: true, role: "manager" },
+        orderBy: [{ id: "asc" }],
+        include: branchInclude,
+      })) ||
+      (await prisma.user.findFirst({
+        where: { storeId, active: true },
+        orderBy: [{ id: "asc" }],
+        include: branchInclude,
+      }));
 
     if (!targetUser) {
       return NextResponse.json(

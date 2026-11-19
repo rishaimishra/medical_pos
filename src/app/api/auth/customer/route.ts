@@ -8,6 +8,7 @@ import {
   clearFailedLoginAttempts,
   getLinkedCustomerIds,
   hashPassword,
+  normalizePhoneValue,
   recordFailedLoginAttempt,
   signCustomerToken,
   verifyCustomerToken,
@@ -128,7 +129,8 @@ export async function POST(req: NextRequest) {
 
     if (action === "register") {
       const name = String(body.name || "").trim();
-      const phone = String(body.phone || "").trim();
+      const rawPhone = String(body.phone || "").trim();
+      const phone = normalizePhoneValue(rawPhone);
       const email = String(body.email || "").trim().toLowerCase();
       const address = body.address ? String(body.address).trim() : null;
       const password = String(body.password || "");
@@ -154,11 +156,15 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const existingPhones = await prisma.customer.findMany({ where: { phone } });
+      const phoneVariants = Array.from(new Set([rawPhone, phone].filter(Boolean)));
+      const existingPhones = await prisma.customer.findMany({
+        where: { phone: { in: phoneVariants } },
+        orderBy: [{ id: "asc" }],
+      });
       const existingEmailConflict = await prisma.customer.findFirst({
         where: {
           email: { equals: email, mode: "insensitive" },
-          phone: { not: phone },
+          phone: { notIn: phoneVariants },
         },
       });
 
@@ -172,14 +178,18 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // Only block if a verified walk-in/portal row is already locked to a different email;
+      // unverified cashier-entered emails should never deadlock self-registration across multiple stores.
       if (
-        existingPhones.some((c) => c.email && c.email.toLowerCase() !== email)
+        existingPhones.some(
+          (c) => c.verified && c.email && c.email.toLowerCase() !== email
+        )
       ) {
         return NextResponse.json(
           {
             success: false,
             message:
-              "This mobile number is linked to another email on file. Please register using the matching email or contact store support.",
+              "This mobile number is already verified under another email address. Please sign in or contact support.",
           },
           { status: 409 }
         );
@@ -203,8 +213,9 @@ export async function POST(req: NextRequest) {
         existingPhones.length > 0
           ? await prisma.$transaction(async (tx) => {
               await tx.customer.updateMany({
-                where: { phone },
+                where: { phone: { in: phoneVariants } },
                 data: {
+                  phone,
                   email,
                   password: passwordHash,
                   active: true,
@@ -215,15 +226,13 @@ export async function POST(req: NextRequest) {
                 },
               });
               const primaryRow = existingPhones[0];
-              if (!primaryRow.name || (!primaryRow.address && address)) {
-                await tx.customer.update({
-                  where: { id: primaryRow.id },
-                  data: {
-                    name: primaryRow.name || name,
-                    address: primaryRow.address || address,
-                  },
-                });
-              }
+              await tx.customer.update({
+                where: { id: primaryRow.id },
+                data: {
+                  name: name || primaryRow.name,
+                  address: address || primaryRow.address,
+                },
+              });
               return (await tx.customer.findUnique({ where: { id: primaryRow.id } }))!;
             })
           : await prisma.customer.create({
@@ -263,10 +272,12 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const normalizedIdPhone = normalizePhoneValue(identifier);
+      const idVariants = Array.from(new Set([identifier, normalizedIdPhone].filter(Boolean)));
       const customer = await prisma.customer.findFirst({
         where: {
           OR: [
-            { phone: identifier },
+            { phone: { in: idVariants } },
             { email: { equals: identifier, mode: "insensitive" } },
           ],
         },
@@ -392,11 +403,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const normalizedLoginPhone = normalizePhoneValue(identifier);
+    const loginPhoneVariants = Array.from(new Set([identifier, normalizedLoginPhone].filter(Boolean)));
     const customer = await prisma.customer.findFirst({
       where: {
         password: { not: null },
         OR: [
-          { phone: identifier },
+          { phone: { in: loginPhoneVariants } },
           { email: { equals: identifier, mode: "insensitive" } },
         ],
       },

@@ -16,6 +16,7 @@ import { prisma } from "../src/lib/prisma";
 import {
   createSessionToken,
   hashPassword,
+  verifyAdminRequest,
   verifySessionToken,
 } from "../src/lib/auth";
 import {
@@ -33,7 +34,18 @@ import { GET as verifyCustomerLink } from "../src/app/api/auth/customer/verify/r
 import { GET as getCustomerOrders } from "../src/app/api/customer/orders/route";
 import { GET as getCustomerSingleOrder } from "../src/app/api/customer/orders/[id]/route";
 import { POST as postCustomerReturn } from "../src/app/api/customer/returns/route";
+import { POST as postCustomerPrescription } from "../src/app/api/customer/prescriptions/route";
+import { POST as postCustomerMessage } from "../src/app/api/customer/messages/route";
 import { GET as getAdminAuth } from "../src/app/api/auth/admin/route";
+import { GET as getAdminCustomers, POST as postAdminCustomer } from "../src/app/api/admin/customers/route";
+import { GET as getAdminSingleCustomer } from "../src/app/api/admin/customers/[id]/route";
+import { GET as getAdminMedicines } from "../src/app/api/admin/medicines/route";
+import { GET as getAdminSuppliers } from "../src/app/api/admin/suppliers/route";
+import { GET as getAdminUsers } from "../src/app/api/admin/users/route";
+import { GET as getAdminNotifications } from "../src/app/api/admin/notifications/route";
+import { GET as getAdminPatientMsgs } from "../src/app/api/admin/patient-messages/route";
+import { GET as getAdminSupplierMsgs } from "../src/app/api/admin/messages/route";
+import { GET as getAdminPrescriptions } from "../src/app/api/admin/prescriptions/route";
 
 let superCookie = "";
 let adminCookie = "";
@@ -98,6 +110,9 @@ async function main() {
   const createdMedIds: number[] = [];
   const createdBatchIds: number[] = [];
   const createdCustIds: number[] = [];
+  const createdSupplierIds: number[] = [];
+  const createdPatientMsgIds: number[] = [];
+  const createdSupplierMsgIds: number[] = [];
   const createdSaleIds: number[] = [];
   const createdReturnIds: number[] = [];
   const createdPlatformUserIds: number[] = [];
@@ -517,8 +532,271 @@ async function main() {
       })
     );
     assert(pwRes.status === 200, "CEO updates own password cleanly via PATCH /api/auth/super-admin");
+
+    // =========================================================================
+    // [3] REGRESSION CHECKS FOR FIXED BUGS (3.1-A, 3.1-B, 3.1-C, 3.2-A, 3.2-B)
+    // =========================================================================
+    console.log("\n[3] Testing Multi-Tenant Admin Isolation, Cross-Store Sync & Impersonation Hardening...");
+
+    // BUG-3.1-A: Seed Store 1 private Supplier, PatientMessage, SupplierMessage & verify Store 2 cannot see ANY Store 1 data
+    const sup1 = await prisma.supplier.create({
+      data: {
+        storeId: stores[0].storeId,
+        name: `Store1 Only Vendor ${runId}`,
+        phone: `911${String(runId).slice(-6)}`,
+      },
+    });
+    createdSupplierIds.push(sup1.id);
+
+    const pm1 = await prisma.patientMessage.create({
+      data: {
+        storeId: stores[0].storeId,
+        customerId: createdCustIds[0],
+        direction: "in",
+        message: `Store1 Private Rx ${runId}`,
+        isRead: false,
+      },
+    });
+    createdPatientMsgIds.push(pm1.id);
+
+    const sm1 = await prisma.supplierMessage.create({
+      data: {
+        storeId: stores[0].storeId,
+        supplierId: sup1.id,
+        supplierName: sup1.name,
+        subject: `Store1 Private Vendor Thread ${runId}`,
+        message: "Confidential pricing quote",
+        direction: "in",
+        status: "unread",
+      },
+    });
+    createdSupplierMsgIds.push(sm1.id);
+
+    const s2AdminToken = createSessionToken({
+      userId: stores[1].adminId,
+      storeId: stores[1].storeId,
+      username: `s2_adm_${runId}`,
+      name: "Store2 Admin",
+      email: `s2_adm_${runId}@pharma.local`,
+      role: "admin",
+      branchId: stores[1].branchId,
+      permissions: ["manage_customers", "manage_medicines", "manage_purchases", "manage_users"],
+      allowedPages: ["*"],
+      maxDiscountPercent: 100,
+      issuedAt: Date.now(),
+      lastActive: Date.now(),
+    });
+    adminCookie = s2AdminToken;
+
+    const [
+      s2CustRes,
+      s2SingleCustRes,
+      s2MedRes,
+      s2SupRes,
+      s2UsersCustRes,
+      s2NotifRes,
+      s2PmRes,
+      s2SmRes,
+      s2RxRes,
+    ] = await Promise.all([
+      getAdminCustomers(adminReq("http://localhost:3000/api/admin/customers?limit=50")),
+      getAdminSingleCustomer(
+        adminReq(`http://localhost:3000/api/admin/customers/${createdCustIds[0]}`),
+        { params: Promise.resolve({ id: String(createdCustIds[0]) }) }
+      ),
+      getAdminMedicines(adminReq("http://localhost:3000/api/admin/medicines?branchId=all&limit=50")),
+      getAdminSuppliers(adminReq("http://localhost:3000/api/admin/suppliers?limit=50")),
+      getAdminUsers(adminReq("http://localhost:3000/api/admin/users?tab=patients")),
+      getAdminNotifications(adminReq("http://localhost:3000/api/admin/notifications")),
+      getAdminPatientMsgs(adminReq("http://localhost:3000/api/admin/patient-messages")),
+      getAdminSupplierMsgs(adminReq("http://localhost:3000/api/admin/messages")),
+      getAdminPrescriptions(adminReq("http://localhost:3000/api/admin/prescriptions")),
+    ]);
+
+    const [
+      s2CustJson,
+      s2MedJson,
+      s2SupJson,
+      s2UsersCustJson,
+      s2NotifJson,
+      s2PmJson,
+      s2SmJson,
+      s2RxJson,
+    ] = await Promise.all([
+      s2CustRes.json(),
+      s2MedRes.json(),
+      s2SupRes.json(),
+      s2UsersCustRes.json(),
+      s2NotifRes.json(),
+      s2PmRes.json(),
+      s2SmRes.json(),
+      s2RxRes.json(),
+    ]);
+
+    assert(
+      !(s2CustJson.customers || []).some((c: any) => c.id === createdCustIds[0]) &&
+        s2SingleCustRes.status === 404,
+      "BUG-3.1-A: Store 2 /admin/customers & /[id] strictly exclude Store 1 customer records"
+    );
+    assert(
+      !(s2MedJson.medicines || []).some((m: any) => m.id === stores[0].medId),
+      "BUG-3.1-A: Store 2 /admin/medicines (all branches) excludes Store 1 medicine catalog"
+    );
+    assert(
+      !(s2SupJson.suppliers || []).some((s: any) => s.id === sup1.id) &&
+        !(s2UsersCustJson.data || []).some((c: any) => c.id === createdCustIds[0]),
+      "BUG-3.1-A: Store 2 /admin/suppliers & /admin/users exclude Store 1 suppliers and patients"
+    );
+    assert(
+      !(s2NotifJson.notifications || []).some((n: any) => String(n.message || "").includes(sup1.name)) &&
+        !(s2PmJson.conversations || []).some((c: any) => c.customerId === createdCustIds[0]) &&
+        !(s2SmJson.messages || []).some((m: any) => m.id === sm1.id) &&
+        !(s2RxJson.prescriptions || []).some((p: any) => p.id === pm1.id),
+      "BUG-3.1-A: Store 2 notifications, inboxes & Rx queue do not leak Store 1 private threads"
+    );
+    adminCookie = "";
+
+    // BUG-3.1-B: Conflicting unverified cashier emails on walk-in phone across 2 stores must NOT deadlock self-registration
+    const conflictPhone = `98${runId}02`;
+    const cConflict1 = await prisma.customer.create({
+      data: {
+        storeId: stores[0].storeId,
+        name: "Walk-in Store1",
+        phone: conflictPhone,
+        email: `typo1_${runId}@mail.local`,
+        verified: false,
+      },
+    });
+    const cConflict2 = await prisma.customer.create({
+      data: {
+        storeId: stores[1].storeId,
+        name: "Walk-in Store2",
+        phone: conflictPhone,
+        email: `typo2_${runId}@mail.local`,
+        verified: false,
+      },
+    });
+    createdCustIds.push(cConflict1.id, cConflict2.id);
+
+    const conflictRegRes = await postCustomerAuth(
+      new NextRequest("http://localhost:3000/api/auth/customer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "register",
+          name: `Real Patient ${runId}`,
+          phone: conflictPhone,
+          email: `real_${runId}@patient.local`,
+          password: "CustPass@123",
+        }),
+      })
+    );
+    const updatedPrimaryConflict = await prisma.customer.findUnique({ where: { id: cConflict1.id } });
+    assert(
+      conflictRegRes.status === 201 && updatedPrimaryConflict?.name === `Real Patient ${runId}`,
+      "BUG-3.1-B: Customer self-registration succeeds (201) despite differing unverified cashier emails & updates name"
+    );
+
+    // BUG-3.1-C: Store-level Chronic Refill aggregation + Store filter dropdown API + Rx store routing
+    await prisma.customer.update({
+      where: { id: createdCustIds[1] },
+      data: {
+        isChronic: true,
+        chronicDiseases: "Hypertension",
+        refillDays: 30,
+        nextRefillDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      },
+    });
+    const custStoreFilterRes = await getCustomerOrders(
+      custReq(`http://localhost:3000/api/customer/orders?storeId=${stores[1].storeId}`)
+    );
+    const custStoreFilterJson = await custStoreFilterRes.json();
+    assert(
+      custStoreFilterRes.status === 200 &&
+        custStoreFilterJson.orders?.length === 1 &&
+        custStoreFilterJson.orders[0].storeId === stores[1].storeId &&
+        (custStoreFilterJson.availableStores || []).length === 4 &&
+        custStoreFilterJson.customer?.isChronic === true &&
+        custStoreFilterJson.customer?.chronicDiseases?.includes("Hypertension"),
+      "BUG-3.1-C: Customer Orders filters by storeId, returns availableStores, and merges Store 2 chronic schedule"
+    );
+
+    const rxRouteRes = await postCustomerPrescription(
+      custReq("http://localhost:3000/api/customer/prescriptions", "POST", {
+        storeId: stores[2].storeId,
+        message: `Refill order for Store 3 ${runId}`,
+      })
+    );
+    const rxRouteJson = await rxRouteRes.json();
+    const rxRouteDb = rxRouteJson.prescription?.id
+      ? await prisma.patientMessage.findUnique({ where: { id: rxRouteJson.prescription.id } })
+      : null;
+    if (rxRouteDb?.id) createdPatientMsgIds.push(rxRouteDb.id);
+
+    const msgRouteRes = await postCustomerMessage(
+      custReq("http://localhost:3000/api/customer/messages", "POST", {
+        storeId: stores[2].storeId,
+        message: `Inquiry for Store 3 ${runId}`,
+      })
+    );
+    const msgRouteJson = await msgRouteRes.json();
+    if (msgRouteJson.data?.id) createdPatientMsgIds.push(msgRouteJson.data.id);
+    assert(
+      rxRouteRes.status === 201 &&
+        rxRouteDb?.storeId === stores[2].storeId &&
+        msgRouteRes.status === 201 &&
+        msgRouteJson.data?.storeId === stores[2].storeId,
+      "BUG-3.1-C: Customer Rx upload & support messages store-route explicitly to Store 3 instead of Store 1"
+    );
+
+    // BUG-3.2-A & 3.2-B: Accountant alphabetical tie-break + verifyAdminRequest preserving impersonation fields
+    const accUser = await prisma.user.create({
+      data: {
+        storeId: stores[0].storeId,
+        branchId: stores[0].branchId,
+        name: "Store1 Accountant",
+        username: `s1_acc_${runId}`,
+        email: `s1_acc_${runId}@pharma.local`,
+        password: pwHash,
+        role: "accountant",
+        active: true,
+      },
+    });
+    createdUserIds.push(accUser.id);
+
+    const impAdminRes = await startImpersonation(
+      superReq("http://localhost:3000/api/super-admin/impersonate", "POST", {
+        storeId: stores[0].storeId,
+        reason: "Verifying admin priority over accountant",
+      })
+    );
+    const impAdminJson = await impAdminRes.json();
+    const impAdminCookie = impAdminRes.cookies.get("med_pos_admin_session")?.value || "";
+    adminCookie = impAdminCookie;
+    const verifiedAdm = await verifyAdminRequest(adminReq("http://localhost:3000/api/admin/customers"));
+    const refreshedAuthRes = await getAdminAuth(adminReq("http://localhost:3000/api/auth/admin"));
+    const refreshedCookie = refreshedAuthRes.cookies.get("med_pos_admin_session");
+    assert(
+      impAdminRes.status === 200 &&
+        impAdminJson.impersonatedAs === `s1_adm_${runId}` &&
+        verifiedAdm.authorized &&
+        verifiedAdm.session?.impersonatedByPlatformUserId === ceoUser.id &&
+        Boolean(refreshedCookie?.maxAge && refreshedCookie.maxAge <= 1800),
+      "BUG-3.2-A/B: Impersonation picks admin over accountant, preserves metadata in verifyAdminRequest, and caps refresh TTL at 30m"
+    );
+    await exitImpersonation(superReq("http://localhost:3000/api/super-admin/impersonate", "DELETE"));
+    adminCookie = "";
   } finally {
     console.log("\nCleaning up Modules 3.1 & 3.2 test fixtures...");
+    if (createdPatientMsgIds.length) {
+      await prisma.patientMessage.deleteMany({ where: { id: { in: createdPatientMsgIds } } });
+    }
+    if (createdSupplierMsgIds.length) {
+      await prisma.supplierMessage.deleteMany({ where: { id: { in: createdSupplierMsgIds } } });
+    }
+    if (createdSupplierIds.length) {
+      await prisma.supplier.deleteMany({ where: { id: { in: createdSupplierIds } } });
+    }
     if (createdPlatformUserIds.length) {
       await prisma.platformAuditLog.deleteMany({
         where: { platformUserId: { in: createdPlatformUserIds } },

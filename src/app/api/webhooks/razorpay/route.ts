@@ -6,6 +6,7 @@ import { escapeHtml, sendEmail } from "@/lib/email";
 import { invalidateStoreEntitlements } from "@/lib/entitlements";
 import {
   calculateSaasTaxFromInclusiveTotal,
+  calculateSaasTaxFromSubtotal,
   computeSubscriptionPeriodEnd,
   generateNextSubscriptionInvoiceNo,
   verifyRazorpayWebhookSignature,
@@ -159,6 +160,17 @@ export async function POST(req: NextRequest) {
           });
         }
 
+        if (localSub) {
+          await tx.storeSubscription.updateMany({
+            where: {
+              storeId: localSub.storeId,
+              id: { not: localSub.id },
+              status: { in: ["active", "trialing", "grace_period"] },
+            },
+            data: { status: "expired", autoRenew: false },
+          });
+        }
+
         if (affectedStoreId) {
           await tx.settings.update({
             where: { id: affectedStoreId },
@@ -189,6 +201,15 @@ export async function POST(req: NextRequest) {
             include: { plan: true },
           });
 
+          await tx.storeSubscription.updateMany({
+            where: {
+              storeId: localSub.storeId,
+              id: { not: localSub.id },
+              status: { in: ["active", "trialing", "grace_period"] },
+            },
+            data: { status: "expired", autoRenew: false },
+          });
+
           await tx.settings.update({
             where: { id: localSub.storeId },
             data: { storeStatus: "active", suspensionReason: null, suspendedAt: null },
@@ -202,10 +223,14 @@ export async function POST(req: NextRequest) {
           if (!existingPay) {
             const targetStoreId = localSub?.storeId || affectedStoreId!;
             const resolvedPlan = targetPlan!;
+            const basePlanPrice = Number(resolvedPlan.priceInr);
             const paidInr = payEntity?.amount
               ? Number(payEntity.amount) / 100
-              : Number(resolvedPlan.priceInr);
-            const tax = calculateSaasTaxFromInclusiveTotal(paidInr, 18);
+              : Math.round(basePlanPrice * 1.18 * 100) / 100;
+            const tax =
+              Math.abs(paidInr - basePlanPrice) < 0.5
+                ? calculateSaasTaxFromSubtotal(basePlanPrice, 18)
+                : calculateSaasTaxFromInclusiveTotal(paidInr, 18);
             const invoiceNo = await generateNextSubscriptionInvoiceNo(tx);
 
             await tx.subscriptionPayment.create({

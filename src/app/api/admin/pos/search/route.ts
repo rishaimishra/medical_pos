@@ -36,14 +36,27 @@ export async function GET(req: NextRequest) {
   try {
     const todayMidnight = getTodayMidnightUtc();
     const userStoreId = auth.session.storeId;
+    if (targetBranchId && userStoreId) {
+      const brCheck = await prisma.branch.findUnique({
+        where: { id: targetBranchId },
+        select: { storeId: true },
+      });
+      if (!brCheck || (brCheck.storeId && brCheck.storeId !== userStoreId)) {
+        return NextResponse.json(
+          { success: false, message: "Unauthorized branch access" },
+          { status: 403 }
+        );
+      }
+    }
     const batchScopeFilter = {
       ...(targetBranchId ? { branchId: targetBranchId } : {}),
       ...(userStoreId ? { branch: { storeId: userStoreId } } : {}),
     };
 
-    // Search medicines by brand name, generic composition, category, rack location, or batch number
+    // Search medicines within Store Tenant by brand name, generic composition, category, rack location, or batch number
     const medicines = await prisma.medicine.findMany({
       where: {
+        ...(userStoreId ? { storeId: userStoreId } : {}),
         OR: [
           { name: { contains: q, mode: "insensitive" } },
           { genericName: { contains: q, mode: "insensitive" } },

@@ -47,13 +47,13 @@ export const STAFF_ALLOWED_PAGES = [
   "/admin/messages",
   "/admin/discounts",
   "/admin/financials",
+  "/admin/billing",
 ];
 
 export const ADMIN_ONLY_PAGES = [
   "/admin/users",
   "/admin/branches",
   "/admin/settings",
-  "/admin/billing",
   "/admin/updates",
   "/admin/suppliers",
 ];
@@ -129,6 +129,7 @@ export const ROLE_MATRIX: Record<SystemRole, RoleDefinition> = {
       "/admin/returns",
       "/admin/medicines",
       "/admin/financials",
+      "/admin/billing",
     ],
     maxDiscountPercent: 10,
   },
@@ -156,6 +157,7 @@ export const ROLE_MATRIX: Record<SystemRole, RoleDefinition> = {
       "/admin/purchases",
       "/admin/financials",
       "/admin/reports",
+      "/admin/billing",
     ],
     maxDiscountPercent: 0,
   },

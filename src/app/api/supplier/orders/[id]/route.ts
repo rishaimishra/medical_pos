@@ -188,7 +188,9 @@ export async function PUT(
       return updated;
     });
 
+    const poStoreId = updatedPO.supplier?.storeId ?? updatedPO.branch?.storeId ?? null;
     await logAudit({
+      storeId: poStoreId,
       userId: null,
       branchId: updatedPO.branchId,
       action: "SUPPLIER_PRICE_UPDATED",
@@ -213,6 +215,7 @@ export async function PUT(
         totalAmount: Number(updatedPO.total),
         itemsCount: updatedPO.items.length,
         branchName: updatedPO.branch?.name,
+        storeId: poStoreId,
       }).catch((err) => console.error("Supplier price updated email error:", err));
     }
 
@@ -319,7 +322,9 @@ export async function PATCH(
       },
     });
 
+    const poStoreId = updatedPO.supplier?.storeId ?? null;
     await logAudit({
+      storeId: poStoreId,
       userId: null,
       branchId: updatedPO.branchId,
       action: "SUPPLIER_ORDER_DISPATCHED",
@@ -344,6 +349,7 @@ export async function PATCH(
         itemsCount: updatedPO.items.length,
         branchName: updatedPO.branch?.name,
         notes: updatedPO.invoiceNo ? `Challan/Invoice: ${updatedPO.invoiceNo}` : undefined,
+        storeId: poStoreId,
       }).catch((err) => console.error("Supplier shipped email error:", err));
     }
 

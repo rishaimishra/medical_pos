@@ -37,10 +37,10 @@ export async function GET(
   try {
     const customer = await prisma.customer.findUnique({
       where: { id },
-      select: { id: true, name: true, phone: true, creditLimit: true },
+      select: { id: true, storeId: true, name: true, phone: true, creditLimit: true },
     });
 
-    if (!customer) {
+    if (!customer || (auth.session.storeId && customer.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
     }
 
@@ -211,7 +211,7 @@ export async function POST(
 
   try {
     const customer = await prisma.customer.findUnique({ where: { id } });
-    if (!customer) {
+    if (!customer || (auth.session.storeId && customer.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
     }
 
@@ -260,6 +260,7 @@ export async function POST(
     });
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId,
       action: "CUSTOMER_CREDIT_SETTLED",

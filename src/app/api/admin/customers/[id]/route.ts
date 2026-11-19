@@ -63,7 +63,7 @@ export async function GET(
       },
     });
 
-    if (!customer) {
+    if (!customer || (auth.session.storeId && customer.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
     }
 
@@ -138,7 +138,7 @@ export async function PUT(
 
   try {
     const existing = await prisma.customer.findUnique({ where: { id } });
-    if (!existing) {
+    if (!existing || (auth.session.storeId && existing.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
     }
 
@@ -238,6 +238,7 @@ export async function PUT(
     });
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: "CUSTOMER_UPDATED",
@@ -295,7 +296,7 @@ export async function DELETE(
       },
     });
 
-    if (!customer) {
+    if (!customer || (auth.session.storeId && customer.storeId !== auth.session.storeId)) {
       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
     }
 
@@ -347,6 +348,7 @@ export async function DELETE(
     await prisma.customer.delete({ where: { id } });
 
     await logAudit({
+      storeId: auth.session.storeId ?? null,
       userId: auth.session.userId,
       branchId: auth.session.branchId,
       action: "CUSTOMER_DELETED",

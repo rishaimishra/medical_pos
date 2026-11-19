@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { checkStoreQuota, requireStoreFeature } from "@/lib/entitlements";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -66,6 +67,9 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       { status: 403 }
     );
   }
+
+  const discFeature = await requireStoreFeature(auth.session.storeId, "customDiscountsAndDayEndClose");
+  if (!discFeature.allowed) return discFeature.response!;
 
   const { id } = await params;
   const discountId = parseInt(id, 10);
@@ -136,6 +140,10 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
 
     if (active !== undefined) {
       updateData.active = Boolean(active);
+      if (!existing.active && updateData.active) {
+        const discQuota = await checkStoreQuota(auth.session.storeId, "maxDiscountSchemes");
+        if (!discQuota.allowed) return discQuota.response!;
+      }
     }
 
     const updated = await prisma.discount.update({
