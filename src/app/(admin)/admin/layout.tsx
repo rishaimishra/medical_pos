@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -43,7 +43,7 @@ import { confirmAction } from "@/stores/useConfirmStore";
 
 const INACTIVITY_TIMEOUT_MS = 120 * 60 * 1000; // 2 hours (120 mins) auto-lock
 
-export default function AdminLayout({
+function AdminLayoutInner({
   children,
 }: {
   children: React.ReactNode;
@@ -906,5 +906,24 @@ export default function AdminLayout({
       <ConfirmDialog />
       <UpgradeRequiredModal />
     </div>
+  );
+}
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#EAF2F4] flex flex-col items-center justify-center gap-3 font-sans">
+          <Loader2 className="w-8 h-8 animate-spin text-[#1F4E5B]" />
+          <p className="text-xs font-bold text-[#1F4E5B]">Verifying store access...</p>
+        </div>
+      }
+    >
+      <AdminLayoutInner>{children}</AdminLayoutInner>
+    </Suspense>
   );
 }

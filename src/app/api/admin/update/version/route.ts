@@ -9,23 +9,23 @@ import { listSavedBackups } from "@/lib/backup";
  */
 
 export async function GET(req: NextRequest) {
+  const auth = await verifyAdminRequest(req);
+  if (!auth.authorized || !auth.session) {
+    return NextResponse.json(
+      { success: false, error: auth.message || "Unauthorized access." },
+      { status: auth.status || 401 }
+    );
+  }
+
+  if (auth.session.role !== "admin") {
+    return NextResponse.json(
+      { success: false, error: "Forbidden: Superadmin access required for software update information." },
+      { status: 403 }
+    );
+  }
+
   try {
-    const auth = await verifyAdminRequest(req);
-    if (!auth.authorized || !auth.session) {
-      return NextResponse.json(
-        { success: false, error: auth.message || "Unauthorized access." },
-        { status: auth.status || 401 }
-      );
-    }
-
-    if (auth.session.role !== "admin") {
-      return NextResponse.json(
-        { success: false, error: "Forbidden: Superadmin access required for software update information." },
-        { status: 403 }
-      );
-    }
-
-    const recentBackups = listSavedBackups();
+    const recentBackups = listSavedBackups(auth.session.storeId);
     const lastBackup = recentBackups.length > 0 ? recentBackups[0] : null;
 
     return NextResponse.json({

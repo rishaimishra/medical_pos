@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -23,7 +23,7 @@ import { formatLimit } from "@/lib/saasFeatures";
 
 type TabKey = "overview" | "branches" | "staff" | "subscription" | "audit" | "operations";
 
-export default function SuperAdminStoreDetailPage() {
+function SuperAdminStoreDetailContent() {
   const params = useParams();
   const router = useRouter();
   const storeId = String(params?.id || "");
@@ -1123,5 +1123,20 @@ export default function SuperAdminStoreDetailPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SuperAdminStoreDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="py-20 flex flex-col items-center justify-center text-slate-500">
+          <Loader2 className="w-7 h-7 animate-spin text-teal-700 mb-2" />
+          <p className="text-xs font-semibold">Loading Store 360° Workspace...</p>
+        </div>
+      }
+    >
+      <SuperAdminStoreDetailContent />
+    </Suspense>
   );
 }

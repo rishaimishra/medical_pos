@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -75,7 +75,7 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
   },
 ];
 
-export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
+function SuperAdminLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLoginPage = pathname === "/super-admin/login";
@@ -631,5 +631,22 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
         </div>
       )}
     </div>
+  );
+}
+
+export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#0B1120] flex items-center justify-center text-slate-200">
+          <div className="flex items-center gap-3 text-sm font-semibold">
+            <Loader2 className="w-5 h-5 animate-spin text-teal-400" />
+            <span>Loading Platform Command Tower...</span>
+          </div>
+        </div>
+      }
+    >
+      <SuperAdminLayoutInner>{children}</SuperAdminLayoutInner>
+    </Suspense>
   );
 }

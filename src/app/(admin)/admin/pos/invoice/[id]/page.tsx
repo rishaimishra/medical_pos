@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, use } from "react";
+import React, { Suspense, useEffect, useState, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Printer, ArrowLeft, Loader2, FileText, CheckCircle2 } from "lucide-react";
@@ -13,7 +13,7 @@ type CopyType =
   | "DUPLICATE FOR TRANSPORTER"
   | "TRIPLICATE FOR SUPPLIER";
 
-export default function InvoicePrintPage({
+function InvoicePrintContent({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -240,5 +240,24 @@ export default function InvoicePrintPage({
         }
       `}</style>
     </div>
+  );
+}
+
+export default function InvoicePrintPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6 text-slate-600">
+          <Loader2 className="w-8 h-8 animate-spin text-[#1F4E5B] mb-2" />
+          <p className="text-sm font-bold">Loading Tax Invoice...</p>
+        </div>
+      }
+    >
+      <InvoicePrintContent params={params} />
+    </Suspense>
   );
 }

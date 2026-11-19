@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -50,7 +50,7 @@ function formatDateTime(iso?: string | null): string {
   });
 }
 
-export default function SuperAdminBranchDetailPage() {
+function SuperAdminBranchDetailContent() {
   const params = useParams();
   const branchId = String(params?.id || "");
 
@@ -616,5 +616,20 @@ export default function SuperAdminBranchDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SuperAdminBranchDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="py-20 flex flex-col items-center justify-center text-slate-500">
+          <Loader2 className="w-7 h-7 animate-spin text-teal-700 mb-2" />
+          <p className="text-xs font-semibold">Loading Branch Explorer...</p>
+        </div>
+      }
+    >
+      <SuperAdminBranchDetailContent />
+    </Suspense>
   );
 }
