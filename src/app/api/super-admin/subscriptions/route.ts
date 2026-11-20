@@ -4,17 +4,8 @@ import { verifySuperAdminRequest } from "@/lib/auth";
 import { getClientIp, logPlatformAudit } from "@/lib/audit";
 import { invalidateStoreEntitlements } from "@/lib/entitlements";
 import { computeSubscriptionPeriodEnd } from "@/lib/razorpay";
-
-function normalizeMonthlyMrr(priceInr: number, billingCycle: string, intervalCount = 1): number {
-  const cycle = (billingCycle || "monthly").toLowerCase();
-  if (priceInr <= 0 || cycle === "lifetime") return 0;
-  if (cycle === "yearly") return priceInr / (12 * Math.max(1, intervalCount));
-  if (cycle === "quarterly") {
-    const months = intervalCount >= 3 ? intervalCount : Math.max(1, intervalCount) * 3;
-    return priceInr / months;
-  }
-  return priceInr / Math.max(1, intervalCount);
-}
+import { normalizeMonthlyMrr } from "@/lib/saasFeatures";
+import { verifySameOrigin } from "@/lib/platformConfig";
 
 /**
  * MODULE 3.5: Global Store Subscriptions Control Panel API (`/api/super-admin/subscriptions`)
@@ -176,6 +167,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const originCheck = verifySameOrigin(req);
+  if (!originCheck.ok && originCheck.response) return originCheck.response;
+
   const auth = await verifySuperAdminRequest(req, ["ceo", "platform_admin", "finance_ops"]);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveCustomerTargetStore, verifyCustomerRequest } from "@/lib/auth";
+import { parseOptionalPositiveInt, resolveVerifiedStoreBranch } from "@/lib/customerRouting";
 import { savePrescriptionBuffer } from "@/lib/prescriptionFiles";
 import { escapeHtml, sendEmail } from "@/lib/email";
 import { checkStoreQuota, requireCustomerPortalFeature, requireStoreFeature } from "@/lib/entitlements";
@@ -85,6 +86,7 @@ export async function POST(req: NextRequest) {
     let doctorName = "";
     let fulfillmentMode = "pickup";
     let requestedStoreId: number | null = null;
+    let requestedBranchId: number | null = null;
     let formFile: File | null = null;
 
     if (contentType.includes("multipart/form-data")) {
@@ -92,11 +94,8 @@ export async function POST(req: NextRequest) {
       notes = String(form.get("message") || form.get("notes") || "").trim();
       doctorName = String(form.get("doctorName") || "").trim();
       fulfillmentMode = String(form.get("fulfillmentMode") || "pickup").trim();
-      const rawStoreId = form.get("storeId");
-      if (rawStoreId) {
-        const parsed = parseInt(String(rawStoreId), 10);
-        if (!isNaN(parsed) && parsed > 0) requestedStoreId = parsed;
-      }
+      requestedStoreId = parseOptionalPositiveInt(form.get("storeId"));
+      requestedBranchId = parseOptionalPositiveInt(form.get("branchId"));
 
       const fileField = form.get("file");
       if (fileField && typeof fileField === "object" && "arrayBuffer" in fileField) {
@@ -108,10 +107,8 @@ export async function POST(req: NextRequest) {
       notes = String(body.message || body.notes || "").trim();
       doctorName = String(body.doctorName || "").trim();
       fulfillmentMode = String(body.fulfillmentMode || "pickup").trim();
-      if (body.storeId) {
-        const parsed = parseInt(String(body.storeId), 10);
-        if (!isNaN(parsed) && parsed > 0) requestedStoreId = parsed;
-      }
+      requestedStoreId = parseOptionalPositiveInt(body.storeId);
+      requestedBranchId = parseOptionalPositiveInt(body.branchId);
     }
 
     const resolvedStore = await resolveCustomerTargetStore(
@@ -120,6 +117,10 @@ export async function POST(req: NextRequest) {
       requestedStoreId
     );
     const targetStoreId = resolvedStore.storeId;
+
+    const branchResolution = await resolveVerifiedStoreBranch(targetStoreId, requestedBranchId);
+    if (!branchResolution.ok) return branchResolution.response;
+    const targetBranchId = branchResolution.branchId;
 
     const rxFeature = await requireStoreFeature(targetStoreId, "patientPortalAndRxQueue", {
       forExternalPortal: true,
@@ -166,6 +167,7 @@ export async function POST(req: NextRequest) {
     const created = await prisma.patientMessage.create({
       data: {
         storeId: targetStoreId,
+        branchId: targetBranchId,
         customerId: resolvedStore.targetCustomerId,
         direction: "in",
         message: formattedMessageParts.join("\n") || "Prescription uploaded for billing review.",

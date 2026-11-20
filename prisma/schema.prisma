@@ -1001,3 +1001,26 @@ model RazorpayWebhookEvent {
   @@index([createdAt], name: "idx_rzp_ev_created")
   @@map("razorpay_webhook_events")
 }
+
+// ============================================================================
+// 13. UNIVERSAL EMAIL OTP PASSWORD RESET TOKENS (ALL 4 PANELS)
+// ============================================================================
+
+// Table: password_reset_otps (Single-use 6-digit Email OTP reset requests for Admin, Super Admin, Customer, Supplier)
+model PasswordResetOtp {
+  id           Int       @id @default(autoincrement())
+  panel        String    @db.VarChar(30) // admin, super_admin, customer, supplier
+  targetUserId Int       @map("target_user_id")
+  email        String    @db.VarChar(255)
+  otpHash      String    @map("otp_hash") @db.VarChar(128)
+  attempts     Int       @default(0)
+  expiresAt    DateTime  @map("expires_at")
+  usedAt       DateTime? @map("used_at")
+  ipAddress    String?   @map("ip_address") @db.VarChar(45)
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([panel, targetUserId], name: "idx_pwd_otp_target")
+  @@index([panel, email], name: "idx_pwd_otp_email")
+  @@index([expiresAt], name: "idx_pwd_otp_exp")
+  @@map("password_reset_otps")
+}

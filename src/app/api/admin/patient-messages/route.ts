@@ -6,6 +6,7 @@ import { sendEmail, escapeHtml } from "@/lib/email";
 import { logAudit, getClientIp } from "@/lib/audit";
 import { deletePrescriptionFile } from "@/lib/prescriptionFiles";
 import { requireStoreFeature } from "@/lib/entitlements";
+import { buildPatientMessageScope, canStaffAccessPatientMessage } from "@/lib/customerRouting";
 
 /**
  * MODULE 2.20.1: Patient Message Inbox API (Admin / Staff)
@@ -36,14 +37,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const userStoreId = auth.session.storeId ?? null;
-    const pmStoreScope: any = userStoreId
-      ? {
-          OR: [
-            { storeId: userStoreId },
-            { storeId: null, customer: { storeId: userStoreId } },
-          ],
-        }
-      : {};
+    const userBranchId = auth.session.branchId ?? null;
+    const pmStoreScope = buildPatientMessageScope(userStoreId, userBranchId);
 
     const [allMessages, totalUnreadCount, customers] = await Promise.all([
       prisma.patientMessage.findMany({
@@ -211,6 +206,7 @@ export async function POST(req: NextRequest) {
     const created = await prisma.patientMessage.create({
       data: {
         storeId: userStoreId ?? customer.storeId ?? null,
+        branchId: auth.session.branchId ?? null,
         customerId,
         direction: "out",
         message: messageText,
@@ -222,15 +218,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Also mark patient's inbound unread messages in this store as read since staff replied
+    // Also mark patient's inbound unread messages in this store/branch as read since staff replied
     await prisma.patientMessage.updateMany({
       where: {
         customerId,
         direction: "in",
         isRead: false,
-        ...(userStoreId
-          ? { OR: [{ storeId: userStoreId }, { storeId: null }] }
-          : {}),
+        ...buildPatientMessageScope(userStoreId, auth.session.branchId),
       },
       data: { isRead: true },
     });
@@ -308,8 +302,7 @@ export async function PATCH(req: NextRequest) {
         where: { id: msgId },
         include: { customer: { select: { storeId: true } } },
       });
-      const existingStoreId = existing?.storeId ?? existing?.customer?.storeId ?? null;
-      if (!existing || (userStoreId && existingStoreId !== userStoreId)) {
+      if (!existing || !canStaffAccessPatientMessage(auth.session, existing)) {
         return NextResponse.json({ success: false, message: "Message not found" }, { status: 404 });
       }
       if (existing.direction !== "in") {
@@ -336,7 +329,7 @@ export async function PATCH(req: NextRequest) {
         where: {
           customerId,
           direction: "in",
-          ...(userStoreId ? { OR: [{ storeId: userStoreId }, { storeId: null }] } : {}),
+          ...buildPatientMessageScope(userStoreId, auth.session.branchId),
         },
         data: { isRead },
       });
@@ -384,8 +377,7 @@ export async function DELETE(req: NextRequest) {
         where: { id },
         include: { customer: { select: { storeId: true } } },
       });
-      const existingStoreId = existing?.storeId ?? existing?.customer?.storeId ?? null;
-      if (!existing || (userStoreId && existingStoreId !== userStoreId)) {
+      if (!existing || !canStaffAccessPatientMessage(auth.session, existing)) {
         return NextResponse.json({ success: false, message: "Message not found" }, { status: 404 });
       }
       await prisma.patientMessage.delete({ where: { id } });
@@ -418,7 +410,7 @@ export async function DELETE(req: NextRequest) {
       }
       const msgWhere: any = {
         customerId,
-        ...(userStoreId ? { OR: [{ storeId: userStoreId }, { storeId: null }] } : {}),
+        ...buildPatientMessageScope(userStoreId, auth.session.branchId),
       };
       const msgs = await prisma.patientMessage.findMany({ where: msgWhere });
       await prisma.patientMessage.deleteMany({ where: msgWhere });

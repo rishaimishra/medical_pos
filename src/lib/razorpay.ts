@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { prisma } from "./prisma";
+import { decryptPlatformSecret } from "./platformConfig";
 
 /**
  * MODULE 3.5.1 & 3.5.2: Razorpay REST Client, HMAC Crypto Verification,
@@ -47,6 +48,36 @@ export function isRazorpayConfigured(): boolean {
 }
 
 /**
+ * Resolves effective Razorpay credentials preferring encrypted PlatformConfig DB entries
+ * with `.env` values as fallback so UI-configured secret rotation takes effect immediately.
+ */
+export async function resolveEffectiveRazorpayCredentials(): Promise<RazorpayCredentials> {
+  const envCreds = getRazorpayCredentials();
+  try {
+    const cfg = await prisma.platformConfig.findFirst({ orderBy: { id: "asc" } });
+    if (!cfg) return envCreds;
+
+    const dbKeyId = (cfg.razorpayKeyId || "").trim();
+    const dbKeySecret = decryptPlatformSecret(cfg.razorpayKeySecretEnc);
+    const dbWebhookSecret = decryptPlatformSecret(cfg.razorpayWebhookSecretEnc);
+
+    const keyId = dbKeyId || envCreds.keyId;
+    const keySecret = dbKeySecret || envCreds.keySecret;
+    const webhookSecret = dbWebhookSecret || envCreds.webhookSecret;
+    const mode: "test" | "live" = keyId.startsWith("rzp_live_") ? "live" : "test";
+
+    return { keyId, keySecret, webhookSecret, mode };
+  } catch {
+    return envCreds;
+  }
+}
+
+export async function isRazorpayConfiguredAsync(): Promise<boolean> {
+  const { keyId, keySecret } = await resolveEffectiveRazorpayCredentials();
+  return Boolean(keyId && keySecret);
+}
+
+/**
  * Executes an authenticated REST request against Razorpay API v1 using Basic Auth.
  */
 export async function razorpayRequest<T = any>(
@@ -54,7 +85,7 @@ export async function razorpayRequest<T = any>(
   endpoint: string,
   body?: unknown
 ): Promise<T> {
-  const { keyId, keySecret } = getRazorpayCredentials();
+  const { keyId, keySecret } = await resolveEffectiveRazorpayCredentials();
   if (!keyId || !keySecret) {
     throw new RazorpayApiError(
       "Razorpay API keys (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET) are not configured in environment.",

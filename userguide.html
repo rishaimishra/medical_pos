@@ -542,9 +542,9 @@
       <a class="nav-link" href="#ecosystem">2. How 5 Panels Connect <span class="nav-pill">Flow</span></a>
 
       <div class="nav-group-label">Panel-by-Panel &amp; Sidebars</div>
-      <a class="nav-link" href="#panel-setup">3. Public, Setup &amp; Logins <span class="nav-pill">Entry+Auth</span></a>
+      <a class="nav-link" href="#panel-setup">3. Storefront, Setup &amp; OTP Auth <span class="nav-pill">Entry+OTP</span></a>
       <a class="nav-link" href="#panel-admin">4. Store Admin &amp; Staff <span class="nav-pill">18 menus</span></a>
-      <a class="nav-link" href="#panel-super-admin">5. Super Admin / CEO Tower <span class="nav-pill">11 menus</span></a>
+      <a class="nav-link" href="#panel-super-admin">5. Super Admin / CEO Tower <span class="nav-pill">11 live</span></a>
       <a class="nav-link" href="#panel-customer">6. Customer / Patient Portal <span class="nav-pill">7 tabs</span></a>
       <a class="nav-link" href="#panel-supplier">7. Supplier Extranet Portal <span class="nav-pill">5 tabs</span></a>
 
@@ -595,9 +595,9 @@
           <div class="stat-hint">18 Store Admin + 11 Super Admin menus</div>
         </div>
         <div class="stat-card">
-          <div class="stat-num">43 / 45</div>
+          <div class="stat-num">45 / 45</div>
           <div class="stat-label">Modules Built</div>
-          <div class="stat-hint">Parts 1 &amp; 2 Done &bull; Part 3 up to 3.8 Done</div>
+          <div class="stat-hint">Parts 1, 2 &amp; 3 Complete (1.1–3.10) + OTP Reset</div>
         </div>
         <div class="stat-card">
           <div class="stat-num">16 + 8</div>
@@ -694,26 +694,28 @@
       </section>
 
       <!-- SECTION 3: PUBLIC & SETUP -->
-      <section class="section filterable" data-cat="all store" id="panel-setup">
+      <section class="section filterable" data-cat="all store ceo customer supplier" id="panel-setup">
         <div class="section-head">
           <div>
-            <div class="section-kicker">Panel 1 &bull; Entry &amp; Store Registration</div>
-            <h2>Public Landing Portal &amp; 4-Step Setup Wizard</h2>
-            <p class="section-desc">How a new buyer goes from zero to billing medicines in under 2 minutes without needing a developer.</p>
+            <div class="section-kicker">Panel 1 &bull; Public Storefront, Onboarding &amp; Universal OTP Recovery</div>
+            <h2>Public Homepage Launchpad, 4-Step Setup Wizard &amp; Email-OTP Reset Gates</h2>
+            <p class="section-desc">Redesigned Clinical Emerald public launchpad (<span class="route-chip">/</span>), guided onboarding wizard, and isolated login + 6-digit Email OTP recovery gates for every stakeholder.</p>
           </div>
         </div>
 
         <div class="grid-2">
           <div class="module-card">
             <div class="module-top">
-              <h3 class="module-title">Home Launchpad</h3>
-              <span class="badge b-live">LIVE</span>
+              <h3 class="module-title">Redesigned Public Homepage Launchpad</h3>
+              <span class="badge b-live">LIVE &bull; Storefront Only</span>
             </div>
             <div class="meta-row"><span class="route-chip">/</span><span class="badge b-staff">Public Visitor</span></div>
-            <p style="margin:4px 0;font-size:13.5px;color:var(--muted);">
-              Clean, neutral welcome portal with 1-click links to <strong>Register New Store</strong>, <strong>Store Admin Login</strong>,
-              <strong>Customer Portal</strong>, and <strong>Supplier Portal</strong>. Safely hides other stores' private data from visitors.
-            </p>
+            <ul class="bullet-list">
+              <li><strong>Personal SaaS Operator Privacy:</strong> All Super Admin / CEO / Control Tower links (<code>/super-admin</code>) and platform-owner role labels are intentionally removed from the public homepage, header, role cards, and footer—platform operators open <code>/super-admin/login</code> directly.</li>
+              <li><strong>3 Stakeholder Portals:</strong> Dedicated launch cards for <strong>Store Admin &amp; Staff Panel</strong> (<code>/admin/login</code>), <strong>Distributor &amp; Supplier Portal</strong> (<code>/supplier/login</code>), and <strong>Customer &amp; Patient Portal</strong> (<code>/customer/login</code>).</li>
+              <li><strong>4 Store Team Roles (RBAC):</strong> Showcases strictly store-level roles—<strong>Store Owner (Admin)</strong>, <strong>Pharmacist</strong>, <strong>Cashier (POS Counter)</strong>, and <strong>Accountant</strong>—plus a two-column Counter Workflow preview card and 4-item trust strip.</li>
+              <li><strong>Conditional Setup Banner &amp; Clean Auth:</strong> First-Run Setup Wizard banner appears only when <code>setupDone === false</code>, and <code>/api/admin/settings</code> loads only when an authenticated store session exists (zero public <code>401</code> console requests).</li>
+            </ul>
           </div>
 
           <div class="module-card">
@@ -746,8 +748,25 @@
             </div>
             <ul class="bullet-list">
               <li><strong>Store Login (<code>/admin/login</code>):</strong> Separate login for pharmacy owners &amp; staff. Features a <strong>2-Hour Inactivity Lock + <kbd>Alt+L</kbd> Quick Lock</strong> that locks the screen while safely keeping active POS cart medicines intact (blocks background API saves with <code>HTTP 423</code> until password re-entered).</li>
-              <li><strong>CEO / Platform Login (<code>/super-admin/login</code>):</strong> Isolated SaaS owner gateway with a guarded <em>First-Run CEO Bootstrap</em> tab (unlocked once using server key <code>PLATFORM_BOOTSTRAP_KEY</code> when 0 CEO accounts exist).</li>
+              <li><strong>CEO / Platform Login (<code>/super-admin/login</code>):</strong> Private operator gateway (not linked on public homepage) with a guarded <em>First-Run CEO Bootstrap</em> tab (unlocked once via server key <code>PLATFORM_BOOTSTRAP_KEY</code> when 0 CEO accounts exist).</li>
               <li><strong>Brute-Force Shield (All Portals):</strong> 5 consecutive wrong password attempts across IP, username, or email triggers an automatic <strong>15-minute cooldown countdown timer</strong>.</li>
+            </ul>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top">
+              <h3 class="module-title">Universal Email-OTP Forgot Password (All 4 Portals)</h3>
+              <span class="badge b-live">LIVE &bull; Verified 34 Tests</span>
+            </div>
+            <div class="meta-row">
+              <span class="route-chip">POST /api/auth/forgot-password</span>
+              <span class="route-chip">ForgotPasswordModal</span>
+              <span class="badge b-sec">OTP + HMAC</span>
+            </div>
+            <ul class="bullet-list">
+              <li><strong>All 4 Panels Covered:</strong> Integrated directly into <code>/admin/login</code> (Store Staff/Owner), <code>/super-admin/login</code> (Platform CEO/Team), <code>/customer/login</code> (Patient by phone or email), and <code>/supplier/login</code> (Vendor Extranet).</li>
+              <li><strong>Enterprise OTP Hardening (<code>PasswordResetOtp</code>):</strong> Generates single-use 6-digit codes stored as <strong>HMAC-SHA256 digests</strong> (compared via <code>crypto.timingSafeEqual</code>), <strong>15-minute expiry</strong>, <strong>45-second per-account resend cooldown</strong>, <strong>5 wrong-OTP attempt invalidation</strong>, IP rate limit (25 req / 15 min), CSRF origin validation, and non-enumerating success copy.</li>
+              <li><strong>Smart Account &amp; Lockout Rules:</strong> Requires &ge;8-character passwords for Super Admins (&ge;6 chars for Store/Customer/Supplier), blocks staff locked strictly to an inactive sub-branch, clears failed-login lockouts atomically on reset, logs events to Store &amp; Platform Audit Trails, and syncs patient passwords safely across multi-store linked phone accounts (including walk-in buyers with email).</li>
             </ul>
           </div>
         </div>
@@ -991,8 +1010,8 @@
           </div>
         </div>
 
-        <div class="callout c-warn" style="margin-bottom:18px;">
-          <strong>Status Note for Demo Presenters:</strong> 6 of the 11 sidebar areas (Dashboard, Stores + Store 360&deg;, Branches + Branch Detail, Global Users, Broadcasts, Plans &amp; Razorpay Sync) plus the Login/CEO Bootstrap page have <strong>full live interactive UI</strong> right now. The remaining 5 sidebar routes (<em>Store Subscriptions</em>, <em>Payments &amp; Invoices</em>, <em>CEO Analytics &amp; Reports</em>, <em>Platform Audit Logs</em>, <em>Platform Settings</em>) display planned-module placeholders while subscription grants, offline NEFT recording, and overrides work today inside <strong>Stores &rarr; Store 360&deg; Workspace</strong> and Modules 3.9–3.10 complete the remaining dedicated views.
+        <div class="callout c-example" style="margin-bottom:18px;">
+          <strong>All 11 Sidebar Panels Are LIVE &amp; Production-Verified:</strong> Every single Super Admin route (Dashboard, Stores + Store 360&deg;, Branches + Branch Detail, Plans &amp; Razorpay Sync, Store Subscriptions, Payments &amp; Invoices, CEO BI Reports, Forensic Audit Logs, Platform Settings &amp; Razorpay Vault, Global Users, and Broadcasts) now renders full live interactive workflows backed by PostgreSQL &amp; verified end-to-end.
         </div>
 
         <h3 style="margin:12px 0 10px;color:var(--teal-dark);font-size:16px;">Group A: Control Panels</h3>
@@ -1001,10 +1020,10 @@
             <div class="module-top"><h3 class="module-title">1. Executive Overview</h3><span class="badge b-live">LIVE &bull; Module 3.8</span></div>
             <div class="meta-row"><span class="route-chip">/super-admin/dashboard</span></div>
             <ul class="bullet-list">
-              <li><strong>SaaS Revenue Strip:</strong> Real-time <strong>MRR</strong> (Monthly normalized across Monthly, Quarterly &divide;3, Yearly &divide;12), <strong>ARR</strong> (MRR &times; 12), <strong>ARPU</strong>, plus Month-to-Date &amp; All-Time Net Collected Revenue (Pre-GST + 18% GST minus refunds).</li>
-              <li><strong>Store Cohorts:</strong> Live count of Paid Active, Trialing, Grace Period, Suspended, Cancelled/Churned stores, Trial-to-Paid Conversion %, and 30-day Churn %.</li>
-              <li><strong>Platform Retail Pulse &amp; Gateway Health:</strong> Combined Pharmacy GMV processed (Today/30d/All-Time), invoices issued, Rx uploads, Razorpay payment success rate &amp; Webhook health badge.</li>
-              <li><strong>Upsell Leads &amp; Churn Risk Feeds:</strong> Automatically flags stores at &ge;80% quota usage (ready to sell upgrade!) and alerts on stores in grace period, trial expiring within 72 hours, or 14 days with zero sales.</li>
+              <li><strong>SaaS Revenue Strip:</strong> Real-time <strong>MRR</strong> (Monthly normalized across Monthly, Quarterly &divide;3, Yearly &divide;12), <strong>ARR</strong> (MRR &times; 12), <strong>ARPU</strong>, plus Month-to-Date &amp; All-Time Net Collected Revenue (Taxable Pre-GST + 18% GST minus refunds).</li>
+              <li><strong>Store Cohorts:</strong> Live count of Paid Active, Trialing, Grace Period, Churned/Suspended stores, Trial-to-Paid Conversion %, and 30-day Logo Churn Rate %.</li>
+              <li><strong>Platform Retail Pulse &amp; Gateway Health:</strong> Combined Pharmacy GMV processed (Today / 30-Day / All-Time retail sales), Total Bills &amp; Digital Patient Rx Uploads, 30-day Razorpay Payment Auth Rate % (Captured vs Failed), and Webhook Health badge (<code>Healthy / Needs Check</code> + error counter).</li>
+              <li><strong>Upsell Leads, Churn Alerts &amp; Quick Grid:</strong> Automatically flags stores at &ge;80% quota usage (Branches / Staff / Monthly Invoices), urgent Churn Alerts (grace period, &le;72h trial expiry, 14d zero sales), Recent Payments &amp; Signups feed, plus 9-panel Quick Control Tower Grid.</li>
             </ul>
           </div>
 
@@ -1058,17 +1077,51 @@
           </div>
 
           <div class="module-card">
-            <div class="module-top"><h3 class="module-title">7–11. Subscriptions, Payments, BI Reports, Audit Logs &amp; Platform Settings</h3><span class="badge b-placeholder">Placeholder UI &bull; Modules 3.5 &amp; 3.9–3.10</span></div>
-            <div class="meta-row">
-              <span class="route-chip">/super-admin/subscriptions</span>
-              <span class="route-chip">/super-admin/payments</span>
-              <span class="route-chip">/super-admin/reports</span>
-              <span class="route-chip">/super-admin/audit-logs</span>
-              <span class="route-chip">/super-admin/settings</span>
-            </div>
+            <div class="module-top"><h3 class="module-title">7. Store Subscriptions &amp; Lifecycle Registry</h3><span class="badge b-live">LIVE &bull; Module 3.5 / 3.6</span></div>
+            <div class="meta-row"><span class="route-chip">/super-admin/subscriptions</span></div>
             <ul class="bullet-list">
-              <li><strong>Current State:</strong> These 5 sidebar pages render clean placeholder cards today. All core subscription grants, offline NEFT payment logging, quota overrides &amp; refunds are already live inside <strong>Store 360&deg; (<code>/super-admin/stores/[id]</code>)</strong>, and CEO financials are live on <strong><code>/super-admin/dashboard</code></strong>.</li>
-              <li><strong>Upcoming in Modules 3.9 &amp; 3.10:</strong> Dedicated 12-month MRR waterfall movement, Store/Branch P&amp;L leaderboards, Multi-Sheet Executive Board <code>.xlsx</code> workbook export, unified Cross-Store Forensic Audit Viewer, and masked Razorpay Config screen.</li>
+              <li><strong>5 KPI Cards &amp; Filters:</strong> Tracks Normalized Active MRR, Active Paid, Free Trialing, Grace / Past Due, and Expired / Cancelled counts; filter by status, billing mode (<em>Razorpay Auto-Renew, One-Time Order, Manual / Enterprise Grant</em>), or store/<code>sub_id</code> search.</li>
+              <li><strong>Direct Lifecycle Controls:</strong> Includes 1-click <strong>Assign / Grant Plan</strong> modal (select store, plan, custom duration &amp; notes), <strong>Extend Period (+7d)</strong>, and audited <strong>Cancel Subscription</strong> controls.</li>
+            </ul>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">8. SaaS Payments, Webhooks &amp; GST Invoices</h3><span class="badge b-live">LIVE &bull; Module 3.5 / 3.7</span></div>
+            <div class="meta-row"><span class="route-chip">/super-admin/payments</span></div>
+            <ul class="bullet-list">
+              <li><strong>Tax &amp; Collections Ledger:</strong> Live KPI cards for Net Collected (Incl. GST), Net Taxable SaaS Base, 18% Output GST Collected, and Refunds &amp; Failed Charges; search by <code>SUB-INV-...</code>, <code>pay_id</code>, or Store Name.</li>
+              <li><strong>Offline Enterprise NEFT, Refunds &amp; Print:</strong> <strong>Record Offline NEFT / Cheque</strong> modal auto-generates SAC <code>998314</code> GST invoices; inspect/print individual tax invoices, issue audited <strong>Mark Refunded</strong> credits (auto-deducted from Net Revenue), and review recent Razorpay webhooks.</li>
+            </ul>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">9. CEO BI Reports, MRR Bridge &amp; 7-Sheet Board Pack</h3><span class="badge b-live">LIVE &bull; Module 3.9</span></div>
+            <div class="meta-row"><span class="route-chip">/super-admin/reports</span><span class="route-chip">/api/super-admin/reports/export</span></div>
+            <ul class="bullet-list">
+              <li><strong>8-Control Global Filter Bar:</strong> Filter every chart &amp; table by <em>From/To Date, State, City, Plan Tier, Store Scope, Branch Scope</em>, and sort stores by <em>GMV, Net Profit, Invoices, Stock Valuation, Portal Adoption Score, or Growth %</em>.</li>
+              <li><strong>Tab 1 — SaaS Revenue &amp; 12M MRR Bridge (3.9.1):</strong> Visual 12-month bar chart + MRR Waterfall table (<em>New, Expansion, Churned, Ending MRR, Taxable, 18% GST, Net Collected</em>), Plan Tier Share &amp; Conversion table, and Platform GSTR-1 SaaS Tax Summary (SAC <code>998314</code>, CGST 9% + SGST 9%, Gateway vs NEFT split).</li>
+              <li><strong>Tab 2 — Store &amp; Branch P&amp;L Leaderboards (3.9.2):</strong> Consolidated Retail P&amp;L (Gross Sales, Refunds, COGS, Gross Margin %, Operating Expenses, Net Profit), <strong>5-Way Tender Split</strong> (Cash, UPI, Card, Customer Baki, Cheque/Other), Cross-Store Leaderboard (with <em>Portal Adoption Score /100</em>), and Top Branches Compliance Matrix.</li>
+              <li><strong>Tab 3 — Inventory Risk &amp; Compliance (3.9.2):</strong> Platform &amp; per-store Expired Stock Value, Expiring &le;30d/90d batches, Dead Stock (60/90/180d), Schedule H/H1 Doc Compliance %, Customer Baki Receivable, and Supplier Payable exposure.</li>
+              <li><strong>Tab 4 — Storage &amp; Feature Adoption (3.9.3):</strong> Feature Adoption Matrix (% of eligible paid stores utilizing each module) + DB &amp; Rx Disk Storage Footprint per store.</li>
+              <li><strong>7-Tab Excel Board Pack &amp; CSV (3.9.4):</strong> 1-click hardened OpenXML <code>.xlsx</code> workbook export containing <code>Executive Summary</code>, <code>12M MRR &amp; Revenue</code>, <code>Plan Tier Breakdown</code>, <code>Stores Health &amp; Quota Matrix</code>, <code>Branches Directory</code>, <code>Upsell &amp; Churn Pipeline</code>, and <code>SaaS Payment Ledger</code>, plus UTF-8 BOM CSVs.</li>
+            </ul>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">10. Global Forensic Audit Trail</h3><span class="badge b-live">LIVE &bull; Module 3.10.2</span></div>
+            <div class="meta-row"><span class="route-chip">/super-admin/audit-logs</span><span class="route-chip">/api/super-admin/audit-logs</span></div>
+            <ul class="bullet-list">
+              <li><strong>Unified Cross-Tenant Feed:</strong> Merges immutable <strong>Platform CEO Governance Logs</strong> (plan edits, manual grants, impersonations, OTP resets) and <strong>Store &amp; Branch Security Logs</strong> into one paginated ledger (50 events/page).</li>
+              <li><strong>Source Switcher &amp; Forensic Exports:</strong> Toggle <em>All / Platform / Store</em> cards, filter by Store, Branch, Action, Date Range, Actor, or IP, and export 1-click <strong>Forensic Excel (<code>.xlsx</code>)</strong> or <strong>CSV</strong> trails.</li>
+            </ul>
+          </div>
+
+          <div class="module-card">
+            <div class="module-top"><h3 class="module-title">11. Platform Settings &amp; Masked Razorpay Vault</h3><span class="badge b-live">LIVE &bull; Module 3.10.1</span></div>
+            <div class="meta-row"><span class="route-chip">/super-admin/settings</span><span class="route-chip">/api/super-admin/settings</span></div>
+            <ul class="bullet-list">
+              <li><strong>SaaS Legal &amp; Tax Defaults:</strong> Manage Platform Brand, Legal Entity Name, GSTIN, SAC Code (<code>998314</code>), Registered Billing Address, Support Email/Phone, Default Free Trial Days, and Renewal Grace Period Days.</li>
+              <li><strong>AES-256 Vault &amp; Last-4 Secret Masking:</strong> Switch <em>Test (<code>rzp_test_...</code>)</em> vs <em>Production Live (<code>rzp_live_...</code>)</em>, store encrypted API Key &amp; Webhook Secrets while API responses strictly mask secrets to last 4 chars (<code>&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;1a2b</code>), protect mutations with CSRF check, copy Webhook URL (<code>/api/webhooks/razorpay</code>), and inspect Recent Webhook HMAC Verifications.</li>
             </ul>
           </div>
         </div>
@@ -1088,19 +1141,19 @@
 
         <div class="callout c-example" style="margin-bottom:18px;">
           <strong>Scenario A — N-Store Customer Bill Aggregation (LIVE &bull; Module 3.1.1):</strong><br>
-          Suppose Ramesh buys diabetes strips at <strong>Apex Pharmacy (Store 1)</strong> without registering on the portal—he just gives his mobile number <code>9876543210</code> at the counter. Next week he buys antibiotics at <strong>City Care Chemists (Store 2)</strong> using the same phone number. Each store saves its own isolated customer record (<code>uk_store_customer_phone = [storeId, phone]</code>), so neither store can ever see the other store's list or credit dues! Later, when Ramesh registers &amp; verifies once on <code>/customer/login</code> with <code>9876543210</code>, the system links all matching phone profiles (<code>getLinkedCustomerIds</code>) so Ramesh sees <strong>ALL N stores' bills</strong> (Store 1, Store 2, ..., Store N) in one personal portal—each with the originating <em>Store Name + Branch badge</em> and downloadable Tax Invoice!<br><br>
-          <strong>Scenario B — Private Multi-Store Prescription Routing (UPCOMING &bull; Module 3.10.1):</strong><br>
-          When uploading a doctor's prescription photo, patients shouldn't accidentally broadcast it to every pharmacy on the platform. Module 3.10.1 adds a mandatory <strong>"Target Store / Branch Selector"</strong> right on Upload &amp; Support Chat (<code>PatientMessage.storeId</code> + email alert ONLY to that chosen pharmacy), ensuring Store B's pharmacists can never view prescriptions sent to Store A.
+          Suppose Ramesh buys diabetes strips at <strong>Apex Pharmacy (Store 1)</strong> without registering on the portal—he just gives his mobile number <code>9876543210</code> at the counter. Next week he buys antibiotics at <strong>City Care Chemists (Store 2)</strong> using the same phone number. Each store saves its own isolated customer record (<code>uk_store_customer_phone = [storeId, phone]</code>), so neither store can ever see the other store's list or credit dues! Later, when Ramesh registers &amp; verifies once on <code>/customer/login</code> with <code>9876543210</code>, the system links all matching phone profiles (<code>getLinkedCustomerIds</code>) so Ramesh sees <strong>ALL N stores' bills</strong> (Store 1, Store 2, ..., Store N) in one personal portal—even new purchases from a 4th store post-login—each with the originating <em>Store Name + Branch badge</em> and downloadable Tax Invoice!<br><br>
+          <strong>Scenario B — Private Multi-Store &amp; Branch Prescription Routing (LIVE &bull; Module 3.10.1):</strong><br>
+          When uploading a doctor's prescription photo or sending support chat, patients never broadcast it to unrelated pharmacies. Both <strong>Prescriptions (Tab 3)</strong> and <strong>Messages (Tab 5)</strong> provide a <strong>Target Pharmacy Store &amp; Target Branch Selector</strong> (saving exact <code>PatientMessage.storeId</code> + <code>branchId</code> and emailing ONLY that chosen pharmacy). Strict server-side isolation blocks Store B with <code>HTTP 403 / 404</code> on Store A's Rx files—and even blocks Store A's Main-branch staff from opening prescriptions routed specifically to Store A's Annex branch!
         </div>
 
         <div class="grid-3">
-          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 1: Dashboard</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Summary of total pharmacy visits, total spend, uploaded prescriptions, return requests, and unread store messages.</p></div>
-          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 2: My Orders</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">View &amp; search all past pharmacy bills across linked stores, filter Rx orders, inspect Originating Store &amp; Branch badge, and print/download Tax Invoices.</p></div>
-          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 3: Prescriptions</h3><span class="badge b-live">LIVE (+ 3.10.1 Store Picker)</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Upload doctor Rx photos/PDF/HEIC, choose <em>Store Pickup</em> or <em>Home Delivery</em>, add doctor/notes. Files sit outside public web root so only logged-in owners/pharmacists can open them. <em>(Upcoming 3.10.1 adds explicit Target Store/Branch selector.)</em></p></div>
-          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 4: Return Requests</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Pick items &amp; quantities from an invoice, choose Store Credit / Cash / UPI refund, and submit directly to that store's Return desk for approval.</p></div>
-          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 5: Messages</h3><span class="badge b-live">LIVE &bull; Bidirectional</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Two-way chat with pharmacy staff (ask dosage questions, check medicine availability, confirm order readiness) with unread reply indicators.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 1: Dashboard</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Summary of total pharmacy visits, net pharmacy spend, uploaded prescriptions, return requests, and unread store messages.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 2: My Orders</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">View &amp; search all past pharmacy bills across linked stores (including new post-login stores automatically), inspect Originating Store &amp; Branch badge, and print/download Tax Invoices.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 3: Prescriptions</h3><span class="badge b-live">LIVE &bull; Target Store/Branch</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Choose <strong>Target Pharmacy &amp; Branch Outlet</strong>, upload doctor Rx photos/PDF/HEIC, pick <em>Store Pickup</em> or <em>Home Delivery</em>, add doctor/notes. Files sit outside public web root with strict store + branch access enforcement (<code>403</code> for other stores/branches).</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 4: Return Requests</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Pick items &amp; quantities from an invoice, choose Store Credit / Cash / UPI refund, and submit directly to the originating invoice's store &amp; branch Return desk.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 5: Messages</h3><span class="badge b-live">LIVE &bull; Store/Branch Routed</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Select Target Pharmacy &amp; Branch and chat two-way with pharmacy staff (ask dosage questions, check medicine availability, confirm order readiness) with unread reply counters.</p></div>
           <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 6: Monthly Refills</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Chronic care patients (Diabetes, Thyroid, BP) see their scheduled monthly refill cycle dates so they never run out of maintenance drugs.</p></div>
-          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 7: Profile</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Update full name, email, residential address, date of birth, gender, and change account password.</p></div>
+          <div class="module-card"><div class="module-top"><h3 class="module-title">Tab 7: Profile &amp; OTP Reset</h3><span class="badge b-live">LIVE</span></div><p style="font-size:13.5px;color:var(--muted);margin:0;">Update full name, email, residential address, date of birth, gender, change password, or reset forgotten passwords via 6-digit Email OTP right from <code>/customer/login</code> (syncs verified linked phone accounts across pharmacies).</p></div>
         </div>
       </section>
 
@@ -1666,8 +1719,8 @@
         <div class="section-head">
           <div>
             <div class="section-kicker">Multi-Tenant SaaS Transformation Checklist</div>
-            <h2>TODO Part 3: Super Admin Tower, Subscriptions &amp; Razorpay (Modules 3.1 – 3.10)</h2>
-            <p class="section-desc">Modules 3.1 through 3.8 are COMPLETED &amp; tested against live PostgreSQL + live Razorpay Test API. Modules 3.9 &amp; 3.10 are the final upcoming polish &amp; reporting sprint.</p>
+            <h2>TODO Part 3: Super Admin Tower, Subscriptions &amp; Razorpay (Modules 3.1 – 3.10 + Security &amp; Storefront)</h2>
+            <p class="section-desc">All Modules 3.1 through 3.10, Universal Email-OTP Forgot Password across all 4 login portals, and the redesigned Super-Admin-free Public Storefront are COMPLETED &amp; verified against live PostgreSQL + live Razorpay Test API.</p>
           </div>
         </div>
 
@@ -1701,15 +1754,23 @@
         </details>
         <details class="todo-acc">
           <summary><span>Module 3.8: CEO Executive Command Dashboard (<code>/super-admin/dashboard</code>)</span><span class="badge b-live">COMPLETED</span></summary>
-          <div class="todo-body">Normalized MRR, ARR, ARPU, MTD/All-Time Net SaaS Revenue + GST minus refunds, Store Cohorts, Trial Conversion %, 30d Churn %, Total Platform Retail GMV, Razorpay Success Rate &amp; Webhook Health, Automated Upsell Leads (&ge;80% quota), and At-Risk Churn Alerts (grace period, &le;72h trial expiry, 14d zero sales).</div>
+          <div class="todo-body">Normalized MRR, ARR, ARPU, MTD/All-Time Net SaaS Revenue + Taxable/GST breakdown minus refunds, Store Cohorts (Paid, Trialing, Grace, Churned), Trial-to-Paid Conversion %, 30d Logo Churn %, Total Platform Retail GMV (Today/30d/All-Time), Invoices &amp; Digital Rx count, Razorpay 30d Auth Rate &amp; Webhook Health badge (<code>Healthy / Needs Check</code>), Automated Upsell Leads (&ge;80% quota), At-Risk Churn Alerts (grace period, &le;72h trial expiry, 14d zero sales), Recent SaaS Activity Feed, and 9-card Quick Control Tower navigation grid.</div>
         </details>
         <details class="todo-acc">
-          <summary><span>Module 3.9: CEO-Level BI Reports, Store P&amp;L Leaderboards &amp; Multi-Sheet Excel Board Pack</span><span class="badge b-roadmap">PENDING ROADMAP</span></summary>
-          <div class="todo-body"><strong>Scheduled Next:</strong> Populates <code>/super-admin/reports</code> with 12-month MRR waterfall (New, Upgrade, Churn, Net MRR), Plan tier share chart, Cross-Store &amp; Branch P&amp;L leaderboards, Feature utilization matrix, Storage footprint report, and 7-tab executive OpenXML <code>.xlsx</code> board workbook export.</div>
+          <summary><span>Module 3.9: CEO-Level BI Reports, Store &amp; Branch P&amp;L Leaderboards &amp; 7-Sheet Board Pack (<code>/super-admin/reports</code>)</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">8-filter interactive BI suite (Date Range, State, City, Plan Tier, Store/Branch Scope, Multi-KPI Sort) powering 4 executive tabs: (1) <strong>SaaS Revenue &amp; 12M MRR Waterfall Bridge</strong> (New, Expansion, Churned, Ending MRR, Plan Tier MRR share &amp; GSTR-1 SAC <code>998314</code> tax summary); (2) <strong>Consolidated Retail P&amp;L &amp; Cross-Store/Branch Leaderboards</strong> (5-way Cash/UPI/Card/Baki/Cheque tender split, Gross Margin %, Portal Adoption Score /100, Period Growth %, Branch Compliance Matrix); (3) <strong>Inventory Risk &amp; Regulatory Compliance</strong> (Expired/Expiring 30d/90d, Dead Stock 60/90/180d, Schedule H/H1 %, Baki vs Supplier Payable exposure); (4) <strong>Feature Adoption &amp; Storage Footprint</strong>. Exports 7-tab OpenXML <code>.xlsx</code> board workbook (<code>Executive Summary</code>, <code>12M MRR &amp; Revenue</code>, <code>Plan Tier Breakdown</code>, <code>Stores Health &amp; Quota Matrix</code>, <code>Branches Directory</code>, <code>Upsell &amp; Churn Pipeline</code>, <code>SaaS Payment Ledger</code>) + UTF-8 BOM CSVs.</div>
         </details>
         <details class="todo-acc">
-          <summary><span>Module 3.10: Secret Masking, Customer Target-Store Rx Selector, Cross-Store Audit UI &amp; Phase 3 E2E Suite</span><span class="badge b-roadmap">PENDING ROADMAP</span></summary>
-          <div class="todo-body"><strong>Scheduled Next:</strong> Last-4-char Razorpay secret masking inside <code>/super-admin/settings</code>, adding an explicit <em>Target Store / Branch Selector</em> on Customer Portal prescription upload/chat so uploaded prescriptions route strictly to the selected pharmacy's <code>storeId</code>, dedicated Cross-Store Audit viewer UI at <code>/super-admin/audit-logs</code>, and unified Phase 3 E2E test suite.</div>
+          <summary><span>Module 3.10: Secret Masking Vault, Customer Store/Branch Rx Routing, Forensic Audit UI &amp; Phase 3 E2E Suite</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Built <strong>Platform Settings &amp; AES-256 Razorpay Vault</strong> (<code>/super-admin/settings</code>) with strict last-4-char API secret masking (<code>••••••••1a2b</code>), CSRF protection &amp; webhook signature logs; added explicit <strong>Target Pharmacy Store &amp; Branch Selectors</strong> on Customer Portal Prescriptions &amp; Chat so uploaded files isolate by store &amp; branch (blocking unauthorized stores and even sibling branches with <code>403 / 404</code>); built <strong>Unified Cross-Store Forensic Audit Trail</strong> (<code>/super-admin/audit-logs</code>) merging Platform Governance &amp; Store Security logs with Excel/CSV export; and verified all 8 E2E Phase 3 scenarios with <strong>36 passing real-DB assertions</strong> (<code>scripts/test-real-api-phase-3.ts</code>).</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Security Upgrade: Universal 6-Digit Email-OTP Forgot Password Across All 4 Portals</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Implemented unified <code>POST /api/auth/forgot-password</code>, <code>src/lib/passwordReset.ts</code>, <code>PasswordResetOtp</code> table, and <code>ForgotPasswordModal</code> on all 4 login pages (<code>/admin/login</code>, <code>/super-admin/login</code>, <code>/customer/login</code>, <code>/supplier/login</code>). Supports HMAC-SHA256 OTP digests compared with <code>timingSafeEqual</code>, 15-min TTL, 45s resend cooldown, 5-attempt invalidation, 25 req/15m IP cap, CSRF same-origin enforcement, min password length checks (8 Super Admin / 6 Store-Patient-Supplier), inactive-branch guard, walk-in &amp; multi-store customer account syncing, lockout clearing, audit trail logging, and <strong>34 passing E2E assertions</strong> (<code>scripts/test-real-api-forgot-password.ts</code>).</div>
+        </details>
+        <details class="todo-acc">
+          <summary><span>Storefront Update: Public Homepage Redesign &amp; Super Admin Removal (<code>/</code>)</span><span class="badge b-live">COMPLETED</span></summary>
+          <div class="todo-body">Redesigned <code>src/app/page.tsx</code> with Clinical Emerald / Slate-Teal / Indigo styling showcasing strictly store-level operations: <strong>3 Stakeholder Portals</strong> (Store Admin &amp; Staff, Distributor &amp; Supplier, Customer &amp; Patient), <strong>4 Store RBAC Team Roles</strong> (<code>Store Owner (Admin)</code>, <code>Pharmacist</code>, <code>Cashier (POS Counter)</code>, <code>Accountant</code>), Counter Workflow preview card, conditional First-Run Setup banner (<code>setupDone === false</code> only), and authenticated-only <code>/api/admin/settings</code> calls—with zero Super Admin / CEO links or terminology visible publicly.</div>
         </details>
       </section>
 

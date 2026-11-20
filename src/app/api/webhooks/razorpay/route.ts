@@ -9,6 +9,7 @@ import {
   calculateSaasTaxFromSubtotal,
   computeSubscriptionPeriodEnd,
   generateNextSubscriptionInvoiceNo,
+  resolveEffectiveRazorpayCredentials,
   verifyRazorpayWebhookSignature,
 } from "@/lib/razorpay";
 
@@ -27,8 +28,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: "Unreadable request body" }, { status: 400 });
   }
 
+  const effectiveCreds = await resolveEffectiveRazorpayCredentials();
   const signatureHeader = req.headers.get("x-razorpay-signature");
-  if (!verifyRazorpayWebhookSignature(rawBody, signatureHeader)) {
+  if (!verifyRazorpayWebhookSignature(rawBody, signatureHeader, effectiveCreds.webhookSecret)) {
     return NextResponse.json(
       { success: false, message: "Invalid Razorpay webhook signature." },
       { status: 401 }

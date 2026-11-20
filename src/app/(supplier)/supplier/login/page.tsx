@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   CheckCircle2,
 } from "lucide-react";
+import { ForgotPasswordModal } from "@/components/auth/ForgotPasswordModal";
 
 export default function SupplierLoginPage() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function SupplierLoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   // Login Form (empty defaults)
   const [identifier, setIdentifier] = useState("");
@@ -214,9 +216,18 @@ export default function SupplierLoginPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">
-                  Password *
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Password *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setForgotOpen(true)}
+                    className="text-xs font-bold text-[#283566] hover:underline cursor-pointer"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
                 <div className="relative">
                   <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
@@ -370,6 +381,19 @@ export default function SupplierLoginPage() {
           </div>
         </div>
       </div>
+
+      <ForgotPasswordModal
+        open={forgotOpen}
+        panel="supplier"
+        defaultIdentifier={identifier}
+        onClose={() => setForgotOpen(false)}
+        onSuccess={(msg, usedId) => {
+          setSuccessMsg(msg);
+          setErrorMsg(null);
+          if (usedId) setIdentifier(usedId);
+          setLoginPassword("");
+        }}
+      />
     </div>
   );
 }

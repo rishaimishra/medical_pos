@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Plus,
 } from "lucide-react";
+import { ForgotPasswordModal } from "@/components/auth/ForgotPasswordModal";
 
 export default function CustomerLoginPage() {
   const router = useRouter();
@@ -28,7 +29,7 @@ export default function CustomerLoginPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [pendingVerifyIdentifier, setPendingVerifyIdentifier] = useState<string | null>(null);
   const [resendingVerify, setResendingVerify] = useState(false);
-  const [showForgotHelp, setShowForgotHelp] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
   const [storeContact, setStoreContact] = useState<{ name: string; email: string | null; phone: string | null } | null>(null);
 
   // Login Form (empty defaults - zero prefilled data)
@@ -337,29 +338,11 @@ export default function CustomerLoginPage() {
               <div className="pt-2 text-center">
                 <button
                   type="button"
-                  onClick={() => setShowForgotHelp((p) => !p)}
+                  onClick={() => setForgotOpen(true)}
                   className="text-xs font-bold text-[#0F5A47] hover:underline cursor-pointer"
                 >
-                  Forgot Password?
+                  Forgot Password? Reset via Email OTP
                 </button>
-                {showForgotHelp && (
-                  <div className="mt-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 text-left space-y-1">
-                    <p className="font-bold text-slate-800">
-                      Need a password reset for {storeContact?.name || "Pharmacy"}?
-                    </p>
-                    <p>
-                      Please contact our pharmacy desk directly:{" "}
-                      {storeContact?.email ? (
-                        <a href={`mailto:${storeContact.email}`} className="font-bold text-[#0F5A47] underline">
-                          {storeContact.email}
-                        </a>
-                      ) : (
-                        <strong>pharmacy support email</strong>
-                      )}
-                      {storeContact?.phone ? ` or call ${storeContact.phone}` : ""}.
-                    </p>
-                  </div>
-                )}
               </div>
             </form>
           ) : (
@@ -477,6 +460,19 @@ export default function CustomerLoginPage() {
           )}
         </div>
       </div>
+
+      <ForgotPasswordModal
+        open={forgotOpen}
+        panel="customer"
+        defaultIdentifier={identifier}
+        onClose={() => setForgotOpen(false)}
+        onSuccess={(msg, usedId) => {
+          setSuccessMsg(msg);
+          setErrorMsg(null);
+          if (usedId) setIdentifier(usedId);
+          setLoginPassword("");
+        }}
+      />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch, canAccessPage } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { requireStoreFeature } from "@/lib/entitlements";
 
 /**
  * GET /api/admin/returns/[id]
@@ -114,6 +115,9 @@ export async function PATCH(
       { status: 403 }
     );
   }
+
+  const returnsFeature = await requireStoreFeature(auth.session.storeId, "salesAndReturnsCore");
+  if (!returnsFeature.allowed) return returnsFeature.response!;
 
   const { id } = await params;
   const returnId = parseInt(id, 10);

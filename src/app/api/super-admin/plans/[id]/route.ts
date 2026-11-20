@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifySuperAdminRequest } from "@/lib/auth";
+import { verifySameOrigin } from "@/lib/platformConfig";
 import { getClientIp, logPlatformAudit } from "@/lib/audit";
 import { invalidateStoreEntitlements } from "@/lib/entitlements";
-import { isRazorpayConfigured, syncPlanToRazorpay } from "@/lib/razorpay";
+import { isRazorpayConfiguredAsync, syncPlanToRazorpay } from "@/lib/razorpay";
 import { parseFeaturesJson } from "@/lib/saasFeatures";
 
 const ALLOWED_CYCLES = new Set(["monthly", "quarterly", "yearly", "lifetime"]);
@@ -15,6 +16,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = verifySameOrigin(req);
+  if (!originCheck.ok && originCheck.response) return originCheck.response;
+
   const auth = await verifySuperAdminRequest(req, ["ceo", "platform_admin"]);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
@@ -111,7 +115,7 @@ export async function PATCH(
       billingChanged &&
       Number(updated.priceInr) > 0 &&
       updated.billingCycle !== "lifetime" &&
-      isRazorpayConfigured() &&
+      (await isRazorpayConfiguredAsync()) &&
       body.skipRazorpaySync !== true
     ) {
       await syncPlanToRazorpay(id);
@@ -165,6 +169,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = verifySameOrigin(req);
+  if (!originCheck.ok && originCheck.response) return originCheck.response;
+
   const auth = await verifySuperAdminRequest(req, ["ceo", "platform_admin"]);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });

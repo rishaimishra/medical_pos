@@ -812,4 +812,70 @@ export async function sendCustomerRefillAlertEmail(options: CustomerRefillAlertE
   });
 }
 
+export interface PasswordResetOtpEmailOptions {
+  toEmail: string;
+  otpCode: string;
+  accountName: string;
+  panelLabel: string;
+  storeName?: string;
+  storeId?: number | null;
+}
+
+/**
+ * Sends a single-use 6-digit password reset OTP email across all portal panels.
+ */
+export async function sendPasswordResetOtpEmail(
+  options: PasswordResetOtpEmailOptions
+): Promise<EmailResult> {
+  const brand = escapeHtml(options.storeName || "Medical POS Cloud");
+  const safeName = escapeHtml(options.accountName || "User");
+  const safePanel = escapeHtml(options.panelLabel);
+  const safeOtp = escapeHtml(options.otpCode);
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head><meta charset="utf-8" /><title>Password Reset Code</title></head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f1f5f9; color: #0f172a; padding: 36px 20px; margin: 0;">
+        <div style="max-width: 520px; margin: 0 auto; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 20px; padding: 32px; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06);">
+          <div style="text-align: center; margin-bottom: 22px;">
+            <span style="display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #0f766e; background-color: #f0fdfa; border: 1px solid #99f6e4; padding: 5px 14px; border-radius: 9999px;">
+              ${safePanel}
+            </span>
+            <h2 style="color: #0f172a; font-size: 21px; font-weight: 800; margin: 14px 0 4px 0;">${brand}</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 0;">Password Reset Verification Code</p>
+          </div>
+
+          <p style="font-size: 14px; color: #334155; line-height: 1.6; margin-bottom: 20px;">
+            Hello <strong>${safeName}</strong>,<br/>
+            We received a request to reset the password for your <strong>${safePanel}</strong> account. Enter this single-use 6-digit code to set a new password:
+          </p>
+
+          <div style="background-color: #0f172a; border-radius: 14px; padding: 22px; text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 34px; font-weight: 800; letter-spacing: 0.28em; color: #2dd4bf; font-family: monospace;">
+              ${safeOtp}
+            </div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 8px;">
+              Valid for 15 minutes • Single-use • Max 5 verification attempts
+            </div>
+          </div>
+
+          <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin: 0; text-align: center;">
+            If you did not request a password reset, you can safely ignore this email. Your existing password remains unchanged.
+          </p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to: options.toEmail,
+    subject: `[${options.otpCode}] Password Reset OTP - ${options.panelLabel}`,
+    html,
+    text: `Hello ${options.accountName},\n\nYour single-use password reset OTP for ${options.panelLabel} is: ${options.otpCode}\nIt expires in 15 minutes.\nIf you did not request this, ignore this email.`,
+    storeId: options.storeId ?? null,
+    fromName: options.storeName || "Medical POS Security",
+  });
+}
+
 

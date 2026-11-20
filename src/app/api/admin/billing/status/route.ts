@@ -6,7 +6,11 @@ import { verifyAdminRequest } from "@/lib/auth";
 import { getClientIp, logAudit, logPlatformAudit } from "@/lib/audit";
 import { PRESCRIPTION_STORAGE_DIR } from "@/lib/prescriptionFiles";
 import { invalidateStoreEntitlements, resolveStoreEntitlements } from "@/lib/entitlements";
-import { getPublicRazorpayKeyId, isRazorpayConfigured, razorpayRequest } from "@/lib/razorpay";
+import {
+  isRazorpayConfiguredAsync,
+  razorpayRequest,
+  resolveEffectiveRazorpayCredentials,
+} from "@/lib/razorpay";
 import {
   QUOTA_RESOURCE_REGISTRY,
   SAAS_FEATURE_REGISTRY,
@@ -159,6 +163,8 @@ export async function GET(req: NextRequest) {
       prorationCreditInr = Math.round(Number(latestSub.plan.priceInr) * (remMs / totalMs) * 100) / 100;
     }
 
+    const effRazorpay = await resolveEffectiveRazorpayCredentials();
+
     return NextResponse.json({
       success: true,
       entitlements,
@@ -230,8 +236,8 @@ export async function GET(req: NextRequest) {
         createdAt: pay.createdAt,
       })),
       featureRegistry: SAAS_FEATURE_REGISTRY,
-      razorpayConfigured: isRazorpayConfigured(),
-      razorpayKeyId: getPublicRazorpayKeyId(),
+      razorpayConfigured: Boolean(effRazorpay.keyId && effRazorpay.keySecret),
+      razorpayKeyId: effRazorpay.keyId || null,
     });
   } catch (err: any) {
     console.error("[GET /api/admin/billing/status Error]:", err);
@@ -277,7 +283,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (action === "cancel_subscription") {
-      if (latestSub.razorpaySubscriptionId && isRazorpayConfigured()) {
+      if (latestSub.razorpaySubscriptionId && (await isRazorpayConfiguredAsync())) {
         try {
           await razorpayRequest(
             "POST",

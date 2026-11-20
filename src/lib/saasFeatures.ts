@@ -454,3 +454,21 @@ export async function ensureDefaultPlansSeeded(): Promise<{ createdCodes: string
   const totalPlans = await prisma.subscriptionPlan.count();
   return { createdCodes, totalPlans };
 }
+
+/**
+ * Normalizes Monthly, Quarterly, Yearly, or Lifetime plan price into Monthly Recurring Revenue (MRR).
+ */
+export function normalizeMonthlyMrr(
+  priceInr: number,
+  billingCycle: string,
+  intervalCount = 1
+): number {
+  const cycle = (billingCycle || "monthly").toLowerCase();
+  if (priceInr <= 0 || cycle === "lifetime") return 0;
+  if (cycle === "yearly") return priceInr / (12 * Math.max(1, intervalCount));
+  if (cycle === "quarterly") {
+    const months = intervalCount >= 3 ? intervalCount : Math.max(1, intervalCount) * 3;
+    return priceInr / months;
+  }
+  return priceInr / Math.max(1, intervalCount);
+}

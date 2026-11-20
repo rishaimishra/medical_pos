@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveCustomerTargetStore, verifyCustomerRequest } from "@/lib/auth";
+import { parseOptionalPositiveInt, resolveVerifiedStoreBranch } from "@/lib/customerRouting";
 import { escapeHtml, sendEmail } from "@/lib/email";
 import { requireCustomerPortalFeature, requireStoreFeature } from "@/lib/entitlements";
 
@@ -94,12 +95,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Message cannot be empty." }, { status: 400 });
     }
 
-    const requestedStoreId = body.storeId ? parseInt(String(body.storeId), 10) : null;
+    const requestedStoreId = parseOptionalPositiveInt(body.storeId);
+    const requestedBranchId = parseOptionalPositiveInt(body.branchId);
     const resolvedStore = await resolveCustomerTargetStore(
       auth.session.customerId,
       linkedIds,
-      requestedStoreId && !isNaN(requestedStoreId) ? requestedStoreId : null
+      requestedStoreId
     );
+    const branchResolution = await resolveVerifiedStoreBranch(
+      resolvedStore.storeId,
+      requestedBranchId
+    );
+    if (!branchResolution.ok) return branchResolution.response;
+
     const targetGate = await requireStoreFeature(resolvedStore.storeId, "twoWayMessagingInboxes", {
       forExternalPortal: true,
     });
@@ -108,6 +116,7 @@ export async function POST(req: NextRequest) {
     const created = await prisma.patientMessage.create({
       data: {
         storeId: resolvedStore.storeId,
+        branchId: branchResolution.branchId,
         customerId: resolvedStore.targetCustomerId,
         direction: "in",
         message: messageText,

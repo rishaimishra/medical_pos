@@ -3,12 +3,7 @@ import { prisma } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessBranch } from "@/lib/rbac";
 import { requireStoreFeature } from "@/lib/entitlements";
-
-function escapeCsvField(val: any): string {
-  if (val === null || val === undefined) return '""';
-  const str = String(val).replace(/"/g, '""');
-  return `"${str}"`;
-}
+import { buildCsvContent } from "@/lib/csv";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAdminRequest(req, { requiredPermission: "manage_stock_adjustments" });
@@ -165,12 +160,7 @@ export async function GET(req: NextRequest) {
       adj.user?.role || "",
     ]);
 
-    const csvContent =
-      "\uFEFF" +
-      [
-        headers.map(escapeCsvField).join(","),
-        ...rows.map((r) => r.map(escapeCsvField).join(",")),
-      ].join("\r\n");
+    const csvContent = buildCsvContent(headers, rows);
 
     const dateStr = new Date().toISOString().split("T")[0];
     return new NextResponse(csvContent, {

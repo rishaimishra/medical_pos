@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest } from "@/lib/auth";
 import { canAccessPage } from "@/lib/rbac";
 import { requireStoreFeature } from "@/lib/entitlements";
+import { buildPatientMessageScope, canStaffAccessPatientMessage } from "@/lib/customerRouting";
 
 /**
  * MODULE 2.18.2: Pharmacist / POS Prescription Requests Queue
@@ -31,14 +32,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const userStoreId = auth.session.storeId ?? null;
-    const pmStoreScope: any = userStoreId
-      ? {
-          OR: [
-            { storeId: userStoreId },
-            { storeId: null, customer: { storeId: userStoreId } },
-          ],
-        }
-      : {};
+    const userBranchId = auth.session.branchId ?? null;
+    const pmStoreScope = buildPatientMessageScope(userStoreId, userBranchId);
 
     if (idParam) {
       const id = parseInt(idParam, 10);
@@ -62,8 +57,7 @@ export async function GET(req: NextRequest) {
           },
         },
       });
-      const singleStoreId = single?.storeId ?? single?.customer?.storeId ?? null;
-      if (!single || (userStoreId && singleStoreId !== userStoreId)) {
+      if (!single || !canStaffAccessPatientMessage(auth.session, single)) {
         return NextResponse.json({ success: false, message: "Prescription request not found" }, { status: 404 });
       }
       let singleDue = 0;
@@ -217,8 +211,7 @@ export async function PATCH(req: NextRequest) {
       where: { id },
       include: { customer: { select: { storeId: true } } },
     });
-    const existingStoreId = existing?.storeId ?? existing?.customer?.storeId ?? null;
-    if (!existing || (auth.session.storeId && existingStoreId !== auth.session.storeId)) {
+    if (!canStaffAccessPatientMessage(auth.session, existing)) {
       return NextResponse.json({ success: false, message: "Prescription request not found" }, { status: 404 });
     }
 

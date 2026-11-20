@@ -18,6 +18,7 @@ import {
   User,
 } from "lucide-react";
 import { toast } from "@/stores/useToastStore";
+import { ForgotPasswordModal } from "@/components/auth/ForgotPasswordModal";
 
 export default function SuperAdminLoginPage() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function SuperAdminLoginPage() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   // Bootstrap fields
   const [ceoName, setCeoName] = useState("");
@@ -247,7 +249,16 @@ export default function SuperAdminLoginPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-300">Password</label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-300">Password</label>
+                    <button
+                      type="button"
+                      onClick={() => setForgotOpen(true)}
+                      className="text-xs font-bold text-teal-400 hover:underline cursor-pointer"
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
@@ -385,6 +396,19 @@ export default function SuperAdminLoginPage() {
           </div>
         </div>
       </div>
+      <ForgotPasswordModal
+        open={forgotOpen}
+        panel="super_admin"
+        defaultIdentifier={identifier}
+        onClose={() => setForgotOpen(false)}
+        onSuccess={(msg, usedId) => {
+          toast.success(msg);
+          setErrorMsg(null);
+          setLockedSeconds(0);
+          if (usedId) setIdentifier(usedId);
+          setPassword("");
+        }}
+      />
     </div>
   );
 }

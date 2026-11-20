@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { ForgotPasswordModal } from "@/components/auth/ForgotPasswordModal";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -28,6 +29,8 @@ export default function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
+  const [forgotOpen, setForgotOpen] = useState(false);
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const [lockoutSeconds, setLockoutSeconds] = useState<number>(0);
 
@@ -154,6 +157,12 @@ export default function AdminLoginPage() {
           )}
 
           {/* Friendly Error Message */}
+          {resetSuccessMsg && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+              {resetSuccessMsg}
+            </div>
+          )}
+
           {errorMsg && lockoutSeconds === 0 && (
             <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -187,9 +196,18 @@ export default function AdminLoginPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">
-              Password
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700">
+                Password
+              </label>
+              <button
+                type="button"
+                onClick={() => setForgotOpen(true)}
+                className="text-xs font-bold text-[#1F4E5B] hover:underline cursor-pointer"
+              >
+                Forgot Password?
+              </button>
+            </div>
             <div className="relative">
               <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -240,6 +258,20 @@ export default function AdminLoginPage() {
           </div>
         </form>
       </div>
+
+      <ForgotPasswordModal
+        open={forgotOpen}
+        panel="admin"
+        defaultIdentifier={identifier}
+        onClose={() => setForgotOpen(false)}
+        onSuccess={(msg, usedId) => {
+          setResetSuccessMsg(msg);
+          setErrorMsg(null);
+          setLockoutSeconds(0);
+          if (usedId) setIdentifier(usedId);
+          setPassword("");
+        }}
+      />
     </div>
   );
 }

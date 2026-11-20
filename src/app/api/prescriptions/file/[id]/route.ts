@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyAdminRequest, verifyCustomerRequest } from "@/lib/auth";
 import { canAccessPage } from "@/lib/rbac";
 import { readPrescriptionBuffer, sanitizeFileName } from "@/lib/prescriptionFiles";
+import { canStaffAccessPatientMessage } from "@/lib/customerRouting";
 
 /**
  * Authenticated Prescription File Delivery Endpoint
@@ -46,15 +47,9 @@ export async function GET(
     return NextResponse.json({ success: false, message: "Prescription file not found" }, { status: 404 });
   }
 
-  const msgStoreId = msg.storeId ?? msg.customer?.storeId ?? null;
-  if (
-    isAuthorizedStaff &&
-    adminAuth.session?.storeId &&
-    msgStoreId &&
-    msgStoreId !== adminAuth.session.storeId
-  ) {
+  if (isAuthorizedStaff && adminAuth.session && !canStaffAccessPatientMessage(adminAuth.session, msg)) {
     return NextResponse.json(
-      { success: false, message: "Forbidden: Prescription file belongs to another pharmacy store" },
+      { success: false, message: "Forbidden: Prescription file belongs to another pharmacy store or branch" },
       { status: 403 }
     );
   }

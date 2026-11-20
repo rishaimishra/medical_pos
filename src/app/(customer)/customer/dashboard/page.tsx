@@ -110,7 +110,9 @@ export default function CustomerDashboardPage() {
   const [sendingSupport, setSendingSupport] = useState(false);
 
   const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [availableStores, setAvailableStores] = useState<Array<{ id: number; name: string }>>([]);
+  const [availableStores, setAvailableStores] = useState<
+    Array<{ id: number; name: string; branches?: Array<{ id: number; code: string; name: string }> }>
+  >([]);
   const [storeFilter, setStoreFilter] = useState<string>("all");
   const [ordersSummary, setOrdersSummary] = useState<any>(null);
   const [customerDetails, setCustomerDetails] = useState<any>(null);
@@ -118,6 +120,7 @@ export default function CustomerDashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [targetStoreId, setTargetStoreId] = useState<string>("");
+  const [targetBranchId, setTargetBranchId] = useState<string>("");
 
   // Module 2.19.2: Customer Return Requests
   const [returnsList, setReturnsList] = useState<any[]>([]);
@@ -259,6 +262,7 @@ export default function CustomerDashboardPage() {
         body: JSON.stringify({
           message: supportText.trim(),
           ...(targetStoreId ? { storeId: Number(targetStoreId) } : {}),
+          ...(targetBranchId ? { branchId: Number(targetBranchId) } : {}),
         }),
       });
       if (res.ok) {
@@ -409,6 +413,7 @@ export default function CustomerDashboardPage() {
       form.append("fulfillmentMode", rxMode);
       form.append("message", rxNotes.trim());
       if (targetStoreId) form.append("storeId", targetStoreId);
+      if (targetBranchId) form.append("branchId", targetBranchId);
 
       const res = await fetch("/api/customer/prescriptions", {
         method: "POST",
@@ -876,7 +881,10 @@ export default function CustomerDashboardPage() {
                       <label className="text-xs font-bold text-slate-700 block mb-1">Target Pharmacy Store</label>
                       <select
                         value={targetStoreId}
-                        onChange={(e) => setTargetStoreId(e.target.value)}
+                        onChange={(e) => {
+                          setTargetStoreId(e.target.value);
+                          setTargetBranchId("");
+                        }}
                         className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold bg-white"
                       >
                         <option value="">Recent Pharmacy (Auto)</option>
@@ -888,6 +896,32 @@ export default function CustomerDashboardPage() {
                       </select>
                     </div>
                   )}
+                  {(() => {
+                    const activeStore =
+                      availableStores.find((s) => String(s.id) === targetStoreId) ||
+                      (availableStores.length === 1 ? availableStores[0] : null);
+                    const branches = activeStore?.branches || [];
+                    if (branches.length <= 1) return null;
+                    return (
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">
+                          Target Branch (Optional)
+                        </label>
+                        <select
+                          value={targetBranchId}
+                          onChange={(e) => setTargetBranchId(e.target.value)}
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold bg-white"
+                        >
+                          <option value="">Any / Main Branch</option>
+                          {branches.map((br) => (
+                            <option key={br.id} value={String(br.id)}>
+                              {br.name} ({br.code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })()}
 
                   <div>
                     <label className="text-xs font-bold text-slate-700 block mb-1">
@@ -1115,7 +1149,10 @@ export default function CustomerDashboardPage() {
                 {availableStores.length > 1 && (
                   <select
                     value={targetStoreId}
-                    onChange={(e) => setTargetStoreId(e.target.value)}
+                    onChange={(e) => {
+                      setTargetStoreId(e.target.value);
+                      setTargetBranchId("");
+                    }}
                     className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold bg-white"
                   >
                     <option value="">Recent Store</option>
@@ -1126,6 +1163,27 @@ export default function CustomerDashboardPage() {
                     ))}
                   </select>
                 )}
+                {(() => {
+                  const activeStore =
+                    availableStores.find((s) => String(s.id) === targetStoreId) ||
+                    (availableStores.length === 1 ? availableStores[0] : null);
+                  const branches = activeStore?.branches || [];
+                  if (branches.length <= 1) return null;
+                  return (
+                    <select
+                      value={targetBranchId}
+                      onChange={(e) => setTargetBranchId(e.target.value)}
+                      className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold bg-white"
+                    >
+                      <option value="">Any Branch</option>
+                      {branches.map((br) => (
+                        <option key={br.id} value={String(br.id)}>
+                          {br.name}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                })()}
                 <input
                   type="text"
                   required

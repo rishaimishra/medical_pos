@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { getClientIp, logAudit, logPlatformAudit } from "@/lib/audit";
+import { verifySameOrigin } from "@/lib/platformConfig";
 import { invalidateStoreEntitlements } from "@/lib/entitlements";
 import {
   calculateSaasTaxFromSubtotal,
   computeSubscriptionPeriodEnd,
   generateNextSubscriptionInvoiceNo,
+  resolveEffectiveRazorpayCredentials,
   verifyRazorpayPaymentSignature,
 } from "@/lib/razorpay";
 
@@ -14,6 +16,9 @@ import {
  * MODULE 3.5.2: Crypto Signature Verification & Atomic Subscription Activation (`POST /api/admin/billing/verify`)
  */
 export async function POST(req: NextRequest) {
+  const originCheck = verifySameOrigin(req);
+  if (!originCheck.ok && originCheck.response) return originCheck.response;
+
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
@@ -57,11 +62,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const effectiveCreds = await resolveEffectiveRazorpayCredentials();
     const signatureValid = verifyRazorpayPaymentSignature({
       paymentId,
       orderId,
       subscriptionId,
       signature,
+      secretOverride: effectiveCreds.keySecret,
     });
 
     if (!signatureValid) {

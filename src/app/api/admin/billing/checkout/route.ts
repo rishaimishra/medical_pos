@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifyAdminRequest } from "@/lib/auth";
 import { getClientIp, logAudit } from "@/lib/audit";
+import { verifySameOrigin } from "@/lib/platformConfig";
 import {
   calculateSaasTaxFromSubtotal,
   generateNextSubscriptionInvoiceNo,
-  getPublicRazorpayKeyId,
   razorpayRequest,
+  resolveEffectiveRazorpayCredentials,
   syncPlanToRazorpay,
 } from "@/lib/razorpay";
 
@@ -16,6 +17,9 @@ import {
  * - Flow B (`mode === "order"`): Creates GST-inclusive Razorpay Order + pending SubscriptionPayment
  */
 export async function POST(req: NextRequest) {
+  const originCheck = verifySameOrigin(req);
+  if (!originCheck.ok && originCheck.response) return originCheck.response;
+
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
@@ -81,8 +85,9 @@ export async function POST(req: NextRequest) {
         ? "subscription"
         : "order";
 
-    const razorpayKeyId = getPublicRazorpayKeyId();
-    if (!razorpayKeyId) {
+    const rzpCreds = await resolveEffectiveRazorpayCredentials();
+    const razorpayKeyId = rzpCreds.keyId || null;
+    if (!razorpayKeyId || !rzpCreds.keySecret) {
       return NextResponse.json(
         { success: false, message: "Razorpay keys are not configured on the platform server." },
         { status: 500 }

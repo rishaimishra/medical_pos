@@ -229,9 +229,25 @@ export async function GET(req: NextRequest) {
         availableStoresMap.set(sId, sName);
       }
     }
+    const availableStoreIds = Array.from(availableStoresMap.keys());
+    const storeBranches = availableStoreIds.length
+      ? await prisma.branch.findMany({
+          where: { storeId: { in: availableStoreIds }, active: true },
+          orderBy: [{ isMain: "desc" }, { id: "asc" }],
+          select: { id: true, storeId: true, code: true, name: true },
+        })
+      : [];
+    const branchesByStore = new Map<number, Array<{ id: number; code: string; name: string }>>();
+    for (const b of storeBranches) {
+      if (!b.storeId) continue;
+      const arr = branchesByStore.get(b.storeId) || [];
+      arr.push({ id: b.id, code: b.code, name: b.name });
+      branchesByStore.set(b.storeId, arr);
+    }
     const availableStores = Array.from(availableStoresMap.entries()).map(([id, name]) => ({
       id,
       name,
+      branches: branchesByStore.get(id) || [],
     }));
 
     return NextResponse.json({

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifySuperAdminRequest } from "@/lib/auth";
+import { verifySameOrigin } from "@/lib/platformConfig";
 import { getClientIp, logPlatformAudit } from "@/lib/audit";
 import { invalidateStoreEntitlements } from "@/lib/entitlements";
-import { isRazorpayConfigured, syncPlanToRazorpay } from "@/lib/razorpay";
+import { isRazorpayConfiguredAsync, syncPlanToRazorpay } from "@/lib/razorpay";
 import {
   QUOTA_RESOURCE_REGISTRY,
   SAAS_FEATURE_REGISTRY,
@@ -73,6 +74,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const originCheck = verifySameOrigin(req);
+  if (!originCheck.ok && originCheck.response) return originCheck.response;
+
   const auth = await verifySuperAdminRequest(req, ["ceo", "platform_admin"]);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
@@ -87,7 +91,7 @@ export async function POST(req: NextRequest) {
       const seedRes = await ensureDefaultPlansSeeded();
       let razorpaySyncedCount = 0;
 
-      if (isRazorpayConfigured() && body.skipRazorpaySync !== true) {
+      if ((await isRazorpayConfiguredAsync()) && body.skipRazorpaySync !== true) {
         const pendingPaidDefaults = await prisma.subscriptionPlan.findMany({
           where: {
             code: { in: ["STARTER", "GROWTH", "ENTERPRISE"] },
@@ -204,7 +208,12 @@ export async function POST(req: NextRequest) {
     });
 
     let finalPlan = created;
-    if (priceInr > 0 && billingCycle !== "lifetime" && isRazorpayConfigured() && body.skipRazorpaySync !== true) {
+    if (
+      priceInr > 0 &&
+      billingCycle !== "lifetime" &&
+      (await isRazorpayConfiguredAsync()) &&
+      body.skipRazorpaySync !== true
+    ) {
       await syncPlanToRazorpay(created.id);
       const refreshed = await prisma.subscriptionPlan.findUnique({ where: { id: created.id } });
       if (refreshed) finalPlan = refreshed;

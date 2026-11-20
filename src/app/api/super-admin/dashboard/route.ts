@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifySuperAdminRequest } from "@/lib/auth";
-import { parseCustomLimitsJson } from "@/lib/saasFeatures";
-
-function normalizeMonthlyMrr(priceInr: number, billingCycle: string, intervalCount = 1): number {
-  const cycle = (billingCycle || "monthly").toLowerCase();
-  if (priceInr <= 0 || cycle === "lifetime") return 0;
-  if (cycle === "yearly") return priceInr / (12 * Math.max(1, intervalCount));
-  if (cycle === "quarterly") {
-    const months = intervalCount >= 3 ? intervalCount : Math.max(1, intervalCount) * 3;
-    return priceInr / months;
-  }
-  return priceInr / Math.max(1, intervalCount);
-}
+import { normalizeMonthlyMrr, parseCustomLimitsJson } from "@/lib/saasFeatures";
 
 /**
  * MODULE 3.8: CEO Executive Command Dashboard API (`GET /api/super-admin/dashboard`)

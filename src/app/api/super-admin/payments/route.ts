@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma, runInTransaction } from "@/lib/db-transaction";
 import { verifySuperAdminRequest } from "@/lib/auth";
+import { verifySameOrigin } from "@/lib/platformConfig";
 import { getClientIp, logPlatformAudit } from "@/lib/audit";
 import { invalidateStoreEntitlements } from "@/lib/entitlements";
 import {
@@ -192,6 +193,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const originCheck = verifySameOrigin(req);
+  if (!originCheck.ok && originCheck.response) return originCheck.response;
+
   const auth = await verifySuperAdminRequest(req, ["ceo", "platform_admin", "finance_ops"]);
   if (!auth.authorized || !auth.session) {
     return NextResponse.json({ success: false, message: auth.message }, { status: auth.status });
